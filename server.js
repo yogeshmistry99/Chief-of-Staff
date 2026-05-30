@@ -27,6 +27,8 @@ app.post('/api/todoist', async (req, res) => {
 });
 
 app.post('/api/claude', async (req, res) => {
+  console.log('Claude request received');
+  console.log('API key present:', !!process.env.ANTHROPIC_API_KEY);
   try {
     const r = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -37,9 +39,12 @@ app.post('/api/claude', async (req, res) => {
       },
       body: JSON.stringify(req.body)
     });
+    console.log('Anthropic status:', r.status);
     const text = await r.text();
+    console.log('Anthropic response:', text.substring(0, 200));
     res.status(r.status).send(text);
   } catch(e) {
+    console.log('Claude error:', e.message);
     res.status(500).json({ error: e.message });
   }
 });
