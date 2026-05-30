@@ -18,7 +18,7 @@
   .app { display: none; max-width: 920px; margin: 0 auto; padding: 1.5rem; }
   .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 8px; }
   .header h1 { font-size: 20px; font-weight: 600; }
-  .header-right { display: flex; gap: 8px; flex-wrap: wrap; }
+  .header-right { display: flex; gap: 8px; }
   .command-area { background: white; border-radius: 12px; border: 1px solid #e5e5e0; padding: 1.25rem; margin-bottom: 1.5rem; }
   .command-area h2 { font-size: 14px; font-weight: 600; margin-bottom: 10px; }
   .cmd-row { display: flex; gap: 8px; }
@@ -26,7 +26,6 @@
   .cmd-row textarea:focus { border-color: #db4035; }
   .cmd-btn { padding: 0 18px; background: #db4035; color: white; border: none; border-radius: 8px; font-size: 13px; font-weight: 500; cursor: pointer; }
   .cmd-btn:hover { background: #c23b30; }
-  .cmd-btn:disabled { background: #e0a09d; cursor: not-allowed; }
   .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
   .chip { font-size: 11px; padding: 4px 10px; background: #f5f5f0; border-radius: 20px; cursor: pointer; color: #555; border: 1px solid #e8e8e3; }
   .chip:hover { background: #ebebeb; }
@@ -71,7 +70,7 @@
 <div class="setup" id="setup-screen">
   <div class="setup-card">
     <h1>Chief of Staff</h1>
-    <p>Your personal life operating system. Enter your Todoist API token to connect — stored in this browser only.</p>
+    <p>Your personal life operating system. Enter your Todoist API token to connect.</p>
     <input type="password" id="token-input" placeholder="Todoist API token" autocomplete="off"/>
     <button class="btn-primary" onclick="connect()">Connect</button>
   </div>
@@ -88,7 +87,7 @@
     <div class="stat"><div class="stat-label">Total tasks</div><div class="stat-value" id="s-total">—</div></div>
     <div class="stat"><div class="stat-label">Due today</div><div class="stat-value" id="s-today">—</div></div>
     <div class="stat"><div class="stat-label">Priority 1</div><div class="stat-value" id="s-p1">—</div></div>
-    <div class="stat"><div class="stat-label">Projects</div><div class="stat-value" id="s-proj">—</div></div>
+    <div class="stat"><div class="stat-label">Buckets</div><div class="stat-value" id="s-proj">—</div></div>
   </div>
   <div class="command-area">
     <h2>Tell me what to do</h2>
@@ -101,7 +100,6 @@
       <span class="chip" onclick="fill('Show me all my P1 tasks')">All P1 tasks</span>
       <span class="chip" onclick="fill('Give me a weekly overview across all areas')">Weekly overview</span>
       <span class="chip" onclick="fill('What quick wins can I do in 30 minutes?')">Quick wins</span>
-      <span class="chip" onclick="fill('What has been sitting on my list the longest?')">Overdue review</span>
     </div>
     <div class="response-box" id="response-box"></div>
   </div>
@@ -112,17 +110,17 @@
       <div id="today-list"><span class="loader">Loading</span></div>
     </div>
     <div class="task-list">
-      <h2>Inbox <span style="color:#db4035;font-size:12px" id="inbox-count"></span></h2>
-      <div id="inbox-list"><span class="loader">Loading</span></div>
+      <h2>Unsorted <span style="color:#db4035;font-size:12px" id="unsorted-count"></span></h2>
+      <div id="unsorted-list"><span class="loader">Loading</span></div>
     </div>
   </div>
-  <div class="task-list" id="project-panel" style="display:none">
-    <h2 id="project-panel-title"></h2>
-    <div id="project-panel-body"></div>
+  <div class="task-list" id="section-panel" style="display:none">
+    <h2 id="section-panel-title"></h2>
+    <div id="section-panel-body"></div>
   </div>
 </div>
 <script>
-const COLORS = {Health:'#e74c3c',Work:'#3498db',Systems:'#9b59b6',Home:'#e67e22',Family:'#e91e63',Finance:'#27ae60',Strategic:'#1abc9c',Personal:'#f39c12'};
+const COLORS = {Health:'#e74c3c',Work:'#3498db',Systems:'#9b59b6',Home:'#e67e22',Family:'#e91e63',Finance:'#27ae60',Strategic:'#1abc9c',Personal:'#f39c12','HEALTH':'#e74c3c','WORK':'#3498db'};
 let token='', projects=[], tasks=[], sections=[];
 
 async function api(path, method='GET', body=null) {
@@ -152,7 +150,7 @@ async function loadData() {
     [projects, tasks, sections] = await Promise.all([
       api('/projects'), api('/tasks'), api('/sections')
     ]);
-    renderStats(); renderBuckets(); renderToday(); renderInbox();
+    renderStats(); renderBuckets(); renderToday(); renderUnsorted();
   } catch(e) {
     alert('Could not connect to Todoist: ' + e.message);
   }
@@ -163,7 +161,7 @@ function renderStats() {
   document.getElementById('s-total').textContent = tasks.length;
   document.getElementById('s-today').textContent = tasks.filter(t=>t.due?.date===today).length;
   document.getElementById('s-p1').textContent = tasks.filter(t=>t.priority===4).length;
-  document.getElementById('s-proj').textContent = projects.filter(p=>!p.is_inbox_project).length;
+  document.getElementById('s-proj').textContent = sections.length;
 }
 
 function badge(p) {
@@ -190,44 +188,32 @@ function renderToday() {
     : '<div class="empty">Nothing urgent — you\'re clear</div>';
 }
 
-function renderInbox() {
-  const inbox = projects.find(p=>p.is_inbox_project);
-  if (!inbox) return;
-  const list = tasks.filter(t=>t.project_id===inbox.id);
-  document.getElementById('inbox-count').textContent = list.length ? `(${list.length})` : '';
-  document.getElementById('inbox-list').innerHTML = list.length
-    ? list.slice(0,8).map(taskHTML).join('')
-    : '<div class="empty">Inbox clear</div>';
+function renderUnsorted() {
+  const unsorted = tasks.filter(t=>!t.section_id);
+  document.getElementById('unsorted-count').textContent = unsorted.length ? `(${unsorted.length})` : '';
+  document.getElementById('unsorted-list').innerHTML = unsorted.length
+    ? unsorted.slice(0,8).map(taskHTML).join('')
+    : '<div class="empty">All tasks are organised</div>';
 }
 
 function renderBuckets() {
-  document.getElementById('bucket-grid').innerHTML = projects.filter(p=>!p.is_inbox_project).map(p=>{
-    const count = tasks.filter(t=>t.project_id===p.id).length;
-    const color = COLORS[p.name]||'#888';
-    return `<div class="bucket" onclick="showProject('${p.id}','${p.name}',this)">
-      <div class="bucket-name"><span class="dot" style="background:${color}"></span>${p.name}</div>
+  document.getElementById('bucket-grid').innerHTML = sections.map(s=>{
+    const count = tasks.filter(t=>t.section_id===s.id).length;
+    const color = COLORS[s.name] || '#' + Math.abs(s.name.split('').reduce((a,c)=>a+c.charCodeAt(0),0)*2654435761>>>0).toString(16).substring(0,6);
+    return `<div class="bucket" onclick="showSection('${s.id}','${s.name}',this)">
+      <div class="bucket-name"><span class="dot" style="background:${color}"></span>${s.name}</div>
       <div class="bucket-count">${count} task${count!==1?'s':''}</div>
     </div>`;
   }).join('');
 }
 
-function showProject(id, name, el) {
+function showSection(id, name, el) {
   document.querySelectorAll('.bucket').forEach(b=>b.classList.remove('active'));
   el.classList.add('active');
-  const pt = tasks.filter(t=>t.project_id===id).sort((a,b)=>b.priority-a.priority);
-  const ps = sections.filter(s=>s.project_id===id);
-  let html='';
-  if (ps.length) {
-    ps.forEach(s=>{
-      const st=pt.filter(t=>t.section_id===s.id);
-      if(st.length) html+=`<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:#bbb;margin:12px 0 6px">${s.name}</div>${st.map(taskHTML).join('')}`;
-    });
-    const u=pt.filter(t=>!t.section_id);
-    if(u.length) html+=`<div style="font-size:11px;font-weight:600;text-transform:uppercase;color:#bbb;margin:12px 0 6px">Unsorted</div>${u.map(taskHTML).join('')}`;
-  } else { html=pt.map(taskHTML).join(''); }
-  document.getElementById('project-panel-title').textContent=`${name} (${pt.length})`;
-  document.getElementById('project-panel-body').innerHTML=html||'<div class="empty">No tasks</div>';
-  const panel=document.getElementById('project-panel');
+  const st = tasks.filter(t=>t.section_id===id).sort((a,b)=>b.priority-a.priority);
+  document.getElementById('section-panel-title').textContent=`${name} (${st.length})`;
+  document.getElementById('section-panel-body').innerHTML=st.length ? st.map(taskHTML).join('') : '<div class="empty">No tasks</div>';
+  const panel=document.getElementById('section-panel');
   panel.style.display='block';
   panel.scrollIntoView({behavior:'smooth',block:'nearest'});
 }
@@ -253,33 +239,37 @@ async function runCommand() {
   btn.disabled=true; btn.textContent='...';
   box.style.display='block'; box.textContent='Thinking...';
   const today=new Date().toISOString().split('T')[0];
-  const summary=projects.filter(p=>!p.is_inbox_project).map(p=>{
-    const pt=tasks.filter(t=>t.project_id===p.id);
-    const p1s=pt.filter(t=>t.priority===4).slice(0,3).map(t=>t.content).join(', ');
-    return `${p.name}: ${pt.length} tasks${p1s?', P1: '+p1s:''}`;
+  const summary=sections.map(s=>{
+    const st=tasks.filter(t=>t.section_id===s.id);
+    const p1s=st.filter(t=>t.priority===4).slice(0,3).map(t=>t.content).join(', ');
+    return `${s.name}: ${st.length} tasks${p1s?', P1: '+p1s:''}`;
   }).join('\n');
   const system=`You are a personal chief of staff managing someone's life OS in Todoist.
 Today: ${today}
-Projects:\n${summary}
-For ADD requests respond ONLY with JSON: {"action":"add","tasks":[{"content":"task","project":"ProjectName","priority":4}]}
-Priority: 4=P1, 3=P2, 2=P3. Projects: ${projects.filter(p=>!p.is_inbox_project).map(p=>p.name).join(', ')}
-For advice give a concise numbered list max 120 words.`;
+Life buckets:\n${summary}
+For ADD requests respond ONLY with JSON: {"action":"add","tasks":[{"content":"task","section":"SectionName","priority":4}]}
+Priority: 4=P1, 3=P2, 2=P3. Sections: ${sections.map(s=>s.name).join(', ')}
+For advice give a concise numbered list max 150 words.`;
   try {
     const aiRes=await fetch('/api/claude',{
       method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:600,system,messages:[{role:'user',content:cmd}]})
     });
     const aiData=await aiRes.json();
-    const text=aiData.content?.map(c=>c.text||'').join('')||'';
+    const text=aiData.content?.map(c=>c.text||'').join('')||'No response received';
     const match=text.match(/\{"action"\s*:\s*"add"[\s\S]*?\}/);
     if(match){
       const {tasks:newTasks}=JSON.parse(match[0]);
+      const inbox=projects.find(p=>p.is_inbox_project)||projects[0];
       for(const t of newTasks){
-        const proj=projects.find(p=>p.name===t.project)||projects.find(p=>p.is_inbox_project);
-        if(proj) await api('/tasks','POST',{content:t.content,project_id:proj.id,priority:t.priority||1});
+        const sec=sections.find(s=>s.name===t.section);
+        const taskBody={content:t.content,priority:t.priority||1};
+        if(inbox) taskBody.project_id=inbox.id;
+        if(sec) taskBody.section_id=sec.id;
+        await api('/tasks','POST',taskBody);
       }
       await loadData();
-      box.textContent=`Added ${newTasks.length} task${newTasks.length!==1?'s':''}:\n`+newTasks.map(t=>`• ${t.content} → ${t.project}`).join('\n');
+      box.textContent=`Added ${newTasks.length} task${newTasks.length!==1?'s':''}:\n`+newTasks.map(t=>`• ${t.content} → ${t.section}`).join('\n');
     } else { box.textContent=text; }
   } catch(e){box.textContent='Error: '+e.message;}
   btn.disabled=false; btn.textContent='Go';
