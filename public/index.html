@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chief of Staff</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f0; color: #1a1a1a; min-height: 100vh; }
+  .setup { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 2rem; }
+  .setup-card { background: white; border-radius: 16px; border: 1px solid #e5e5e0; padding: 2rem; max-width: 440px; width: 100%; }
+  .setup-card h1 { font-size: 22px; font-weight: 600; margin-bottom: 6px; }
+  .setup-card p { font-size: 14px; color: #666; margin-bottom: 1.5rem; line-height: 1.6; }
+  .setup-card input { width: 100%; padding: 10px 14px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; margin-bottom: 12px; outline: none; }
+  .setup-card input:focus { border-color: #db4035; }
+  .btn-primary { width: 100%; padding: 11px; background: #db4035; color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; }
+  .btn-primary:hover { background: #c23b30; }
+  .app { display: none; max-width: 920px; margin: 0 auto; padding: 1.5rem; }
+  .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 8px; }
+  .header h1 { font-size: 20px; font-weight: 600; }
+  .header-right { display: flex; gap: 8px; flex-wrap: wrap; }
+  .command-area { background: white; border-radius: 12px; border: 1px solid #e5e5e0; padding: 1.25rem; margin-bottom: 1.5rem; }
+  .command-area h2 { font-size: 14px; font-weight: 600; margin-bottom: 10px; }
+  .cmd-row { display: flex; gap: 8px; }
+  .cmd-row textarea { flex: 1; padding: 10px 12px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 13px; resize: none; height: 60px; font-family: inherit; outline: none; }
+  .cmd-row textarea:focus { border-color: #db4035; }
+  .cmd-btn { padding: 0 18px; background: #db4035; color: white; border: none; border-radius: 8px; font-size: 13px; font-weight: 500; cursor: pointer; }
+  .cmd-btn:hover { background: #c23b30; }
+  .cmd-btn:disabled { background: #e0a09d; cursor: not-allowed; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .chip { font-size: 11px; padding: 4px 10px; background: #f5f5f0; border-radius: 20px; cursor: pointer; color: #555; border: 1px solid #e8e8e3; }
+  .chip:hover { background: #ebebeb; }
+  .response-box { background: #f9f9f6; border-radius: 8px; border: 1px solid #e8e8e3; padding: 12px; margin-top: 12px; font-size: 13px; line-height: 1.6; color: #333; display: none; white-space: pre-wrap; }
+  .task-list { background: white; border-radius: 12px; border: 1px solid #e5e5e0; padding: 1.25rem; margin-bottom: 1rem; }
+  .task-list h2 { font-size: 14px; font-weight: 600; margin-bottom: 12px; }
+  .task-item { display: flex; align-items: flex-start; gap: 10px; padding: 8px 0; border-bottom: 1px solid #f0f0ec; }
+  .task-item:last-child { border-bottom: none; }
+  .task-check { width: 17px; height: 17px; border-radius: 50%; border: 1.5px solid #ddd; flex-shrink: 0; margin-top: 2px; cursor: pointer; background: white; }
+  .task-check:hover { border-color: #db4035; background: #fef0f0; }
+  .task-text { font-size: 13px; flex: 1; line-height: 1.4; }
+  .task-meta { font-size: 11px; color: #aaa; margin-top: 2px; display: flex; gap: 6px; }
+  .p1 { color: #db4035; font-weight: 600; font-size: 11px; background: #fef0f0; padding: 1px 6px; border-radius: 4px; }
+  .p2 { color: #e67e22; font-weight: 600; font-size: 11px; background: #fef5ec; padding: 1px 6px; border-radius: 4px; }
+  .p3 { color: #888; font-weight: 600; font-size: 11px; background: #f5f5f0; padding: 1px 6px; border-radius: 4px; }
+  .bucket-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; margin-bottom: 1.5rem; }
+  .bucket { background: white; border-radius: 10px; border: 1px solid #e5e5e0; padding: 12px 14px; cursor: pointer; }
+  .bucket:hover { border-color: #db4035; }
+  .bucket.active { border-color: #db4035; background: #fef8f8; }
+  .bucket-name { font-size: 13px; font-weight: 500; margin-bottom: 2px; display: flex; align-items: center; gap: 6px; }
+  .bucket-count { font-size: 12px; color: #888; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 1.5rem; }
+  .stat { background: white; border-radius: 10px; border: 1px solid #e5e5e0; padding: 14px 16px; }
+  .stat-label { font-size: 12px; color: #888; margin-bottom: 4px; }
+  .stat-value { font-size: 22px; font-weight: 600; }
+  .btn-sm { padding: 6px 12px; font-size: 12px; border: 1px solid #e0e0e0; background: white; border-radius: 6px; cursor: pointer; color: #444; }
+  .btn-sm:hover { background: #f5f5f0; }
+  .btn-red { border-color: #db4035; color: #db4035; }
+  .empty { font-size: 13px; color: #aaa; padding: 8px 0; }
+  .loader::after { content: '...'; animation: dots 1.2s infinite; }
+  @keyframes dots { 0%,30%{content:'.'} 50%{content:'..'} 70%,100%{content:'...'} }
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 1rem; }
+  @media (max-width: 580px) {
+    .stats { grid-template-columns: repeat(2,1fr); }
+    .two-col { grid-template-columns: 1fr; }
+    .app { padding: 1rem; }
+  }
+</style>
+</head>
+<body>
+<div class="setup" id="setup-screen">
+  <div class="setup-card">
+    <h1>Chief of Staff</h1>
+    <p>Your personal life operating system. Enter your Todoist API token to connect — stored in this browser only.</p>
+    <input type="password" id="token-input" placeholder="Todoist API token" autocomplete="off"/>
+    <button class="btn-primary" onclick="connect()">Connect</button>
+  </div>
+</div>
+<div class="app" id="app-screen">
+  <div class="header">
+    <h1>Chief of Staff</h1>
+    <div class="header-right">
+      <button class="btn-sm" onclick="loadData()">Refresh</button>
+      <button class="btn-sm btn-red" onclick="disconnect()">Disconnect</button>
+    </div>
+  </div>
+  <div class="stats">
+    <div class="stat"><div class="stat-label">Total tasks</div><div class="stat-value" id="s-total">—</div></div>
+    <div class="stat"><div class="stat-label">Due today</div><div class="stat-value" id="s-today">—</div></div>
+    <div class="stat"><div class="stat-label">Priority 1</div><div class="stat-value" id="s-p1">—</div></div>
+    <div class="stat"><div class="stat-label">Projects</div><div class="stat-value" id="s-proj">—</div></div>
+  </div>
+  <div class="command-area">
+    <h2>Tell me what to do</h2>
+    <div class="cmd-row">
+      <textarea id="cmd-input" placeholder="e.g. Add book dentist to Health as P1, or what should I focus on today?"></textarea>
+      <button class="cmd-btn" id="cmd-btn" onclick="runCommand()">Go</button>
+    </div>
+    <div class="chips">
+      <span class="chip" onclick="fill('What should I focus on today?')">Today's focus</span>
+      <span class="chip" onclick="fill('Show me all my P1 tasks')">All P1 tasks</span>
+      <span class="chip" onclick="fill('Give me a weekly overview across all areas')">Weekly overview</span>
+      <span class="chip" onclick="fill('What quick wins can I do in 30 minutes?')">Quick wins</span>
+      <span class="chip" onclick="fill('What has been sitting on my list the longest?')">Overdue review</span>
+    </div>
+    <div class="response-box" id="response-box"></div>
+  </div>
+  <div class="bucket-grid" id="bucket-grid"></div>
+  <div class="two-col">
+    <div class="task-list">
+      <h2>Today's focus</h2>
+      <div id="today-list"><span class="loader">Loading</span></div>
+    </div>
+    <div class="task-list">
+      <h2>Inbox <span style="color:#db4035;font-size:12px" id="inbox-count"></span></h2>
+      <div id="inbox-list"><span class="loader">Loading</span></div>
+    </div>
+  </div>
+  <div class="task-list" id="project-panel" style="display:none">
+    <h2 id="project-panel-title"></h2>
+    <div id="project-panel-body"></div>
+  </div>
+</div>
+<script>
+const COLORS = {Health:'#e74c3c',Work:'#3498db',Systems:'#9b59b6',Home:'#e67e22',Family:'#e91e63',Finance:'#27ae60',Strategic:'#1abc9c',Personal:'#f39c12'};
+let token='', projects=[], tasks=[], sections=[];
+
+async function api(path, method='GET', body=null) {
+  const r = await fetch('/api/todoist', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({path, method, body, token})
+  });
+  if (!r.ok) throw new Error(r.status);
+  const text = await r.text();
+  return text ? JSON.parse(text) : null;
+}
+
+function connect() {
+  const t = document.getElementById('token-input').value.trim();
+  if (!t) return alert('Please enter your Todoist API token');
+  token = t; localStorage.setItem('cos_tok', token);
+  document.getElementById('setup-screen').style.display='none';
+  document.getElementById('app-screen').style.display='block';
+  loadData();
+}
+
+function disconnect() { localStorage.removeItem('cos_tok'); location.reload(); }
+
+async function loadData() {
+  try {
+    [projects, tasks, sections] = await Promise.all([api('/projects'), api('/tasks'), api('/sections')]);
+    renderStats(); renderBuckets(); renderToday(); renderInbox();
+  } catch(e) { alert('Could not connect to Todoist. Please check your token.'); }
+}
+
+function renderStats() {
+  const today = new Date().toISOString().split('T')[0];
+  document.getElementById('s-total').textContent = tasks.length;
+  document.getElementById('s-today').textContent = tasks.filter(t=>t.due?.date===today).length;
+  document.getElementById('s-p1').textContent = tasks.filter(t=>t.priority===4).length;
+  document.getElementById('s-proj').textContent = projects.filter(p=>!p.is_inbox_project).length;
+}
+
+function badge(p) {
+  if (p===4) return '<span class="p1">P1</span>';
+  if (p===3) return '<span class="p2">P2</span>';
+  if (p===2) return '<span class="p3">P3</span>';
+  return '';
+}
+
+function taskHTML(t) {
+  return `<div class="task-item" id="ti-${t.id}">
+    <div class="task-check" onclick="complete('${t.id}')"></div>
+    <div style="flex:1"><div class="task-text">${t.content}</div>
+    <div class="task-meta">${badge(t.priority)}${t.due?'<span>'+t.due.date+'</span>':''}</div></div>
+  </div>`;
+}
+
+function renderToday() {
+  const today = new Date().toISOString().split('T')[0];
+  let list = tasks.filter(t=>t.due?.date===today).sort((a,b)=>b.priority-a.priority);
+  if (!list.length) list = tasks.filter(t=>t.priority===4).slice(0,5);
+  document.getElementById('today-list').innerHTML = list.length
+    ? list.slice(0,8).map(taskHTML).join('')
+    : '<div class="empty">Nothing urgent — you\'re clear</div>';
+}
+
+function renderInbox() {
+  const inbox = projects.find(p=>p.is_inbox_project);
+  if (!inbox) return;
+  const list = tasks.filter(t=>t.project_id===inbox.id);
+  document.getElementById('inbox-count').textContent = list.length ? `(${list.length})` : '';
+  document.getElementById('inbox-list').innerHTML = list.length
+    ? list.slice(0,8).map(taskHTML).join('')
+    : '<div class="empty">Inbox clear</div>';
+}
+
+function renderBuckets() {
+  document.getElementById('bucket-grid').innerHTML = projects.filter(p=>!p.is_inbox_project).map(p=>{
+    const count = tasks.filter(t=>t.project_id===p.id).length;
+    const color = COLORS[p.name]||'#888';
+    return `<div class="bucket" onclick="showProject('${p.id}','${p.name}',this)">
+      <div class="bucket-name"><span class="dot" style="background:${color}"></span>${p.name}</div>
+      <div class="bucket-count">${count} task${count!==1?'s':''}</div>
+    </div>`;
+  }).join('');
+}
+
+function showProject(id, name, el) {
+  document.querySelectorAll('.bucket').forEach(b=>b.classList.remove('active'));
+  el.classList.add('active');
+  const pt = tasks.filter(t=>t.project_id===id).sort((a,b)=>b.priority-a.priority);
+  const ps = sections.filter(s=>s.project_id===id);
+  let html='';
+  if (ps.length) {
+    ps.forEach(s=>{
+      const st=pt.filter(t=>t.section_id===s.id);
+      if(st.length) html+=`<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:#bbb;margin:12px 0 6px">${s.name}</div>${st.map(taskHTML).join('')}`;
+    });
+    const u=pt.filter(t=>!t.section_id);
+    if(u.length) html+=`<div style="font-size:11px;font-weight:600;text-transform:uppercase;color:#bbb;margin:12px 0 6px">Unsorted</div>${u.map(taskHTML).join('')}`;
+  } else { html=pt.map(taskHTML).join(''); }
+  document.getElementById('project-panel-title').textContent=`${name} (${pt.length})`;
+  document.getElementById('project-panel-body').innerHTML=html||'<div class="empty">No tasks</div>';
+  const panel=document.getElementById('project-panel');
+  panel.style.display='block';
+  panel.scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+
+async function complete(id) {
+  const el=document.getElementById('ti-'+id);
+  if(el){el.style.opacity='0.3';el.style.pointerEvents='none';}
+  try {
+    await api(`/tasks/${id}/close`,'POST');
+    tasks=tasks.filter(t=>t.id!==id);
+    renderStats(); renderBuckets();
+    setTimeout(()=>el?.remove(),400);
+  } catch(e){if(el){el.style.opacity='1';el.style.pointerEvents='auto';}}
+}
+
+function fill(t){document.getElementById('cmd-input').value=t;}
+
+async function runCommand() {
+  const cmd=document.getElementById('cmd-input').value.trim();
+  if(!cmd) return;
+  const btn=document.getElementById('cmd-btn');
+  const box=document.getElementById('response-box');
+  btn.disabled=true; btn.textContent='...';
+  box.style.display='block'; box.textContent='Thinking...';
+  const today=new Date().toISOString().split('T')[0];
+  const summary=projects.filter(p=>!p.is_inbox_project).map(p=>{
+    const pt=tasks.filter(t=>t.project_id===p.id);
+    const p1s=pt.filter(t=>t.priority===4).slice(0,3).map(t=>t.content).join(', ');
+    return `${p.name}: ${pt.length} tasks${p1s?', P1: '+p1s:''}`;
+  }).join('\n');
+  const system=`You are a personal chief of staff managing someone's life OS in Todoist.
+Today: ${today}
+Projects:\n${summary}
+For ADD requests respond ONLY with JSON: {"action":"add","tasks":[{"content":"task","project":"ProjectName","priority":4}]}
+Priority: 4=P1, 3=P2, 2=P3. Projects: ${projects.filter(p=>!p.is_inbox_project).map(p=>p.name).join(', ')}
+For advice give a concise numbered list max 120 words.`;
+  try {
+    const aiRes=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:600,system,messages:[{role:'user',content:cmd}]})
+    });
+    const aiData=await aiRes.json();
+    const text=aiData.content?.map(c=>c.text||'').join('')||'';
+    const match=text.match(/\{"action"\s*:\s*"add"[\s\S]*?\}/);
+    if(match){
+      const {tasks:newTasks}=JSON.parse(match[0]);
+      for(const t of newTasks){
+        const proj=projects.find(p=>p.name===t.project)||projects.find(p=>p.is_inbox_project);
+        if(proj) await api('/tasks','POST',{content:t.content,project_id:proj.id,priority:t.priority||1});
+      }
+      await loadData();
+      box.textContent=`Added ${newTasks.length} task${newTasks.length!==1?'s':''}:\n`+newTasks.map(t=>`• ${t.content} → ${t.project}`).join('\n');
+    } else { box.textContent=text; }
+  } catch(e){box.textContent='Error: '+e.message;}
+  btn.disabled=false; btn.textContent='Go';
+}
+
+document.getElementById('cmd-input').addEventListener('keydown',e=>{
+  if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();runCommand();}
+});
+
+window.onload=()=>{
+  const saved=localStorage.getItem('cos_tok');
+  if(saved){token=saved;document.getElementById('setup-screen').style.display='none';document.getElementById('app-screen').style.display='block';loadData();}
+};
+</script>
+</body>
+</html>
