@@ -260,7 +260,7 @@ For ADD requests respond ONLY with JSON: {"action":"add","tasks":[{"content":"ta
 Priority: 4=P1, 3=P2, 2=P3. Projects: ${projects.filter(p=>!p.is_inbox_project).map(p=>p.name).join(', ')}
 For advice give a concise numbered list max 120 words.`;
   try {
-    const aiRes=await fetch('https://api.anthropic.com/v1/messages',{
+    const aiRes=await fetch('/api/claude',{
       method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:600,system,messages:[{role:'user',content:cmd}]})
     });
