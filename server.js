@@ -15,10 +15,10 @@ app.post('/api/todoist', async (req, res) => {
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
     };
     if (body) opts.body = JSON.stringify(body);
-   const r = await fetch(`https://api.todoist.com/api/v1${apiPath}`, opts);
+    const r = await fetch(`https://api.todoist.com/api/v1${apiPath}`, opts);
     console.log('Todoist response status:', r.status);
     const text = await r.text();
-    console.log('Todoist response:', text.substring(0, 100));
+    console.log('Todoist response preview:', text.substring(0, 150));
     res.status(r.status).send(text || '{}');
   } catch(e) {
     console.log('Error:', e.message);
@@ -30,7 +30,10 @@ app.post('/api/claude', async (req, res) => {
   try {
     const r = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'anthropic-version': '2023-06-01' },
+      headers: {
+        'Content-Type': 'application/json',
+        'anthropic-version': '2023-06-01'
+      },
       body: JSON.stringify(req.body)
     });
     const text = await r.text();
