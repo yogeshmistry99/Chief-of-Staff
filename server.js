@@ -6,19 +6,19 @@ app.use(express.json());
 app.use(express.static('public'));
 
 app.post('/api/todoist', async (req, res) => {
-  console.log('Todoist request received:', req.body?.path);
   try {
     const { path: apiPath, method, body, token } = req.body;
-    console.log('Token length:', token?.length, 'Path:', apiPath);
     const opts = {
       method: method || 'GET',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
     };
     if (body) opts.body = JSON.stringify(body);
-    const r = await fetch(`https://api.todoist.com/api/v1${apiPath}`, opts);
-    console.log('Todoist response status:', r.status);
+    const url = `https://api.todoist.com/api/v1/${apiPath.replace(/^\//,'')}`;
+    console.log('Calling:', url);
+    const r = await fetch(url, opts);
+    console.log('Status:', r.status);
     const text = await r.text();
-    console.log('Todoist response preview:', text.substring(0, 150));
+    console.log('Response preview:', text.substring(0,200));
     res.status(r.status).send(text || '{}');
   } catch(e) {
     console.log('Error:', e.message);
@@ -30,10 +30,7 @@ app.post('/api/claude', async (req, res) => {
   try {
     const r = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'anthropic-version': '2023-06-01'
-      },
+      headers: { 'Content-Type': 'application/json', 'anthropic-version': '2023-06-01' },
       body: JSON.stringify(req.body)
     });
     const text = await r.text();
