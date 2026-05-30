@@ -130,9 +130,10 @@ async function api(path, method='GET', body=null) {
     method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({path, method, body, token})
   });
-  if (!r.ok) throw new Error(r.status);
   const text = await r.text();
-  return text ? JSON.parse(text) : null;
+  if (!r.ok) throw new Error(`${r.status}: ${text}`);
+  const parsed = text ? JSON.parse(text) : null;
+  return parsed?.results ?? parsed;
 }
 
 function connect() {
@@ -148,9 +149,13 @@ function disconnect() { localStorage.removeItem('cos_tok'); location.reload(); }
 
 async function loadData() {
   try {
-    [projects, tasks, sections] = await Promise.all([api('/projects'), api('/tasks'), api('/sections')]);
+    [projects, tasks, sections] = await Promise.all([
+      api('/projects'), api('/tasks'), api('/sections')
+    ]);
     renderStats(); renderBuckets(); renderToday(); renderInbox();
-  } catch(e) { alert('Could not connect to Todoist. Please check your token.'); }
+  } catch(e) {
+    alert('Could not connect to Todoist: ' + e.message);
+  }
 }
 
 function renderStats() {
