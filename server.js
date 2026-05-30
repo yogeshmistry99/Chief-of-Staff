@@ -3,6 +3,13 @@ const path = require('path');
 const app = express();
 
 app.use(express.json());
+
+// Disable caching on all responses
+app.use((req, res, next) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+  next();
+});
+
 app.use(express.static('public'));
 
 app.post('/api/todoist', async (req, res) => {
@@ -13,22 +20,16 @@ app.post('/api/todoist', async (req, res) => {
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
     };
     if (body) opts.body = JSON.stringify(body);
-    const url = `https://api.todoist.com/api/v1/${apiPath.replace(/^\//,'')}`;
-    console.log('Calling:', url);
+    const url = `https://api.todoist.com/api/v1/${apiPath.replace(/^\//, '')}`;
     const r = await fetch(url, opts);
-    console.log('Status:', r.status);
     const text = await r.text();
-    console.log('Response preview:', text.substring(0,200));
     res.status(r.status).send(text || '{}');
   } catch(e) {
-    console.log('Error:', e.message);
     res.status(500).json({ error: e.message });
   }
 });
 
 app.post('/api/claude', async (req, res) => {
-  console.log('Claude request received');
-  console.log('API key present:', !!process.env.ANTHROPIC_API_KEY);
   try {
     const r = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -39,12 +40,9 @@ app.post('/api/claude', async (req, res) => {
       },
       body: JSON.stringify(req.body)
     });
-    console.log('Anthropic status:', r.status);
     const text = await r.text();
-    console.log('Anthropic response:', text.substring(0, 200));
     res.status(r.status).send(text);
   } catch(e) {
-    console.log('Claude error:', e.message);
     res.status(500).json({ error: e.message });
   }
 });
