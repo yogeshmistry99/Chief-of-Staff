@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { getAllTasks, closeTask, PROJECTS } from '../lib/todoist'
 import { prioritise, scoreTask } from '../lib/priority'
 import { sendMessage, SYSTEM_PROMPTS } from '../lib/claude'
@@ -89,6 +90,7 @@ function TaskRow({ task, onComplete }) {
 }
 
 export default function Home() {
+  const navigate = useNavigate()
   const today = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
   const hour = new Date().getHours()
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
@@ -286,7 +288,11 @@ export default function Home() {
                 const startTime = formatEventTime(e.start?.dateTime, e.start?.timeZone)
                 const day = formatEventDay(e)
                 return (
-                  <div key={e.id} className="flex items-center gap-3">
+                  <button
+                    key={e.id}
+                    onClick={() => navigate(`/calendar/event/${e.id}`, { state: { event: e } })}
+                    className="flex items-center gap-3 w-full text-left active:opacity-70 transition-opacity"
+                  >
                     <div className="w-10 h-10 rounded-xl bg-[#D3E4FF] flex-shrink-0 flex flex-col items-center justify-center">
                       {isAllDay ? (
                         <span className="text-[10px] font-bold text-[#001D36] leading-tight text-center px-0.5">{day.slice(0,3)}</span>
@@ -301,7 +307,10 @@ export default function Home() {
                       <p className="text-sm font-medium text-[#1C1B1F] leading-snug truncate">{e.summary}</p>
                       <p className="text-xs text-[#79747E]">{isAllDay ? `${day} · All day` : day}</p>
                     </div>
-                  </div>
+                    <svg xmlns="http://www.w3.org/2000/svg" height="14" viewBox="0 -960 960 960" width="14" fill="#CAC4D0" className="flex-shrink-0">
+                      <path d="M504-480 320-664l56-56 240 240-240 240-56-56 184-184Z"/>
+                    </svg>
+                  </button>
                 )
               })}
             </div>

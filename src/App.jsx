@@ -8,6 +8,7 @@ import BucketDetail from './pages/BucketDetail'
 import DiscussionThread from './pages/DiscussionThread'
 import Settings from './pages/Settings'
 import Calendar from './pages/Calendar'
+import CalendarEvent from './pages/CalendarEvent'
 
 const TABS = [
   { path: '/',          Component: Home },
@@ -22,7 +23,8 @@ function getTabIdx(pathname) {
 }
 
 function isSubRoute(pathname) {
-  return pathname.startsWith('/buckets/') && pathname !== '/buckets'
+  return (pathname.startsWith('/buckets/') && pathname !== '/buckets') ||
+         pathname.startsWith('/calendar/event')
 }
 
 function TabStrip() {
@@ -139,6 +141,7 @@ function AppInner() {
           <Routes>
             <Route path="/buckets/:bucket"                      element={<BucketDetail />} />
             <Route path="/buckets/:bucket/discussions/:id"      element={<DiscussionThread />} />
+            <Route path="/calendar/event/:id"                   element={<CalendarEvent />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </div>

@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { getAllTasks, PROJECTS } from '../lib/todoist'
 
 const PROJECT_NAMES = Object.fromEntries(Object.entries(PROJECTS).map(([name, id]) => [id, name]))
@@ -42,6 +43,7 @@ async function fetchEvents(start, end) {
 }
 
 export default function Calendar() {
+  const navigate = useNavigate()
   const [tasks, setTasks] = useState([])
   const [events, setEvents] = useState([])
   const [calendarError, setCalendarError] = useState(null)
@@ -174,8 +176,12 @@ export default function Calendar() {
                 const endTime = formatTime(e.end?.dateTime, e.end?.timeZone)
                 const isAllDay = !!e.start?.date && !e.start?.dateTime
                 return (
-                  <div key={e.id} className="flex gap-3 items-start">
-                    <div className="w-10 flex-shrink-0 text-right">
+                  <button
+                    key={e.id}
+                    onClick={() => navigate(`/calendar/event/${e.id}`, { state: { event: e } })}
+                    className="flex gap-3 items-start w-full text-left active:opacity-70 transition-opacity"
+                  >
+                    <div className="w-10 flex-shrink-0 text-right pt-1.5">
                       {isAllDay ? (
                         <span className="text-xs text-[#79747E]">All day</span>
                       ) : (
@@ -187,8 +193,20 @@ export default function Calendar() {
                       {!isAllDay && endTime && (
                         <p className="text-xs text-[#79747E]">until {endTime}</p>
                       )}
+                      {(e.location || e.hangoutLink || (e.attendees?.length > 0)) && (
+                        <div className="flex items-center gap-2 mt-1 flex-wrap">
+                          {e.hangoutLink && <span className="text-[10px] text-[#6750A4] font-medium">Video call</span>}
+                          {e.location && <span className="text-[10px] text-[#79747E] truncate">{e.location}</span>}
+                          {e.attendees?.length > 0 && <span className="text-[10px] text-[#79747E]">{e.attendees.length} attendees</span>}
+                        </div>
+                      )}
                     </div>
-                  </div>
+                    <div className="pt-1.5 flex-shrink-0">
+                      <svg xmlns="http://www.w3.org/2000/svg" height="14" viewBox="0 -960 960 960" width="14" fill="#CAC4D0">
+                        <path d="M504-480 320-664l56-56 240 240-240 240-56-56 184-184Z"/>
+                      </svg>
+                    </div>
+                  </button>
                 )
               })}
             </div>
