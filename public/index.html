@@ -71,9 +71,8 @@
 <div class="setup" id="setup-screen">
   <div class="setup-card">
     <h1>Chief of Staff</h1>
-    <p>Your personal life operating system. Enter your Todoist API token and Anthropic API key to connect. Both are stored in this browser only.</p>
-    <input type="password" id="todoist-input" placeholder="Todoist API token" autocomplete="off"/>
-    <input type="password" id="anthropic-input" placeholder="Anthropic API key (sk-ant-...)" autocomplete="off"/>
+    <p>Your personal life operating system. Enter your Todoist API token to connect.</p>
+    <input type="password" id="token-input" placeholder="Todoist API token" autocomplete="off"/>
     <button class="btn-primary" onclick="connect()">Connect</button>
   </div>
 </div>
@@ -123,7 +122,7 @@
 </div>
 <script>
 const COLORS = {Health:'#e74c3c',Work:'#3498db',Systems:'#9b59b6',Home:'#e67e22',Family:'#e91e63',Finance:'#27ae60',Strategic:'#1abc9c',Personal:'#f39c12'};
-let token='', anthropicKey='', projects=[], tasks=[], sections=[];
+let token='', projects=[], tasks=[], sections=[];
 
 async function todoistAPI(path, method='GET', body=null) {
   const r = await fetch('/api/todoist', {
@@ -137,13 +136,9 @@ async function todoistAPI(path, method='GET', body=null) {
 }
 
 async function claudeAPI(system, userMsg) {
-  const r = await fetch('https://api.anthropic.com/v1/messages', {
+  const r = await fetch('/api/ai', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'anthropic-version': '2023-06-01',
-      'x-api-key': anthropicKey
-    },
+    headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 600,
@@ -156,13 +151,10 @@ async function claudeAPI(system, userMsg) {
 }
 
 function connect() {
-  const t = document.getElementById('todoist-input').value.trim();
-  const a = document.getElementById('anthropic-input').value.trim();
+  const t = document.getElementById('token-input').value.trim();
   if (!t) return alert('Please enter your Todoist API token');
-  if (!a) return alert('Please enter your Anthropic API key');
-  token = t; anthropicKey = a;
+  token = t;
   localStorage.setItem('cos_tok', token);
-  localStorage.setItem('cos_ant', anthropicKey);
   document.getElementById('setup-screen').style.display='none';
   document.getElementById('app-screen').style.display='block';
   loadData();
@@ -170,7 +162,6 @@ function connect() {
 
 function disconnect() {
   localStorage.removeItem('cos_tok');
-  localStorage.removeItem('cos_ant');
   location.reload();
 }
 
@@ -267,21 +258,18 @@ async function runCommand() {
   const box=document.getElementById('response-box');
   btn.disabled=true; btn.textContent='...';
   box.style.display='block'; box.textContent='Thinking...';
-
   const today=new Date().toISOString().split('T')[0];
   const summary=sections.map(s=>{
     const st=tasks.filter(t=>t.section_id===s.id);
     const p1s=st.filter(t=>t.priority===4).slice(0,3).map(t=>t.content).join(', ');
     return `${s.name}: ${st.length} tasks${p1s?', P1: '+p1s:''}`;
   }).join('\n');
-
   const system=`You are a personal chief of staff managing someone's life OS in Todoist.
 Today: ${today}
 Life buckets:\n${summary}
 For ADD requests respond ONLY with JSON: {"action":"add","tasks":[{"content":"task","section":"SectionName","priority":4}]}
 Priority: 4=P1, 3=P2, 2=P3. Sections: ${sections.map(s=>s.name).join(', ')}
 For advice give a concise numbered list max 150 words.`;
-
   try {
     const text = await claudeAPI(system, cmd);
     const match = text.match(/\{"action"\s*:\s*"add"[\s\S]*?\}/);
@@ -311,14 +299,8 @@ document.getElementById('cmd-input').addEventListener('keydown',e=>{
 });
 
 window.onload=()=>{
-  const t=localStorage.getItem('cos_tok');
-  const a=localStorage.getItem('cos_ant');
-  if(t&&a){
-    token=t; anthropicKey=a;
-    document.getElementById('setup-screen').style.display='none';
-    document.getElementById('app-screen').style.display='block';
-    loadData();
-  }
+  const saved=localStorage.getItem('cos_tok');
+  if(saved){token=saved;document.getElementById('setup-screen').style.display='none';document.getElementById('app-screen').style.display='block';loadData();}
 };
 </script>
 </body>
