@@ -9,7 +9,7 @@ export default async function handler(req, res) {
   if (!apiKey) return res.status(500).json({ error: 'TODOIST_API_KEY not configured' })
 
   const { path = 'tasks', ...params } = req.query
-  const url = new URL(`https://api.todoist.com/rest/v2/${path}`)
+  const url = new URL(`https://api.todoist.com/api/v1/${path}`)
   Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v))
 
   try {
