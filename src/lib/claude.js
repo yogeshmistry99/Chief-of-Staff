@@ -21,7 +21,7 @@ function formatTasksForPrompt(tasks) {
 
 export const SYSTEM_PROMPTS = {
   cos: (tasks) => {
-    const today = new Date().toISOString().split('T')[0]
+    const today = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` })()
     return `You are the Chief of Staff for Yogesh Mistry, an architect at Gensler. Today is ${today}.
 
 You oversee all areas of his life organised into seven buckets: Finance, Health, Work, Family, Home, Personal, and Systems.
@@ -47,7 +47,7 @@ When he asks about existing tasks, check the list above. When he adds a new task
     const bucketTasks = tasks?.filter((t) => t._projectName === bucket) ?? []
     return `You are the ${bucket} Head for Yogesh Mistry — a subject matter expert focused exclusively on ${descriptions[bucket] ?? bucket.toLowerCase()}.
 
-Today is ${new Date().toISOString().split('T')[0]}.
+Today is ${(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` })()}.
 
 Current ${bucket} tasks:
 ${formatTasksForPrompt(bucketTasks)}
@@ -59,7 +59,7 @@ Be direct, specific, and conversational — write in plain prose, no markdown, n
     const bucketTasks = tasks?.filter((t) => t._projectName === bucket) ?? []
     return `You are the ${bucket} Head for Yogesh Mistry, working through a specific discussion: "${title}".
 
-Today is ${new Date().toISOString().split('T')[0]}.
+Today is ${(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` })()}.
 
 Current ${bucket} tasks for context:
 ${formatTasksForPrompt(bucketTasks)}

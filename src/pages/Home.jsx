@@ -106,7 +106,8 @@ export default function Home() {
 
   const currentMode = INPUT_MODES.find((m) => m.id === mode)
   const { active, someday } = prioritise(tasks)
-  const todayCount   = tasks.filter((t) => t.due?.date === new Date().toISOString().split('T')[0]).length
+  const todayStr = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` })()
+  const todayCount   = tasks.filter((t) => t.due?.date === todayStr).length
   const p1Count      = tasks.filter((t) => t.priority === 4).length
   const overdueCount = active.filter((t) => scoreTask(t).isOverdue).length
   const focusList    = active.slice(0, 8)
