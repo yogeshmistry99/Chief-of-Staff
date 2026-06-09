@@ -6,12 +6,7 @@ export default async function handler(req, res) {
 
   const { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN } = process.env
   if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !GOOGLE_REFRESH_TOKEN) {
-    return res.status(500).json({
-      error: 'Google Calendar not configured.',
-      has_client_id: !!GOOGLE_CLIENT_ID,
-      has_client_secret: !!GOOGLE_CLIENT_SECRET,
-      has_refresh_token: !!GOOGLE_REFRESH_TOKEN,
-    })
+    return res.status(500).json({ error: 'Google Calendar not configured. Add GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET and GOOGLE_REFRESH_TOKEN in Vercel.' })
   }
 
   // Exchange refresh token for access token
