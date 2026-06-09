@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { getProjectTasks, PROJECTS } from '../lib/todoist'
 import { scoreTask, BUCKET_WEIGHTS } from '../lib/priority'
 import { sendMessage, SYSTEM_PROMPTS } from '../lib/claude'
+import Markdown from '../components/Markdown'
 import { getDiscussions, deleteDiscussion } from '../lib/discussions'
 
 const BUCKET_DESCRIPTIONS = {
@@ -57,7 +58,7 @@ function HeadTab({ bucket, tasks }) {
                 ? 'bg-[#6750A4] text-white rounded-br-sm'
                 : 'bg-white border border-[#CAC4D0] text-[#1C1B1F] rounded-bl-sm'
             }`}>
-              {msg.content}
+              {msg.role === 'assistant' ? <Markdown text={msg.content} /> : msg.content}
             </div>
           </div>
         ))}

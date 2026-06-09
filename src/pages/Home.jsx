@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { getAllTasks, closeTask, PROJECTS } from '../lib/todoist'
 import { prioritise, scoreTask } from '../lib/priority'
 import { sendMessage, SYSTEM_PROMPTS } from '../lib/claude'
+import Markdown from '../components/Markdown'
 
 const PROJECT_NAMES = Object.fromEntries(Object.entries(PROJECTS).map(([name, id]) => [id, name]))
 
@@ -161,7 +162,7 @@ export default function Home() {
                   {msg.role === 'user' && msg.mode && (
                     <span className="text-xs opacity-60 block mb-0.5 capitalize">{msg.mode}</span>
                   )}
-                  {msg.content}
+                  {msg.role === 'assistant' ? <Markdown text={msg.content} /> : msg.content}
                 </div>
               </div>
             ))}

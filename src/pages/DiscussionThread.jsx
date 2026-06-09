@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { getProjectTasks, PROJECTS } from '../lib/todoist'
 import { sendMessage, SYSTEM_PROMPTS } from '../lib/claude'
 import { getDiscussions, saveDiscussion, newDiscussion } from '../lib/discussions'
+import Markdown from '../components/Markdown'
 
 export default function DiscussionThread() {
   const { bucket, id } = useParams()
@@ -127,7 +128,7 @@ export default function DiscussionThread() {
                 ? 'bg-[#6750A4] text-white rounded-br-sm'
                 : 'bg-white border border-[#CAC4D0] text-[#1C1B1F] rounded-bl-sm'
             } ${msg.pending ? 'opacity-50' : ''}`}>
-              {msg.content}
+              {msg.role === 'assistant' ? <Markdown text={msg.content} /> : msg.content}
             </div>
           </div>
         ))}
