@@ -1,6 +1,6 @@
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*')
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS')
+  res.setHeader('Access-Control-Allow-Methods', 'GET, PATCH, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
   if (req.method === 'OPTIONS') return res.status(200).end()
 
@@ -27,6 +27,24 @@ export default async function handler(req, res) {
     accessToken = tokenData.access_token
   } catch (err) {
     return res.status(500).json({ error: err.message })
+  }
+
+  // Update event (PATCH)
+  if (req.method === 'PATCH') {
+    const { eventId, calendarId: calId = 'primary', ...updates } = req.body ?? {}
+    if (!eventId) return res.status(400).json({ error: 'eventId required' })
+    const patchUrl = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events/${encodeURIComponent(eventId)}`
+    try {
+      const patchRes = await fetch(patchUrl, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates),
+      })
+      const data = await patchRes.json()
+      return res.status(patchRes.status).json(data)
+    } catch (err) {
+      return res.status(500).json({ error: err.message })
+    }
   }
 
   // Fetch events

@@ -1,6 +1,8 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getAllTasks, PROJECTS } from '../lib/todoist'
+import { haptic } from '../lib/haptic'
+import EditSheet from '../components/EditSheet'
 
 const PROJECT_NAMES = Object.fromEntries(Object.entries(PROJECTS).map(([name, id]) => [id, name]))
 
@@ -42,9 +44,17 @@ function formatDuration(start, end) {
   return m > 0 ? `${h}h ${m}m` : `${h}h`
 }
 
-function EventRow({ event }) {
+function EventRow({ event: initialEvent }) {
+  const [e, setE] = useState(initialEvent)
   const [expanded, setExpanded] = useState(false)
-  const e = event
+  const [editOpen, setEditOpen] = useState(false)
+  const [editSummary, setEditSummary] = useState(initialEvent.summary ?? '')
+  const [editLocation, setEditLocation] = useState(initialEvent.location ?? '')
+  const [editDesc, setEditDesc] = useState(initialEvent.description?.replace(/<[^>]*>/g, '').trim() ?? '')
+  const [saving, setSaving] = useState(false)
+  const holdRef = useRef(null)
+  const isHoldRef = useRef(false)
+
   const isAllDay  = !!e.start?.date && !e.start?.dateTime
   const startTime = formatTime(e.start?.dateTime, e.start?.timeZone)
   const endTime   = formatTime(e.end?.dateTime,   e.end?.timeZone)
@@ -53,90 +63,148 @@ function EventRow({ event }) {
   const selfRsvp  = attendees.find((a) => a.self)?.responseStatus
   const description = e.description?.replace(/<[^>]*>/g, '').trim()
   const meetLink  = e.hangoutLink ?? e.conferenceData?.entryPoints?.find((ep) => ep.entryPointType === 'video')?.uri
-
   const rsvpColor = { accepted: 'text-green-700', declined: 'text-red-600', tentative: 'text-amber-600' }
 
+  function handlePointerDown() {
+    isHoldRef.current = false
+    holdRef.current = setTimeout(() => {
+      isHoldRef.current = true
+      haptic.medium()
+      setEditSummary(e.summary ?? '')
+      setEditLocation(e.location ?? '')
+      setEditDesc(e.description?.replace(/<[^>]*>/g, '').trim() ?? '')
+      setEditOpen(true)
+    }, 500)
+  }
+  function handlePointerUp() { clearTimeout(holdRef.current) }
+  function handleClick() {
+    if (isHoldRef.current) { isHoldRef.current = false; return }
+    setExpanded((x) => !x)
+  }
+
+  async function handleSave() {
+    setSaving(true)
+    try {
+      const updates = { summary: editSummary, location: editLocation, description: editDesc }
+      await fetch('/api/calendar', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ eventId: e.id, ...updates }),
+      })
+      haptic.success()
+      setE((prev) => ({ ...prev, ...updates }))
+      setEditOpen(false)
+    } catch { haptic.error() }
+    finally { setSaving(false) }
+  }
+
   return (
-    <div className="border-b border-[#F3EDF7] last:border-0">
-      <div
-        className="flex gap-3 items-center py-2.5 cursor-pointer select-none"
-        onClick={() => setExpanded((x) => !x)}
-      >
-        <div className="w-10 flex-shrink-0 text-right">
-          {isAllDay
-            ? <span className="text-xs text-[#79747E]">All day</span>
-            : <span className="text-xs font-medium text-[#6750A4]">{startTime}</span>}
+    <>
+      <div className="border-b border-[#F3EDF7] last:border-0">
+        <div
+          className="flex gap-3 items-center py-2.5 cursor-pointer select-none"
+          onPointerDown={handlePointerDown}
+          onPointerUp={handlePointerUp}
+          onPointerLeave={handlePointerUp}
+          onClick={handleClick}
+        >
+          <div className="w-10 flex-shrink-0 text-right">
+            {isAllDay
+              ? <span className="text-xs text-[#79747E]">All day</span>
+              : <span className="text-xs font-medium text-[#6750A4]">{startTime}</span>}
+          </div>
+          <div className="flex-1 min-w-0 bg-[#F3EDF7] rounded-lg px-2.5 py-1.5">
+            <p className="text-sm font-medium text-[#1C1B1F] leading-snug truncate">{e.summary}</p>
+            {!isAllDay && endTime && !expanded && (
+              <p className="text-xs text-[#79747E]">until {endTime}{duration ? ` · ${duration}` : ''}</p>
+            )}
+          </div>
+          <svg xmlns="http://www.w3.org/2000/svg" height="16" viewBox="0 -960 960 960" width="16" fill="#CAC4D0"
+            className={`flex-shrink-0 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}>
+            <path d="M480-345 240-585l56-56 184 184 184-184 56 56-240 240Z"/>
+          </svg>
         </div>
-        <div className="flex-1 min-w-0 bg-[#F3EDF7] rounded-lg px-2.5 py-1.5">
-          <p className="text-sm font-medium text-[#1C1B1F] leading-snug truncate">{e.summary}</p>
-          {!isAllDay && endTime && !expanded && (
-            <p className="text-xs text-[#79747E]">until {endTime}{duration ? ` · ${duration}` : ''}</p>
-          )}
-        </div>
-        <svg xmlns="http://www.w3.org/2000/svg" height="16" viewBox="0 -960 960 960" width="16" fill="#CAC4D0"
-          className={`flex-shrink-0 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}>
-          <path d="M480-345 240-585l56-56 184 184 184-184 56 56-240 240Z"/>
-        </svg>
-      </div>
 
-      {/* Expanded details */}
-      <div style={{
-        maxHeight: expanded ? '320px' : '0',
-        overflow: 'hidden',
-        transition: 'max-height 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
-      }}>
-        <div className="pl-13 pr-6 pb-3 space-y-2" style={{ paddingLeft: '3.25rem' }}>
-          {/* Time + duration */}
-          {!isAllDay && startTime && (
-            <p className="text-xs text-[#49454F]">{startTime} – {endTime}{duration ? ` (${duration})` : ''}</p>
-          )}
-
-          {/* Location */}
-          {e.location && (
-            <div className="flex items-start gap-1.5">
-              <svg xmlns="http://www.w3.org/2000/svg" height="13" viewBox="0 -960 960 960" width="13" fill="#79747E" className="mt-0.5 flex-shrink-0">
-                <path d="M480-480q33 0 56.5-23.5T560-560q0-33-23.5-56.5T480-640q-33 0-56.5 23.5T400-560q0 33 23.5 56.5T480-480Zm0 294q122-112 181-203.5T720-560q0-117-74.5-188.5T480-820q-91 0-165.5 71.5T240-560q0 75 59 166.5T480-186Z"/>
-              </svg>
-              <p className="text-xs text-[#49454F]">{e.location}</p>
-            </div>
-          )}
-
-          {/* Video call */}
-          {meetLink && (
-            <a href={meetLink} target="_blank" rel="noopener noreferrer"
-              onClick={(ev) => ev.stopPropagation()}
-              className="flex items-center gap-1.5 text-xs text-[#6750A4] font-medium"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" height="13" viewBox="0 -960 960 960" width="13" fill="currentColor">
-                <path d="M160-160q-33 0-56.5-23.5T80-240v-480q0-33 23.5-56.5T160-800h480q33 0 56.5 23.5T720-720v180l160-160v440L720-420v180q0 33-23.5 56.5T640-160H160Z"/>
-              </svg>
-              Join video call
-            </a>
-          )}
-
-          {/* RSVP */}
-          {selfRsvp && (
-            <p className={`text-xs font-medium capitalize ${rsvpColor[selfRsvp] ?? 'text-[#79747E]'}`}>
-              {selfRsvp === 'needsAction' ? 'Not responded' : selfRsvp === 'accepted' ? '✓ Accepted' : selfRsvp === 'declined' ? '✗ Declined' : '~ Tentative'}
-            </p>
-          )}
-
-          {/* Attendees */}
-          {attendees.length > 0 && (
-            <p className="text-xs text-[#79747E]">
-              {attendees.length} attendee{attendees.length !== 1 ? 's' : ''}
-              {attendees.slice(0, 3).map((a) => ` · ${a.displayName?.split(' ')[0] ?? a.email.split('@')[0]}`)}
-              {attendees.length > 3 ? ` +${attendees.length - 3}` : ''}
-            </p>
-          )}
-
-          {/* Description */}
-          {description && (
-            <p className="text-xs text-[#49454F] leading-relaxed line-clamp-3">{description}</p>
-          )}
+        <div style={{
+          maxHeight: expanded ? '360px' : '0',
+          overflow: 'hidden',
+          transition: 'max-height 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+        }}>
+          <div className="pl-13 pr-6 pb-3 space-y-2" style={{ paddingLeft: '3.25rem' }}>
+            {!isAllDay && startTime && (
+              <p className="text-xs text-[#49454F]">{startTime} – {endTime}{duration ? ` (${duration})` : ''}</p>
+            )}
+            {e.location && (
+              <div className="flex items-start gap-1.5">
+                <svg xmlns="http://www.w3.org/2000/svg" height="13" viewBox="0 -960 960 960" width="13" fill="#79747E" className="mt-0.5 flex-shrink-0">
+                  <path d="M480-480q33 0 56.5-23.5T560-560q0-33-23.5-56.5T480-640q-33 0-56.5 23.5T400-560q0 33 23.5 56.5T480-480Zm0 294q122-112 181-203.5T720-560q0-117-74.5-188.5T480-820q-91 0-165.5 71.5T240-560q0 75 59 166.5T480-186Z"/>
+                </svg>
+                <p className="text-xs text-[#49454F]">{e.location}</p>
+              </div>
+            )}
+            {meetLink && (
+              <a href={meetLink} target="_blank" rel="noopener noreferrer"
+                onClick={(ev) => ev.stopPropagation()}
+                className="flex items-center gap-1.5 text-xs text-[#6750A4] font-medium"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" height="13" viewBox="0 -960 960 960" width="13" fill="currentColor">
+                  <path d="M160-160q-33 0-56.5-23.5T80-240v-480q0-33 23.5-56.5T160-800h480q33 0 56.5 23.5T720-720v180l160-160v440L720-420v180q0 33-23.5 56.5T640-160H160Z"/>
+                </svg>
+                Join video call
+              </a>
+            )}
+            {selfRsvp && (
+              <p className={`text-xs font-medium capitalize ${rsvpColor[selfRsvp] ?? 'text-[#79747E]'}`}>
+                {selfRsvp === 'needsAction' ? 'Not responded' : selfRsvp === 'accepted' ? '✓ Accepted' : selfRsvp === 'declined' ? '✗ Declined' : '~ Tentative'}
+              </p>
+            )}
+            {attendees.length > 0 && (
+              <p className="text-xs text-[#79747E]">
+                {attendees.length} attendee{attendees.length !== 1 ? 's' : ''}
+                {attendees.slice(0, 3).map((a) => ` · ${a.displayName?.split(' ')[0] ?? a.email.split('@')[0]}`)}
+                {attendees.length > 3 ? ` +${attendees.length - 3}` : ''}
+              </p>
+            )}
+            {description && (
+              <p className="text-xs text-[#49454F] leading-relaxed line-clamp-3">{description}</p>
+            )}
+            <p className="text-[10px] text-[#CAC4D0]">Hold to edit</p>
+          </div>
         </div>
       </div>
-    </div>
+
+      <EditSheet open={editOpen} onClose={() => setEditOpen(false)} title="Edit event" onSave={handleSave} saving={saving}>
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-[#49454F]">Title</label>
+          <textarea
+            value={editSummary}
+            onChange={(ev) => setEditSummary(ev.target.value)}
+            className="w-full rounded-xl border border-[#79747E] px-3 py-2 text-sm text-[#1C1B1F] focus:outline-none focus:border-[#6750A4] resize-none"
+            rows={2}
+          />
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-[#49454F]">Location</label>
+          <input
+            type="text"
+            value={editLocation}
+            onChange={(ev) => setEditLocation(ev.target.value)}
+            placeholder="Add location"
+            className="w-full rounded-xl border border-[#79747E] px-3 py-2 text-sm text-[#1C1B1F] focus:outline-none focus:border-[#6750A4]"
+          />
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-[#49454F]">Notes</label>
+          <textarea
+            value={editDesc}
+            onChange={(ev) => setEditDesc(ev.target.value)}
+            placeholder="Add notes"
+            className="w-full rounded-xl border border-[#79747E] px-3 py-2 text-sm text-[#1C1B1F] focus:outline-none focus:border-[#6750A4] resize-none"
+            rows={3}
+          />
+        </div>
+      </EditSheet>
+    </>
   )
 }
 

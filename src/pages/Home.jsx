@@ -5,6 +5,7 @@ import { sendMessage, SYSTEM_PROMPTS } from '../lib/claude'
 import { haptic } from '../lib/haptic'
 import Markdown from '../components/Markdown'
 import ChatInput from '../components/ChatInput'
+import EditSheet from '../components/EditSheet'
 
 async function fetchUpcomingEvents() {
   const now = new Date()
@@ -43,8 +44,17 @@ function formatDuration(start, end) {
   return m > 0 ? `${h}h ${m}m` : `${h}h`
 }
 
-function HomeEventRow({ event: e }) {
+function HomeEventRow({ event: initialEvent }) {
+  const [e, setE] = useState(initialEvent)
   const [expanded, setExpanded] = useState(false)
+  const [editOpen, setEditOpen] = useState(false)
+  const [editSummary, setEditSummary] = useState(initialEvent.summary ?? '')
+  const [editLocation, setEditLocation] = useState(initialEvent.location ?? '')
+  const [editDesc, setEditDesc] = useState(initialEvent.description?.replace(/<[^>]*>/g, '').trim() ?? '')
+  const [saving, setSaving] = useState(false)
+  const holdRef = useRef(null)
+  const isHoldRef = useRef(false)
+
   const isAllDay  = !!e.start?.date && !e.start?.dateTime
   const startTime = formatEventTime(e.start?.dateTime, e.start?.timeZone)
   const endTime   = formatEventTime(e.end?.dateTime,   e.end?.timeZone)
@@ -56,62 +66,133 @@ function HomeEventRow({ event: e }) {
   const meetLink  = e.hangoutLink ?? e.conferenceData?.entryPoints?.find((ep) => ep.entryPointType === 'video')?.uri
   const rsvpColor = { accepted: 'text-green-700', declined: 'text-red-600', tentative: 'text-amber-600' }
 
+  function handlePointerDown() {
+    isHoldRef.current = false
+    holdRef.current = setTimeout(() => {
+      isHoldRef.current = true
+      haptic.medium()
+      setEditSummary(e.summary ?? '')
+      setEditLocation(e.location ?? '')
+      setEditDesc(e.description?.replace(/<[^>]*>/g, '').trim() ?? '')
+      setEditOpen(true)
+    }, 500)
+  }
+  function handlePointerUp() { clearTimeout(holdRef.current) }
+  function handleClick() {
+    if (isHoldRef.current) { isHoldRef.current = false; return }
+    setExpanded((x) => !x)
+  }
+
+  async function handleSave() {
+    setSaving(true)
+    try {
+      const updates = { summary: editSummary, location: editLocation, description: editDesc }
+      await fetch('/api/calendar', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ eventId: e.id, ...updates }),
+      })
+      haptic.success()
+      setE((prev) => ({ ...prev, ...updates }))
+      setEditOpen(false)
+    } catch { haptic.error() }
+    finally { setSaving(false) }
+  }
+
   return (
-    <div className="border-b border-[#F3EDF7] last:border-0">
-      <div
-        className="flex items-center gap-3 py-2.5 cursor-pointer select-none"
-        onClick={() => setExpanded((x) => !x)}
-      >
-        <div className="w-10 h-10 rounded-xl bg-[#D3E4FF] flex-shrink-0 flex flex-col items-center justify-center">
-          {isAllDay
-            ? <span className="text-[10px] font-bold text-[#001D36] leading-tight text-center px-0.5">{day.slice(0,3)}</span>
-            : <>
-                <span className="text-[10px] text-[#001D36] leading-none">{day.slice(0,3)}</span>
-                <span className="text-xs font-bold text-[#001D36] leading-none">{startTime}</span>
-              </>}
+    <>
+      <div className="border-b border-[#F3EDF7] last:border-0">
+        <div
+          className="flex items-center gap-3 py-2.5 cursor-pointer select-none"
+          onPointerDown={handlePointerDown}
+          onPointerUp={handlePointerUp}
+          onPointerLeave={handlePointerUp}
+          onClick={handleClick}
+        >
+          <div className="w-10 h-10 rounded-xl bg-[#D3E4FF] flex-shrink-0 flex flex-col items-center justify-center">
+            {isAllDay
+              ? <span className="text-[10px] font-bold text-[#001D36] leading-tight text-center px-0.5">{day.slice(0,3)}</span>
+              : <>
+                  <span className="text-[10px] text-[#001D36] leading-none">{day.slice(0,3)}</span>
+                  <span className="text-xs font-bold text-[#001D36] leading-none">{startTime}</span>
+                </>}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-[#1C1B1F] leading-snug truncate">{e.summary}</p>
+            <p className="text-xs text-[#79747E]">{isAllDay ? `${day} · All day` : `${day}${duration ? ` · ${duration}` : ''}`}</p>
+          </div>
+          <svg xmlns="http://www.w3.org/2000/svg" height="16" viewBox="0 -960 960 960" width="16" fill="#CAC4D0"
+            className={`flex-shrink-0 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}>
+            <path d="M480-345 240-585l56-56 184 184 184-184 56 56-240 240Z"/>
+          </svg>
         </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-[#1C1B1F] leading-snug truncate">{e.summary}</p>
-          <p className="text-xs text-[#79747E]">{isAllDay ? `${day} · All day` : `${day}${duration ? ` · ${duration}` : ''}`}</p>
+
+        <div style={{
+          maxHeight: expanded ? '280px' : '0',
+          overflow: 'hidden',
+          transition: 'max-height 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+        }}>
+          <div className="pb-3 pl-13 space-y-1.5" style={{ paddingLeft: '3.25rem' }}>
+            {!isAllDay && startTime && (
+              <p className="text-xs text-[#49454F]">{startTime} – {endTime}{duration ? ` (${duration})` : ''}</p>
+            )}
+            {e.location && <p className="text-xs text-[#49454F]">📍 {e.location}</p>}
+            {meetLink && (
+              <a href={meetLink} target="_blank" rel="noopener noreferrer"
+                onClick={(ev) => ev.stopPropagation()}
+                className="text-xs text-[#6750A4] font-medium block"
+              >▶ Join video call</a>
+            )}
+            {selfRsvp && (
+              <p className={`text-xs font-medium ${rsvpColor[selfRsvp] ?? 'text-[#79747E]'}`}>
+                {selfRsvp === 'accepted' ? '✓ Accepted' : selfRsvp === 'declined' ? '✗ Declined' : '~ Tentative'}
+              </p>
+            )}
+            {attendees.length > 0 && (
+              <p className="text-xs text-[#79747E]">
+                {attendees.length} attendee{attendees.length !== 1 ? 's' : ''}
+                {attendees.slice(0,3).map((a) => ` · ${a.displayName?.split(' ')[0] ?? a.email.split('@')[0]}`)}
+                {attendees.length > 3 ? ` +${attendees.length - 3}` : ''}
+              </p>
+            )}
+            {description && <p className="text-xs text-[#49454F] leading-relaxed line-clamp-3">{description}</p>}
+            <p className="text-[10px] text-[#CAC4D0] mt-1">Hold to edit</p>
+          </div>
         </div>
-        <svg xmlns="http://www.w3.org/2000/svg" height="16" viewBox="0 -960 960 960" width="16" fill="#CAC4D0"
-          className={`flex-shrink-0 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}>
-          <path d="M480-345 240-585l56-56 184 184 184-184 56 56-240 240Z"/>
-        </svg>
       </div>
 
-      <div style={{
-        maxHeight: expanded ? '280px' : '0',
-        overflow: 'hidden',
-        transition: 'max-height 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
-      }}>
-        <div className="pb-3 pl-13 space-y-1.5" style={{ paddingLeft: '3.25rem' }}>
-          {!isAllDay && startTime && (
-            <p className="text-xs text-[#49454F]">{startTime} – {endTime}{duration ? ` (${duration})` : ''}</p>
-          )}
-          {e.location && <p className="text-xs text-[#49454F]">📍 {e.location}</p>}
-          {meetLink && (
-            <a href={meetLink} target="_blank" rel="noopener noreferrer"
-              onClick={(ev) => ev.stopPropagation()}
-              className="text-xs text-[#6750A4] font-medium block"
-            >▶ Join video call</a>
-          )}
-          {selfRsvp && (
-            <p className={`text-xs font-medium ${rsvpColor[selfRsvp] ?? 'text-[#79747E]'}`}>
-              {selfRsvp === 'accepted' ? '✓ Accepted' : selfRsvp === 'declined' ? '✗ Declined' : '~ Tentative'}
-            </p>
-          )}
-          {attendees.length > 0 && (
-            <p className="text-xs text-[#79747E]">
-              {attendees.length} attendee{attendees.length !== 1 ? 's' : ''}
-              {attendees.slice(0,3).map((a) => ` · ${a.displayName?.split(' ')[0] ?? a.email.split('@')[0]}`)}
-              {attendees.length > 3 ? ` +${attendees.length - 3}` : ''}
-            </p>
-          )}
-          {description && <p className="text-xs text-[#49454F] leading-relaxed line-clamp-3">{description}</p>}
+      <EditSheet open={editOpen} onClose={() => setEditOpen(false)} title="Edit event" onSave={handleSave} saving={saving}>
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-[#49454F]">Title</label>
+          <textarea
+            value={editSummary}
+            onChange={(ev) => setEditSummary(ev.target.value)}
+            className="w-full rounded-xl border border-[#79747E] px-3 py-2 text-sm text-[#1C1B1F] focus:outline-none focus:border-[#6750A4] resize-none"
+            rows={2}
+          />
         </div>
-      </div>
-    </div>
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-[#49454F]">Location</label>
+          <input
+            type="text"
+            value={editLocation}
+            onChange={(ev) => setEditLocation(ev.target.value)}
+            placeholder="Add location"
+            className="w-full rounded-xl border border-[#79747E] px-3 py-2 text-sm text-[#1C1B1F] focus:outline-none focus:border-[#6750A4]"
+          />
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-[#49454F]">Notes</label>
+          <textarea
+            value={editDesc}
+            onChange={(ev) => setEditDesc(ev.target.value)}
+            placeholder="Add notes"
+            className="w-full rounded-xl border border-[#79747E] px-3 py-2 text-sm text-[#1C1B1F] focus:outline-none focus:border-[#6750A4] resize-none"
+            rows={3}
+          />
+        </div>
+      </EditSheet>
+    </>
   )
 }
 
@@ -133,17 +214,26 @@ function PriorityDot({ priority }) {
 }
 
 function TaskRow({ task, onComplete }) {
+  const [localTask, setLocalTask] = useState(task)
   const [pendingComplete, setPendingComplete] = useState(false)
   const [expanded, setExpanded] = useState(false)
+  const [editOpen, setEditOpen] = useState(false)
+  const [editContent, setEditContent] = useState(task.content)
+  const [editPriority, setEditPriority] = useState(task.priority ?? 1)
+  const [editDue, setEditDue] = useState(task.due?.date ?? '')
+  const [editDesc, setEditDesc] = useState(task.description ?? '')
+  const [saving, setSaving] = useState(false)
   const timerRef = useRef(null)
-  const { bucket, isOverdue } = scoreTask(task)
+  const holdRef = useRef(null)
+  const isHoldRef = useRef(false)
+  const { bucket, isOverdue } = scoreTask(localTask)
 
   function handleComplete(e) {
     e.stopPropagation()
     haptic.success()
     setPendingComplete(true)
     timerRef.current = setTimeout(async () => {
-      try { await closeTask(task.id); onComplete(task.id) }
+      try { await closeTask(localTask.id); onComplete(localTask.id) }
       catch { haptic.error(); setPendingComplete(false) }
     }, 5000)
   }
@@ -155,11 +245,59 @@ function TaskRow({ task, onComplete }) {
     setPendingComplete(false)
   }
 
+  function handleRowPointerDown() {
+    if (pendingComplete) return
+    isHoldRef.current = false
+    holdRef.current = setTimeout(() => {
+      isHoldRef.current = true
+      haptic.medium()
+      setEditContent(localTask.content)
+      setEditPriority(localTask.priority ?? 1)
+      setEditDue(localTask.due?.date ?? '')
+      setEditDesc(localTask.description ?? '')
+      setEditOpen(true)
+    }, 500)
+  }
+
+  function handleRowPointerUp() { clearTimeout(holdRef.current) }
+
+  function handleRowClick() {
+    if (isHoldRef.current) { isHoldRef.current = false; return }
+    if (!pendingComplete) setExpanded((x) => !x)
+  }
+
+  async function handleSave() {
+    setSaving(true)
+    try {
+      const body = { content: editContent, priority: editPriority, description: editDesc }
+      if (editDue) body.due_date = editDue
+      await fetch(`/api/todoist?path=tasks/${localTask.id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      haptic.success()
+      setLocalTask((prev) => ({
+        ...prev,
+        content: editContent,
+        priority: editPriority,
+        description: editDesc,
+        due: editDue ? { date: editDue } : prev.due,
+      }))
+      setEditOpen(false)
+    } catch { haptic.error() }
+    finally { setSaving(false) }
+  }
+
   return (
+    <>
     <div className={`border-b border-[#F3EDF7] last:border-0 transition-opacity ${pendingComplete ? 'opacity-40' : ''}`}>
       <div
         className="flex items-center gap-3 py-3 cursor-pointer select-none"
-        onClick={() => !pendingComplete && setExpanded((x) => !x)}
+        onPointerDown={handleRowPointerDown}
+        onPointerUp={handleRowPointerUp}
+        onPointerLeave={handleRowPointerUp}
+        onClick={handleRowClick}
       >
         <button
           onClick={handleComplete}
@@ -177,11 +315,11 @@ function TaskRow({ task, onComplete }) {
 
         <div className="flex-1 min-w-0">
           <p className={`text-sm leading-snug ${pendingComplete ? 'line-through text-[#79747E]' : isOverdue ? 'text-red-900' : 'text-[#1C1B1F]'}`}>
-            {task.content}
+            {localTask.content}
           </p>
           <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-            <PriorityDot priority={task.priority} />
-            <PriorityBadge task={task} />
+            <PriorityDot priority={localTask.priority} />
+            <PriorityBadge task={localTask} />
             {bucket && <span className="text-xs text-[#79747E]">{bucket}</span>}
           </div>
         </div>
@@ -213,32 +351,32 @@ function TaskRow({ task, onComplete }) {
 
       {/* Expanded details */}
       <div style={{
-        maxHeight: expanded ? '160px' : '0',
+        maxHeight: expanded ? '180px' : '0',
         overflow: 'hidden',
         transition: 'max-height 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
       }}>
         <div className="pb-3 pl-8 space-y-1.5">
-          {task.description && (
-            <p className="text-xs text-[#49454F] leading-relaxed">{task.description}</p>
+          {localTask.description && (
+            <p className="text-xs text-[#49454F] leading-relaxed">{localTask.description}</p>
           )}
           <div className="flex flex-wrap gap-x-3 gap-y-1">
-            {task.due?.date && (
+            {localTask.due?.date && (
               <span className="text-xs text-[#79747E]">
-                Due {new Date(task.due.date + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}
+                Due {new Date(localTask.due.date + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}
               </span>
             )}
-            {task.due?.datetime && (
+            {localTask.due?.datetime && (
               <span className="text-xs text-[#79747E]">
-                at {new Date(task.due.datetime).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+                at {new Date(localTask.due.datetime).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
               </span>
             )}
-            {task.labels?.length > 0 && (
-              <span className="text-xs text-[#79747E]">{task.labels.join(', ')}</span>
+            {localTask.labels?.length > 0 && (
+              <span className="text-xs text-[#79747E]">{localTask.labels.join(', ')}</span>
             )}
           </div>
-          {task.url && (
+          {localTask.url && (
             <a
-              href={task.url}
+              href={localTask.url}
               target="_blank"
               rel="noopener noreferrer"
               onClick={(e) => e.stopPropagation()}
@@ -247,9 +385,55 @@ function TaskRow({ task, onComplete }) {
               Open in Todoist ↗
             </a>
           )}
+          <p className="text-[10px] text-[#CAC4D0]">Hold to edit</p>
         </div>
       </div>
     </div>
+
+    <EditSheet open={editOpen} onClose={() => setEditOpen(false)} title="Edit task" onSave={handleSave} saving={saving}>
+      <div className="space-y-1">
+        <label className="text-xs font-medium text-[#49454F]">Task</label>
+        <textarea
+          value={editContent}
+          onChange={(ev) => setEditContent(ev.target.value)}
+          className="w-full rounded-xl border border-[#79747E] px-3 py-2 text-sm text-[#1C1B1F] focus:outline-none focus:border-[#6750A4] resize-none"
+          rows={2}
+        />
+      </div>
+      <div className="space-y-1">
+        <label className="text-xs font-medium text-[#49454F]">Priority</label>
+        <div className="flex gap-2">
+          {[{label:'P1',val:4},{label:'P2',val:3},{label:'P3',val:2},{label:'P4',val:1}].map(({label,val}) => (
+            <button key={val}
+              onClick={() => setEditPriority(val)}
+              className={`flex-1 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
+                editPriority === val ? 'bg-[#6750A4] text-white border-[#6750A4]' : 'border-[#CAC4D0] text-[#49454F]'
+              }`}
+            >{label}</button>
+          ))}
+        </div>
+      </div>
+      <div className="space-y-1">
+        <label className="text-xs font-medium text-[#49454F]">Due date</label>
+        <input
+          type="date"
+          value={editDue}
+          onChange={(ev) => setEditDue(ev.target.value)}
+          className="w-full rounded-xl border border-[#79747E] px-3 py-2 text-sm text-[#1C1B1F] focus:outline-none focus:border-[#6750A4]"
+        />
+      </div>
+      <div className="space-y-1">
+        <label className="text-xs font-medium text-[#49454F]">Notes</label>
+        <textarea
+          value={editDesc}
+          onChange={(ev) => setEditDesc(ev.target.value)}
+          placeholder="Add notes"
+          className="w-full rounded-xl border border-[#79747E] px-3 py-2 text-sm text-[#1C1B1F] focus:outline-none focus:border-[#6750A4] resize-none"
+          rows={3}
+        />
+      </div>
+    </EditSheet>
+    </>
   )
 }
 

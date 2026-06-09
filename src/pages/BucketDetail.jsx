@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
+import EditSheet from '../components/EditSheet'
 import { useParams, useNavigate } from 'react-router-dom'
 import { getProjectTasks, PROJECTS } from '../lib/todoist'
 import { scoreTask, BUCKET_WEIGHTS } from '../lib/priority'
@@ -187,10 +188,24 @@ function TasksTab({ tasks, loading, onComplete }) {
   )
 }
 
-function TaskItem({ task, isOverdue, isToday, days, onComplete }) {
+function TaskItem({ task: initialTask, isOverdue: initOverdue, isToday: initToday, days: initDays, onComplete }) {
+  const [localTask, setLocalTask] = useState(initialTask)
   const [pendingComplete, setPendingComplete] = useState(false)
   const [expanded, setExpanded] = useState(false)
+  const [editOpen, setEditOpen] = useState(false)
+  const [editContent, setEditContent] = useState(initialTask.content)
+  const [editPriority, setEditPriority] = useState(initialTask.priority ?? 1)
+  const [editDue, setEditDue] = useState(initialTask.due?.date ?? '')
+  const [editDesc, setEditDesc] = useState(initialTask.description ?? '')
+  const [saving, setSaving] = useState(false)
   const timerRef = useRef(null)
+  const holdRef = useRef(null)
+  const isHoldRef = useRef(false)
+
+  const scored = scoreTask(localTask)
+  const isOverdue = scored.isOverdue
+  const isToday = scored.isToday
+  const days = scored.days
 
   function handleComplete(e) {
     e.stopPropagation()
@@ -199,8 +214,8 @@ function TaskItem({ task, isOverdue, isToday, days, onComplete }) {
     timerRef.current = setTimeout(async () => {
       try {
         const { closeTask } = await import('../lib/todoist')
-        await closeTask(task.id)
-        onComplete(task.id)
+        await closeTask(localTask.id)
+        onComplete(localTask.id)
       } catch { haptic.error(); setPendingComplete(false) }
     }, 5000)
   }
@@ -212,11 +227,57 @@ function TaskItem({ task, isOverdue, isToday, days, onComplete }) {
     setPendingComplete(false)
   }
 
+  function handleRowPointerDown() {
+    if (pendingComplete) return
+    isHoldRef.current = false
+    holdRef.current = setTimeout(() => {
+      isHoldRef.current = true
+      haptic.medium()
+      setEditContent(localTask.content)
+      setEditPriority(localTask.priority ?? 1)
+      setEditDue(localTask.due?.date ?? '')
+      setEditDesc(localTask.description ?? '')
+      setEditOpen(true)
+    }, 500)
+  }
+  function handleRowPointerUp() { clearTimeout(holdRef.current) }
+  function handleRowClick() {
+    if (isHoldRef.current) { isHoldRef.current = false; return }
+    if (!pendingComplete) setExpanded((x) => !x)
+  }
+
+  async function handleSave() {
+    setSaving(true)
+    try {
+      const body = { content: editContent, priority: editPriority, description: editDesc }
+      if (editDue) body.due_date = editDue
+      await fetch(`/api/todoist?path=tasks/${localTask.id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      haptic.success()
+      setLocalTask((prev) => ({
+        ...prev,
+        content: editContent,
+        priority: editPriority,
+        description: editDesc,
+        due: editDue ? { date: editDue } : prev.due,
+      }))
+      setEditOpen(false)
+    } catch { haptic.error() }
+    finally { setSaving(false) }
+  }
+
   return (
+    <>
     <div className={`border-b border-[#F3EDF7] last:border-0 transition-opacity ${pendingComplete ? 'opacity-40' : ''}`}>
       <div
         className="flex items-center gap-3 py-3 cursor-pointer select-none"
-        onClick={() => !pendingComplete && setExpanded((x) => !x)}
+        onPointerDown={handleRowPointerDown}
+        onPointerUp={handleRowPointerUp}
+        onPointerLeave={handleRowPointerUp}
+        onClick={handleRowClick}
       >
         <button
           onClick={handleComplete}
@@ -234,17 +295,17 @@ function TaskItem({ task, isOverdue, isToday, days, onComplete }) {
 
         <div className="flex-1 min-w-0">
           <p className={`text-sm leading-snug ${pendingComplete ? 'line-through text-[#79747E]' : isOverdue ? 'text-red-900' : 'text-[#1C1B1F]'}`}>
-            {task.content}
+            {localTask.content}
           </p>
           <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-            {task.priority === 4 && <span className="text-xs font-semibold text-red-700 bg-[#FFD8E4] px-1.5 py-0.5 rounded">P1</span>}
-            {task.priority === 3 && <span className="text-xs font-semibold text-amber-800 bg-[#FFF0C8] px-1.5 py-0.5 rounded">P2</span>}
+            {localTask.priority === 4 && <span className="text-xs font-semibold text-red-700 bg-[#FFD8E4] px-1.5 py-0.5 rounded">P1</span>}
+            {localTask.priority === 3 && <span className="text-xs font-semibold text-amber-800 bg-[#FFF0C8] px-1.5 py-0.5 rounded">P2</span>}
             {isOverdue && <span className="text-xs font-semibold text-red-600 bg-red-50 px-1.5 py-0.5 rounded">Overdue</span>}
             {isToday && !isOverdue && <span className="text-xs font-semibold text-[#6750A4] bg-[#EADDFF] px-1.5 py-0.5 rounded">Today</span>}
             {days === 1 && <span className="text-xs font-semibold text-[#49454F] bg-[#E7E0EC] px-1.5 py-0.5 rounded">Tomorrow</span>}
-            {task.due?.date && days > 1 && (
+            {localTask.due?.date && days > 1 && (
               <span className="text-xs text-[#79747E]">
-                {new Date(task.due.date + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}
+                {new Date(localTask.due.date + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}
               </span>
             )}
           </div>
@@ -265,41 +326,39 @@ function TaskItem({ task, isOverdue, isToday, days, onComplete }) {
         )}
       </div>
 
-      {/* Undo countdown bar */}
       {pendingComplete && (
         <div className="h-0.5 bg-[#EADDFF] -mt-1 mb-1 rounded-full overflow-hidden">
           <div className="h-full bg-[#6750A4] rounded-full" style={{ animation: 'shrink-bar 5s linear forwards' }} />
         </div>
       )}
 
-      {/* Expanded details */}
       <div style={{
-        maxHeight: expanded ? '160px' : '0',
+        maxHeight: expanded ? '180px' : '0',
         overflow: 'hidden',
         transition: 'max-height 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
       }}>
         <div className="pb-3 pl-8 space-y-1.5">
-          {task.description && (
-            <p className="text-xs text-[#49454F] leading-relaxed">{task.description}</p>
+          {localTask.description && (
+            <p className="text-xs text-[#49454F] leading-relaxed">{localTask.description}</p>
           )}
           <div className="flex flex-wrap gap-x-3 gap-y-1">
-            {task.due?.date && (
+            {localTask.due?.date && (
               <span className="text-xs text-[#79747E]">
-                Due {new Date(task.due.date + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}
+                Due {new Date(localTask.due.date + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}
               </span>
             )}
-            {task.due?.datetime && (
+            {localTask.due?.datetime && (
               <span className="text-xs text-[#79747E]">
-                at {new Date(task.due.datetime).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+                at {new Date(localTask.due.datetime).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
               </span>
             )}
-            {task.labels?.length > 0 && (
-              <span className="text-xs text-[#79747E]">{task.labels.join(', ')}</span>
+            {localTask.labels?.length > 0 && (
+              <span className="text-xs text-[#79747E]">{localTask.labels.join(', ')}</span>
             )}
           </div>
-          {task.url && (
+          {localTask.url && (
             <a
-              href={task.url}
+              href={localTask.url}
               target="_blank"
               rel="noopener noreferrer"
               onClick={(e) => e.stopPropagation()}
@@ -308,9 +367,55 @@ function TaskItem({ task, isOverdue, isToday, days, onComplete }) {
               Open in Todoist ↗
             </a>
           )}
+          <p className="text-[10px] text-[#CAC4D0]">Hold to edit</p>
         </div>
       </div>
     </div>
+
+    <EditSheet open={editOpen} onClose={() => setEditOpen(false)} title="Edit task" onSave={handleSave} saving={saving}>
+      <div className="space-y-1">
+        <label className="text-xs font-medium text-[#49454F]">Task</label>
+        <textarea
+          value={editContent}
+          onChange={(ev) => setEditContent(ev.target.value)}
+          className="w-full rounded-xl border border-[#79747E] px-3 py-2 text-sm text-[#1C1B1F] focus:outline-none focus:border-[#6750A4] resize-none"
+          rows={2}
+        />
+      </div>
+      <div className="space-y-1">
+        <label className="text-xs font-medium text-[#49454F]">Priority</label>
+        <div className="flex gap-2">
+          {[{label:'P1',val:4},{label:'P2',val:3},{label:'P3',val:2},{label:'P4',val:1}].map(({label,val}) => (
+            <button key={val}
+              onClick={() => setEditPriority(val)}
+              className={`flex-1 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
+                editPriority === val ? 'bg-[#6750A4] text-white border-[#6750A4]' : 'border-[#CAC4D0] text-[#49454F]'
+              }`}
+            >{label}</button>
+          ))}
+        </div>
+      </div>
+      <div className="space-y-1">
+        <label className="text-xs font-medium text-[#49454F]">Due date</label>
+        <input
+          type="date"
+          value={editDue}
+          onChange={(ev) => setEditDue(ev.target.value)}
+          className="w-full rounded-xl border border-[#79747E] px-3 py-2 text-sm text-[#1C1B1F] focus:outline-none focus:border-[#6750A4]"
+        />
+      </div>
+      <div className="space-y-1">
+        <label className="text-xs font-medium text-[#49454F]">Notes</label>
+        <textarea
+          value={editDesc}
+          onChange={(ev) => setEditDesc(ev.target.value)}
+          placeholder="Add notes"
+          className="w-full rounded-xl border border-[#79747E] px-3 py-2 text-sm text-[#1C1B1F] focus:outline-none focus:border-[#6750A4] resize-none"
+          rows={3}
+        />
+      </div>
+    </EditSheet>
+    </>
   )
 }
 
