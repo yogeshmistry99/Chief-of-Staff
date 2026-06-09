@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { getAllTasks, closeTask, PROJECTS } from '../lib/todoist'
 import { prioritise, scoreTask } from '../lib/priority'
 import { sendMessage, SYSTEM_PROMPTS } from '../lib/claude'
+import { haptic } from '../lib/haptic'
 import Markdown from '../components/Markdown'
 import ChatInput from '../components/ChatInput'
 
@@ -62,9 +63,10 @@ function TaskRow({ task, onComplete }) {
   const { bucket, isOverdue } = scoreTask(task)
 
   async function handleComplete() {
+    haptic.success()
     setCompleting(true)
     try { await closeTask(task.id); onComplete(task.id) }
-    catch { setCompleting(false) }
+    catch { haptic.error(); setCompleting(false) }
   }
 
   return (

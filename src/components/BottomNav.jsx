@@ -1,4 +1,5 @@
 import { NavLink } from 'react-router-dom'
+import { haptic } from '../lib/haptic'
 
 const tabs = [
   {
@@ -47,6 +48,7 @@ export default function BottomNav() {
           key={to}
           to={to}
           end={to === '/'}
+          onClick={() => haptic.light()}
           className={({ isActive }) =>
             `flex-1 flex flex-col items-center justify-center py-2 gap-1 text-xs transition-colors ${
               isActive ? 'text-[#6750A4]' : 'text-[#49454F] hover:text-[#6750A4]'

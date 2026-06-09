@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { getProjectTasks, PROJECTS } from '../lib/todoist'
 import { scoreTask, BUCKET_WEIGHTS } from '../lib/priority'
 import { sendMessage, SYSTEM_PROMPTS } from '../lib/claude'
+import { haptic } from '../lib/haptic'
 import Markdown from '../components/Markdown'
 import ChatInput from '../components/ChatInput'
 import { getDiscussions, deleteDiscussion } from '../lib/discussions'
@@ -190,12 +191,13 @@ function TaskItem({ task, isOverdue, isToday, days, onComplete }) {
   const [completing, setCompleting] = useState(false)
 
   async function handleComplete() {
+    haptic.success()
     setCompleting(true)
     try {
       const { closeTask } = await import('../lib/todoist')
       await closeTask(task.id)
       onComplete(task.id)
-    } catch { setCompleting(false) }
+    } catch { haptic.error(); setCompleting(false) }
   }
 
   return (

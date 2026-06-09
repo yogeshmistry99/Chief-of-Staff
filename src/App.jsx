@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom'
 import { useRef } from 'react'
+import { haptic } from './lib/haptic'
 import BottomNav from './components/BottomNav'
 import Home from './pages/Home'
 import Buckets from './pages/Buckets'
@@ -38,9 +39,9 @@ function SwipeNavigator({ children }) {
     if (idx === -1) return
 
     if (dx < 0 && idx < TAB_ROUTES.length - 1) {
-      navigate(TAB_ROUTES[idx + 1])
+      haptic.light(); navigate(TAB_ROUTES[idx + 1])
     } else if (dx > 0 && idx > 0) {
-      navigate(TAB_ROUTES[idx - 1])
+      haptic.light(); navigate(TAB_ROUTES[idx - 1])
     }
   }
 
