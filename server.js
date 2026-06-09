@@ -3,7 +3,15 @@ const path = require('path');
 const app = express();
 
 app.use(express.json());
-app.use(express.static('public'));
+app.use(express.static('public', {
+  etag: false,
+  lastModified: false,
+  setHeaders: (res, path) => {
+    if (path.endsWith('.html')) {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+    }
+  }
+}));
 
 app.post('/api/todoist', async (req, res) => {
   try {
