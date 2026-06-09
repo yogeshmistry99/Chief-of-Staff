@@ -117,12 +117,6 @@ function HomeEventRow({ event: e }) {
 
 const PROJECT_NAMES = Object.fromEntries(Object.entries(PROJECTS).map(([name, id]) => [id, name]))
 
-const INPUT_MODES = [
-  { id: 'task',     label: 'Quick task',  placeholder: 'Add a task — e.g. "Call dentist P1 Health"' },
-  { id: 'email',    label: 'From email',  placeholder: 'Paste email — CoS will extract tasks…' },
-  { id: 'calendar', label: 'Calendar',    placeholder: 'e.g. "Cancel Monday 3pm standup"' },
-  { id: 'note',     label: 'Note',        placeholder: 'Jot a thought — CoS will route it…' },
-]
 
 function PriorityBadge({ task }) {
   const { isOverdue, isToday, days } = scoreTask(task)
@@ -270,7 +264,6 @@ export default function Home() {
   const [error, setError]             = useState(null)
   const [events, setEvents]           = useState([])
   const [eventsLoading, setEventsLoading] = useState(true)
-  const [mode, setMode]               = useState('task')
   const [messages, setMessages]       = useState([])
   const inputRef = useRef(null)
   const messagesEndRef = useRef(null)
@@ -297,7 +290,7 @@ export default function Home() {
   function removeTask(id) { setTasks((prev) => prev.filter((t) => t.id !== id)) }
 
   async function handleSend(content, attachmentName) {
-    const userMsg = { role: 'user', content, mode, attachmentName }
+    const userMsg = { role: 'user', content, attachmentName }
     setMessages((prev) => [...prev, userMsg])
     setMessages((prev) => [...prev, { role: 'assistant', content: '…', pending: true }])
     try {
@@ -311,7 +304,6 @@ export default function Home() {
     }
   }
 
-  const currentMode = INPUT_MODES.find((m) => m.id === mode)
   const { active, someday } = prioritise(tasks)
   const todayStr = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` })()
   const todayCount   = tasks.filter((t) => t.due?.date === todayStr).length
@@ -371,9 +363,6 @@ export default function Home() {
                     ? 'bg-[#6750A4] text-white rounded-br-sm'
                     : 'bg-white border border-[#CAC4D0] text-[#1C1B1F] rounded-bl-sm'
                 }`}>
-                  {msg.role === 'user' && msg.mode && (
-                    <span className="text-xs opacity-60 block mb-0.5 capitalize">{msg.mode}</span>
-                  )}
                   {msg.role === 'assistant' ? (
                     <Markdown text={msg.content} />
                   ) : (
@@ -461,24 +450,9 @@ export default function Home() {
       {/* CoS input bar — fixed at bottom */}
       <div className="bg-white border-t border-[#CAC4D0] px-4 pt-3 pb-2 safe-bottom max-w-lg mx-auto w-full">
         <ChatInput
-          placeholder={currentMode.placeholder}
+          placeholder="Message your Chief of Staff…"
           onSend={handleSend}
           textareaRef={inputRef}
-          extraAbove={
-            <div className="flex gap-2 mb-2 overflow-x-auto pb-1 scrollbar-none">
-              {INPUT_MODES.map((m) => (
-                <button
-                  key={m.id}
-                  onClick={() => { setMode(m.id); inputRef.current?.focus() }}
-                  className={`flex-shrink-0 text-xs font-medium px-3 py-1 rounded-full transition-colors ${
-                    mode === m.id ? 'bg-[#6750A4] text-white' : 'bg-[#F3EDF7] text-[#49454F] hover:bg-[#E8DEF8]'
-                  }`}
-                >
-                  {m.label}
-                </button>
-              ))}
-            </div>
-          }
         />
       </div>
     </div>
