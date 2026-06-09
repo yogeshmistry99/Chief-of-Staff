@@ -25,8 +25,13 @@ export default async function handler(req, res) {
     })
 
     const text = await upstream.text()
-    const data = text ? JSON.parse(text) : null
-    res.status(upstream.status).json(data)
+    try {
+      const data = text ? JSON.parse(text) : null
+      res.status(upstream.status).json(data)
+    } catch {
+      // Return raw text so we can diagnose what Todoist is actually saying
+      res.status(upstream.status).json({ error: 'Todoist returned non-JSON', raw: text, status: upstream.status })
+    }
   } catch (err) {
     res.status(500).json({ error: err.message })
   }
