@@ -4,6 +4,7 @@ import { getProjectTasks, PROJECTS } from '../lib/todoist'
 import { scoreTask, BUCKET_WEIGHTS } from '../lib/priority'
 import { sendMessage, SYSTEM_PROMPTS } from '../lib/claude'
 import Markdown from '../components/Markdown'
+import ChatInput from '../components/ChatInput'
 import { getDiscussions, deleteDiscussion } from '../lib/discussions'
 
 const BUCKET_DESCRIPTIONS = {
@@ -28,18 +29,13 @@ const BUCKET_META = {
 
 function HeadTab({ bucket, tasks }) {
   const [messages, setMessages] = useState([])
-  const [input, setInput] = useState('')
-  const inputRef = useRef(null)
   const endRef = useRef(null)
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
 
-  async function handleSend() {
-    const text = input.trim()
-    if (!text) return
-    const userMsg = { role: 'user', content: text }
+  async function handleSend(content, attachmentName) {
+    const userMsg = { role: 'user', content, attachmentName }
     setMessages((prev) => [...prev, userMsg])
-    setInput('')
     setMessages((prev) => [...prev, { role: 'assistant', content: '…', pending: true }])
     try {
       const history = [...messages, userMsg]
@@ -68,34 +64,21 @@ function HeadTab({ bucket, tasks }) {
                 ? 'bg-[#6750A4] text-white rounded-br-sm'
                 : 'bg-white border border-[#CAC4D0] text-[#1C1B1F] rounded-bl-sm'
             }`}>
-              {msg.role === 'assistant' ? <Markdown text={msg.content} /> : msg.content}
+              {msg.role === 'assistant' ? (
+                <Markdown text={msg.content} />
+              ) : (
+                <>
+                  {msg.attachmentName && <span className="text-xs opacity-70 block mb-0.5">📎 {msg.attachmentName}</span>}
+                  {typeof msg.content === 'string' ? msg.content : msg.content.find((b) => b.type === 'text')?.text ?? ''}
+                </>
+              )}
             </div>
           </div>
         ))}
         <div ref={endRef} />
       </div>
       <div className="bg-white border-t border-[#CAC4D0] px-4 pt-3 pb-3">
-        <div className="flex items-end gap-2">
-          <textarea
-            ref={inputRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() } }}
-            placeholder={`Ask your ${bucket} Head…`}
-            rows={1}
-            className="flex-1 resize-none rounded-2xl border border-[#79747E] px-3 py-2 text-sm text-[#1C1B1F] placeholder:text-[#B0A8BC] focus:outline-none focus:border-[#6750A4] leading-relaxed"
-            style={{ maxHeight: '96px' }}
-          />
-          <button
-            onClick={handleSend}
-            disabled={!input.trim()}
-            className="w-10 h-10 flex items-center justify-center rounded-full bg-[#6750A4] disabled:bg-[#CAC4D0] transition-colors flex-shrink-0"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" height="18" viewBox="0 -960 960 960" width="18" fill="white">
-              <path d="M120-160v-640l760 320-760 320Zm80-120 474-200-474-200v140l240 60-240 60v140Zm0 0v-400 400Z" />
-            </svg>
-          </button>
-        </div>
+        <ChatInput placeholder={`Ask your ${bucket} Head…`} onSend={handleSend} />
       </div>
     </div>
   )

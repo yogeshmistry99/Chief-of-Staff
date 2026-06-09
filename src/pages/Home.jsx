@@ -3,6 +3,7 @@ import { getAllTasks, closeTask, PROJECTS } from '../lib/todoist'
 import { prioritise, scoreTask } from '../lib/priority'
 import { sendMessage, SYSTEM_PROMPTS } from '../lib/claude'
 import Markdown from '../components/Markdown'
+import ChatInput from '../components/ChatInput'
 
 async function fetchUpcomingEvents() {
   const now = new Date()
@@ -97,7 +98,6 @@ export default function Home() {
   const [events, setEvents]           = useState([])
   const [eventsLoading, setEventsLoading] = useState(true)
   const [mode, setMode]               = useState('task')
-  const [input, setInput]             = useState('')
   const [messages, setMessages]       = useState([])
   const inputRef = useRef(null)
   const messagesEndRef = useRef(null)
@@ -123,12 +123,9 @@ export default function Home() {
 
   function removeTask(id) { setTasks((prev) => prev.filter((t) => t.id !== id)) }
 
-  async function handleSend() {
-    const text = input.trim()
-    if (!text) return
-    const userMsg = { role: 'user', content: text, mode }
+  async function handleSend(content, attachmentName) {
+    const userMsg = { role: 'user', content, mode, attachmentName }
     setMessages((prev) => [...prev, userMsg])
-    setInput('')
     setMessages((prev) => [...prev, { role: 'assistant', content: '…', pending: true }])
     try {
       const history = [...messages, userMsg]
@@ -204,7 +201,16 @@ export default function Home() {
                   {msg.role === 'user' && msg.mode && (
                     <span className="text-xs opacity-60 block mb-0.5 capitalize">{msg.mode}</span>
                   )}
-                  {msg.role === 'assistant' ? <Markdown text={msg.content} /> : msg.content}
+                  {msg.role === 'assistant' ? (
+                    <Markdown text={msg.content} />
+                  ) : (
+                    <>
+                      {msg.attachmentName && (
+                        <span className="text-xs opacity-70 block mb-0.5">📎 {msg.attachmentName}</span>
+                      )}
+                      {typeof msg.content === 'string' ? msg.content : msg.content.find((b) => b.type === 'text')?.text ?? ''}
+                    </>
+                  )}
                 </div>
               </div>
             ))}
@@ -303,45 +309,26 @@ export default function Home() {
 
       {/* CoS input bar — fixed at bottom */}
       <div className="bg-white border-t border-[#CAC4D0] px-4 pt-3 pb-2 safe-bottom max-w-lg mx-auto w-full">
-        {/* Mode chips */}
-        <div className="flex gap-2 mb-2 overflow-x-auto pb-1 scrollbar-none">
-          {INPUT_MODES.map((m) => (
-            <button
-              key={m.id}
-              onClick={() => { setMode(m.id); inputRef.current?.focus() }}
-              className={`flex-shrink-0 text-xs font-medium px-3 py-1 rounded-full transition-colors ${
-                mode === m.id
-                  ? 'bg-[#6750A4] text-white'
-                  : 'bg-[#F3EDF7] text-[#49454F] hover:bg-[#E8DEF8]'
-              }`}
-            >
-              {m.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Input row */}
-        <div className="flex items-end gap-2">
-          <textarea
-            ref={inputRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() } }}
-            placeholder={currentMode.placeholder}
-            rows={1}
-            className="flex-1 resize-none rounded-2xl border border-[#79747E] px-3 py-2 text-sm text-[#1C1B1F] placeholder:text-[#B0A8BC] focus:outline-none focus:border-[#6750A4] leading-relaxed"
-            style={{ maxHeight: '96px' }}
-          />
-          <button
-            onClick={handleSend}
-            disabled={!input.trim()}
-            className="w-10 h-10 flex items-center justify-center rounded-full bg-[#6750A4] disabled:bg-[#CAC4D0] transition-colors flex-shrink-0"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" height="18" viewBox="0 -960 960 960" width="18" fill="white">
-              <path d="M120-160v-640l760 320-760 320Zm80-120 474-200-474-200v140l240 60-240 60v140Zm0 0v-400 400Z" />
-            </svg>
-          </button>
-        </div>
+        <ChatInput
+          placeholder={currentMode.placeholder}
+          onSend={handleSend}
+          textareaRef={inputRef}
+          extraAbove={
+            <div className="flex gap-2 mb-2 overflow-x-auto pb-1 scrollbar-none">
+              {INPUT_MODES.map((m) => (
+                <button
+                  key={m.id}
+                  onClick={() => { setMode(m.id); inputRef.current?.focus() }}
+                  className={`flex-shrink-0 text-xs font-medium px-3 py-1 rounded-full transition-colors ${
+                    mode === m.id ? 'bg-[#6750A4] text-white' : 'bg-[#F3EDF7] text-[#49454F] hover:bg-[#E8DEF8]'
+                  }`}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
+          }
+        />
       </div>
     </div>
   )

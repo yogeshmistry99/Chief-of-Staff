@@ -4,6 +4,7 @@ import { getProjectTasks, PROJECTS } from '../lib/todoist'
 import { sendMessage, SYSTEM_PROMPTS } from '../lib/claude'
 import { getDiscussions, saveDiscussion, newDiscussion } from '../lib/discussions'
 import Markdown from '../components/Markdown'
+import ChatInput from '../components/ChatInput'
 
 export default function DiscussionThread() {
   const { bucket, id } = useParams()
@@ -17,7 +18,6 @@ export default function DiscussionThread() {
   })
 
   const [editingTitle, setEditingTitle] = useState(isNew)
-  const [input, setInput] = useState('')
   const [tasks, setTasks] = useState([])
   const inputRef = useRef(null)
   const endRef = useRef(null)
@@ -41,13 +41,11 @@ export default function DiscussionThread() {
     })
   }
 
-  async function handleSend() {
-    const text = input.trim()
-    if (!text || !discussion?.title?.trim()) return
-    const userMsg = { role: 'user', content: text }
+  async function handleSend(content, attachmentName) {
+    if (!discussion?.title?.trim()) return
+    const userMsg = { role: 'user', content, attachmentName }
     const withUser = [...(discussion.messages ?? []), userMsg]
     updateDiscussion({ messages: [...withUser, { role: 'assistant', content: '…', pending: true }] })
-    setInput('')
     try {
       const history = withUser.map(({ role, content }) => ({ role, content }))
       const reply = await sendMessage(history, SYSTEM_PROMPTS.discussion(bucket, discussion.title, tasks))
@@ -128,7 +126,14 @@ export default function DiscussionThread() {
                 ? 'bg-[#6750A4] text-white rounded-br-sm'
                 : 'bg-white border border-[#CAC4D0] text-[#1C1B1F] rounded-bl-sm'
             } ${msg.pending ? 'opacity-50' : ''}`}>
-              {msg.role === 'assistant' ? <Markdown text={msg.content} /> : msg.content}
+              {msg.role === 'assistant' ? (
+                <Markdown text={msg.content} />
+              ) : (
+                <>
+                  {msg.attachmentName && <span className="text-xs opacity-70 block mb-0.5">📎 {msg.attachmentName}</span>}
+                  {typeof msg.content === 'string' ? msg.content : msg.content.find((b) => b.type === 'text')?.text ?? ''}
+                </>
+              )}
             </div>
           </div>
         ))}
@@ -140,27 +145,12 @@ export default function DiscussionThread() {
         {editingTitle && (
           <p className="text-xs text-[#79747E] mb-2">Enter a title above first, then start the discussion.</p>
         )}
-        <div className="flex items-end gap-2">
-          <textarea
-            ref={inputRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() } }}
-            placeholder="Continue the discussion…"
-            rows={1}
-            className="flex-1 resize-none rounded-2xl border border-[#79747E] px-3 py-2 text-sm text-[#1C1B1F] placeholder:text-[#B0A8BC] focus:outline-none focus:border-[#6750A4] leading-relaxed"
-            style={{ maxHeight: '96px' }}
-          />
-          <button
-            onClick={handleSend}
-            disabled={!input.trim() || !discussion.title.trim()}
-            className="w-10 h-10 flex items-center justify-center rounded-full bg-[#6750A4] disabled:bg-[#CAC4D0] transition-colors flex-shrink-0"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" height="18" viewBox="0 -960 960 960" width="18" fill="white">
-              <path d="M120-160v-640l760 320-760 320Zm80-120 474-200-474-200v140l240 60-240 60v140Zm0 0v-400 400Z" />
-            </svg>
-          </button>
-        </div>
+        <ChatInput
+          placeholder="Continue the discussion…"
+          onSend={handleSend}
+          disabled={!discussion.title.trim()}
+          textareaRef={inputRef}
+        />
       </div>
     </div>
   )
