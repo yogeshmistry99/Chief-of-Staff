@@ -2,7 +2,8 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import BottomNav from './components/BottomNav'
 import Home from './pages/Home'
 import Buckets from './pages/Buckets'
-import Chat from './pages/Chat'
+import BucketDetail from './pages/BucketDetail'
+import DiscussionThread from './pages/DiscussionThread'
 import Settings from './pages/Settings'
 
 export default function App() {
@@ -13,7 +14,8 @@ export default function App() {
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/buckets" element={<Buckets />} />
-            <Route path="/chat" element={<Chat />} />
+            <Route path="/buckets/:bucket" element={<BucketDetail />} />
+            <Route path="/buckets/:bucket/discussions/:id" element={<DiscussionThread />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
