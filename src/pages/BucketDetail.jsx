@@ -128,10 +128,87 @@ function DiscussionsTab({ bucket }) {
   )
 }
 
+function TasksTab({ tasks, loading, onComplete }) {
+  const scored = tasks
+    .map((t) => ({ ...t, _scored: scoreTask(t) }))
+    .filter((t) => t._scored.score >= 0)
+    .sort((a, b) => b._scored.score - a._scored.score)
+  const someday = tasks.filter((t) => scoreTask(t).score === -1)
+
+  if (loading) return (
+    <div className="px-4 py-4 space-y-3">
+      {[1, 2, 3].map((i) => (
+        <div key={i} className="flex items-center gap-3 animate-pulse">
+          <div className="w-5 h-5 rounded-full bg-[#E7E0EC] flex-shrink-0" />
+          <div className="h-4 bg-[#E7E0EC] rounded-full flex-1" />
+        </div>
+      ))}
+    </div>
+  )
+
+  if (!scored.length && !someday.length) return (
+    <div className="text-center py-10">
+      <p className="text-sm text-[#49454F]">No tasks in this bucket.</p>
+    </div>
+  )
+
+  return (
+    <div className="overflow-y-auto h-full px-4 py-3">
+      {scored.map((task) => {
+        const { isOverdue, isToday, days, bucket: b } = task._scored
+        return (
+          <TaskItem key={task.id} task={task} isOverdue={isOverdue} isToday={isToday} days={days} onComplete={onComplete} />
+        )
+      })}
+      {someday.length > 0 && (
+        <div className="bg-[#F3EDF7] rounded-xl px-4 py-2.5 mt-3">
+          <p className="text-xs text-[#49454F]">
+            <span className="font-semibold text-[#6750A4]">{someday.length} someday</span> — no date, P4.
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function TaskItem({ task, isOverdue, isToday, days, onComplete }) {
+  const [completing, setCompleting] = useState(false)
+
+  async function handleComplete() {
+    setCompleting(true)
+    try {
+      const { closeTask } = await import('../lib/todoist')
+      await closeTask(task.id)
+      onComplete(task.id)
+    } catch { setCompleting(false) }
+  }
+
+  return (
+    <div className={`flex items-start gap-3 py-3 border-b border-[#F3EDF7] last:border-0 transition-opacity ${completing ? 'opacity-20' : ''}`}>
+      <button
+        onClick={handleComplete}
+        disabled={completing}
+        className="w-5 h-5 rounded-full border-2 border-[#CAC4D0] hover:border-[#6750A4] hover:bg-[#EADDFF] flex-shrink-0 mt-0.5 transition-colors"
+      />
+      <div className="flex-1 min-w-0">
+        <p className={`text-sm leading-snug ${isOverdue ? 'text-red-900' : 'text-[#1C1B1F]'}`}>{task.content}</p>
+        <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+          {task.priority === 4 && <span className="text-xs font-semibold text-red-700 bg-[#FFD8E4] px-1.5 py-0.5 rounded">P1</span>}
+          {task.priority === 3 && <span className="text-xs font-semibold text-amber-800 bg-[#FFF0C8] px-1.5 py-0.5 rounded">P2</span>}
+          {isOverdue && <span className="text-xs font-semibold text-red-600 bg-red-50 px-1.5 py-0.5 rounded">Overdue</span>}
+          {isToday && !isOverdue && <span className="text-xs font-semibold text-[#6750A4] bg-[#EADDFF] px-1.5 py-0.5 rounded">Today</span>}
+          {days === 1 && <span className="text-xs font-semibold text-[#49454F] bg-[#E7E0EC] px-1.5 py-0.5 rounded">Tomorrow</span>}
+          {task.due?.date && days > 1 && <span className="text-xs text-[#79747E]">{task.due.date}</span>}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function BucketDetail() {
   const { bucket } = useParams()
   const navigate = useNavigate()
-  const [tab, setTab] = useState('head')
+  const [tab, setTab] = useState('tasks')
   const [tasks, setTasks] = useState([])
   const [loading, setLoading] = useState(true)
 
@@ -154,6 +231,8 @@ export default function BucketDetail() {
       </div>
     )
   }
+
+  function removeTask(id) { setTasks((prev) => prev.filter((t) => t.id !== id)) }
 
   const weight = BUCKET_WEIGHTS[bucket] ?? 5
   const open = tasks.filter((t) => !t.is_completed)
@@ -180,17 +259,21 @@ export default function BucketDetail() {
         </div>
         {/* Tabs */}
         <div className="flex gap-0">
-          {['head', 'discussions'].map((t) => (
+          {[
+            { id: 'tasks', label: 'Tasks' },
+            { id: 'head', label: `${bucket} Head` },
+            { id: 'discussions', label: 'Discussions' },
+          ].map(({ id, label }) => (
             <button
-              key={t}
-              onClick={() => setTab(t)}
-              className={`flex-1 py-2 text-sm font-medium border-b-2 transition-colors capitalize ${
-                tab === t
+              key={id}
+              onClick={() => setTab(id)}
+              className={`flex-1 py-2 text-sm font-medium border-b-2 transition-colors ${
+                tab === id
                   ? 'border-[#6750A4] text-[#6750A4]'
                   : 'border-transparent text-[#49454F] hover:text-[#6750A4]'
               }`}
             >
-              {t === 'head' ? `${bucket} Head` : 'Discussions'}
+              {label}
             </button>
           ))}
         </div>
@@ -198,7 +281,9 @@ export default function BucketDetail() {
 
       {/* Tab content */}
       <div className="flex-1 overflow-hidden">
-        {tab === 'head' ? <HeadTab bucket={bucket} tasks={tasks} /> : <DiscussionsTab bucket={bucket} tasks={tasks} />}
+        {tab === 'tasks' && <TasksTab tasks={tasks} loading={loading} onComplete={removeTask} />}
+        {tab === 'head' && <HeadTab bucket={bucket} tasks={tasks} />}
+        {tab === 'discussions' && <DiscussionsTab bucket={bucket} tasks={tasks} />}
       </div>
     </div>
   )
