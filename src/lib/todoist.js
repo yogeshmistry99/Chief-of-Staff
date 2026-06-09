@@ -16,7 +16,9 @@ async function get(path, params = {}) {
   Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v))
   const res = await fetch(url.toString())
   if (!res.ok) throw new Error(`Todoist API error: ${res.status}`)
-  return res.json()
+  const data = await res.json()
+  // v1 API wraps results in { results: [...] }
+  return Array.isArray(data) ? data : (data.results ?? data)
 }
 
 // All tasks across all 7 projects
