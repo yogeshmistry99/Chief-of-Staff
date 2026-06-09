@@ -1,7 +1,8 @@
 import { useRef, useState, useEffect } from 'react'
 import { haptic } from '../lib/haptic'
 
-const ACCEPTED = 'image/jpeg,image/png,image/gif,image/webp,application/pdf'
+const ACCEPTED_FILE    = 'application/pdf,.doc,.docx,.txt'
+const ACCEPTED_IMAGE   = 'image/jpeg,image/png,image/gif,image/webp'
 
 function fileToBase64(file) {
   return new Promise((resolve, reject) => {
@@ -34,6 +35,7 @@ export default function ChatInput({ placeholder, onSend, disabled, extraAbove, t
   const internalRef    = useRef(null)
   const textareaRef    = externalRef ?? internalRef
   const fileRef        = useRef(null)
+  const imageRef       = useRef(null)
   const cameraRef      = useRef(null)
   const holdTimer      = useRef(null)
   const recognitionRef = useRef(null)
@@ -143,53 +145,54 @@ export default function ChatInput({ placeholder, onSend, disabled, extraAbove, t
         </div>
       )}
 
-      {/* Expanded attach options */}
-      <div style={{
-        maxHeight: attachOpen ? '56px' : '0',
-        overflow: 'hidden',
-        transition: 'max-height 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-      }}>
-        <div className="flex gap-2 pb-2">
-          {/* File upload */}
-          <button
-            onClick={() => fileRef.current?.click()}
-            disabled={loading}
-            className="flex items-center gap-1.5 px-3 h-9 rounded-full bg-[#F3EDF7] text-[#6750A4] text-xs font-medium hover:bg-[#EADDFF] transition-colors disabled:opacity-50"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" height="15" viewBox="0 -960 960 960" width="15" fill="currentColor">
-              <path d="M720-330q0 104-73 177T470-80q-104 0-177-73t-73-177v-370q0-75 52.5-127.5T400-880q75 0 127.5 52.5T580-700v350q0 46-32 78t-78 32q-46 0-78-32t-32-78v-370h80v370q0 13 8.5 21.5T470-320q13 0 21.5-8.5T500-350v-350q0-42-29-71t-71-29q-42 0-71 29t-29 71v370q0 71 49.5 120.5T470-160q71 0 120.5-49.5T640-330v-390h80v390Z"/>
-            </svg>
-            File
-          </button>
-          <input ref={fileRef} type="file" accept={ACCEPTED} onChange={handleFile} className="hidden" />
-
-          {/* Camera */}
-          <button
-            onClick={() => cameraRef.current?.click()}
-            disabled={loading}
-            className="flex items-center gap-1.5 px-3 h-9 rounded-full bg-[#F3EDF7] text-[#6750A4] text-xs font-medium hover:bg-[#EADDFF] transition-colors disabled:opacity-50"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" height="15" viewBox="0 -960 960 960" width="15" fill="currentColor">
-              <path d="M480-260q75 0 127.5-52.5T660-440q0-75-52.5-127.5T480-620q-75 0-127.5 52.5T300-440q0 75 52.5 127.5T480-260Zm0-80q-42 0-71-29t-29-71q0-42 29-71t71-29q42 0 71 29t29 71q0 42-29 71t-71 29ZM160-120q-33 0-56.5-23.5T80-200v-480q0-33 23.5-56.5T160-760h126l74-80h240l74 80h126q33 0 56.5 23.5T880-680v480q0 33-23.5 56.5T800-120H160Z"/>
-            </svg>
-            Camera
-          </button>
-          <input ref={cameraRef} type="file" accept="image/*" capture="environment" onChange={handleFile} className="hidden" />
-        </div>
-      </div>
-
       {/* Input row */}
       <div className="flex items-end gap-1.5">
         {/* Plus / close toggle */}
         <button
           onClick={() => { haptic.light(); setAttachOpen((x) => !x) }}
-          className="w-9 h-9 flex items-center justify-center rounded-full bg-[#F3EDF7] text-[#6750A4] hover:bg-[#EADDFF] transition-all flex-shrink-0"
+          className="w-9 h-9 flex items-center justify-center rounded-full bg-[#F3EDF7] text-[#6750A4] hover:bg-[#EADDFF] flex-shrink-0"
           style={{ transform: attachOpen ? 'rotate(45deg)' : 'rotate(0deg)', transition: 'transform 0.2s cubic-bezier(0.4,0,0.2,1)' }}
         >
           <svg xmlns="http://www.w3.org/2000/svg" height="18" viewBox="0 -960 960 960" width="18" fill="currentColor">
             <path d="M440-440H200v-80h240v-240h80v240h240v80H520v240h-80v-240Z"/>
           </svg>
         </button>
+
+        {/* Inline attach icons — slide in when open */}
+        <div style={{
+          maxWidth: attachOpen ? '120px' : '0',
+          overflow: 'hidden',
+          transition: 'max-width 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+        }}>
+          <div className="flex gap-1.5 pr-1.5">
+            {/* File */}
+            <button onClick={() => { fileRef.current?.click(); haptic.light() }} disabled={loading} title="File"
+              className="w-9 h-9 flex items-center justify-center rounded-full bg-[#F3EDF7] text-[#6750A4] hover:bg-[#EADDFF] flex-shrink-0 disabled:opacity-50">
+              <svg xmlns="http://www.w3.org/2000/svg" height="17" viewBox="0 -960 960 960" width="17" fill="currentColor">
+                <path d="M320-240h320v-80H320v80Zm0-160h320v-80H320v80ZM240-80q-33 0-56.5-23.5T160-160v-640q0-33 23.5-56.5T240-880h320l240 240v480q0 33-23.5 56.5T720-80H240Zm280-520v-200H240v640h480v-440H520ZM240-800v200-200 640-640Z"/>
+              </svg>
+            </button>
+            <input ref={fileRef} type="file" accept={ACCEPTED_FILE} onChange={handleFile} className="hidden" />
+
+            {/* Image from gallery */}
+            <button onClick={() => { imageRef.current?.click(); haptic.light() }} disabled={loading} title="Image from gallery"
+              className="w-9 h-9 flex items-center justify-center rounded-full bg-[#F3EDF7] text-[#6750A4] hover:bg-[#EADDFF] flex-shrink-0 disabled:opacity-50">
+              <svg xmlns="http://www.w3.org/2000/svg" height="17" viewBox="0 -960 960 960" width="17" fill="currentColor">
+                <path d="M200-120q-33 0-56.5-23.5T120-200v-560q0-33 23.5-56.5T200-840h560q33 0 56.5 23.5T840-760v560q0 33-23.5 56.5T760-120H200Zm0-80h560v-560H200v560Zm40-80h480L570-480 450-320l-90-120-120 160Zm-40 80v-560 560Z"/>
+              </svg>
+            </button>
+            <input ref={imageRef} type="file" accept={ACCEPTED_IMAGE} onChange={handleFile} className="hidden" />
+
+            {/* Camera */}
+            <button onClick={() => { cameraRef.current?.click(); haptic.light() }} disabled={loading} title="Camera"
+              className="w-9 h-9 flex items-center justify-center rounded-full bg-[#F3EDF7] text-[#6750A4] hover:bg-[#EADDFF] flex-shrink-0 disabled:opacity-50">
+              <svg xmlns="http://www.w3.org/2000/svg" height="17" viewBox="0 -960 960 960" width="17" fill="currentColor">
+                <path d="M480-260q75 0 127.5-52.5T660-440q0-75-52.5-127.5T480-620q-75 0-127.5 52.5T300-440q0 75 52.5 127.5T480-260Zm0-80q-42 0-71-29t-29-71q0-42 29-71t71-29q42 0 71 29t29 71q0 42-29 71t-71 29ZM160-120q-33 0-56.5-23.5T80-200v-480q0-33 23.5-56.5T160-760h126l74-80h240l74 80h126q33 0 56.5 23.5T880-680v480q0 33-23.5 56.5T800-120H160Z"/>
+              </svg>
+            </button>
+            <input ref={cameraRef} type="file" accept="image/*" capture="environment" onChange={handleFile} className="hidden" />
+          </div>
+        </div>
 
         <textarea
           ref={textareaRef}
