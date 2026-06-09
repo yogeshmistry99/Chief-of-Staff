@@ -1,5 +1,4 @@
 import { useEffect, useState, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { getAllTasks, PROJECTS } from '../lib/todoist'
 
 const PROJECT_NAMES = Object.fromEntries(Object.entries(PROJECTS).map(([name, id]) => [id, name]))
@@ -32,6 +31,112 @@ function startOfWeek(d) {
 function formatTime(dateTime, timeZone) {
   if (!dateTime) return null
   return new Date(dateTime).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone })
+}
+
+function formatDuration(start, end) {
+  if (!start || !end) return null
+  const mins = Math.round((new Date(end) - new Date(start)) / 60000)
+  if (mins < 60) return `${mins}m`
+  const h = Math.floor(mins / 60), m = mins % 60
+  return m > 0 ? `${h}h ${m}m` : `${h}h`
+}
+
+function EventRow({ event }) {
+  const [expanded, setExpanded] = useState(false)
+  const e = event
+  const isAllDay  = !!e.start?.date && !e.start?.dateTime
+  const startTime = formatTime(e.start?.dateTime, e.start?.timeZone)
+  const endTime   = formatTime(e.end?.dateTime,   e.end?.timeZone)
+  const duration  = formatDuration(e.start?.dateTime, e.end?.dateTime)
+  const attendees = e.attendees ?? []
+  const selfRsvp  = attendees.find((a) => a.self)?.responseStatus
+  const description = e.description?.replace(/<[^>]*>/g, '').trim()
+  const meetLink  = e.hangoutLink ?? e.conferenceData?.entryPoints?.find((ep) => ep.entryPointType === 'video')?.uri
+
+  const rsvpColor = { accepted: 'text-green-700', declined: 'text-red-600', tentative: 'text-amber-600' }
+
+  return (
+    <div className="border-b border-[#F3EDF7] last:border-0">
+      <div
+        className="flex gap-3 items-center py-2.5 cursor-pointer select-none"
+        onClick={() => setExpanded((x) => !x)}
+      >
+        <div className="w-10 flex-shrink-0 text-right">
+          {isAllDay
+            ? <span className="text-xs text-[#79747E]">All day</span>
+            : <span className="text-xs font-medium text-[#6750A4]">{startTime}</span>}
+        </div>
+        <div className="flex-1 min-w-0 bg-[#F3EDF7] rounded-lg px-2.5 py-1.5">
+          <p className="text-sm font-medium text-[#1C1B1F] leading-snug truncate">{e.summary}</p>
+          {!isAllDay && endTime && !expanded && (
+            <p className="text-xs text-[#79747E]">until {endTime}{duration ? ` · ${duration}` : ''}</p>
+          )}
+        </div>
+        <svg xmlns="http://www.w3.org/2000/svg" height="16" viewBox="0 -960 960 960" width="16" fill="#CAC4D0"
+          className={`flex-shrink-0 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}>
+          <path d="M480-345 240-585l56-56 184 184 184-184 56 56-240 240Z"/>
+        </svg>
+      </div>
+
+      {/* Expanded details */}
+      <div style={{
+        maxHeight: expanded ? '320px' : '0',
+        overflow: 'hidden',
+        transition: 'max-height 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+      }}>
+        <div className="pl-13 pr-6 pb-3 space-y-2" style={{ paddingLeft: '3.25rem' }}>
+          {/* Time + duration */}
+          {!isAllDay && startTime && (
+            <p className="text-xs text-[#49454F]">{startTime} – {endTime}{duration ? ` (${duration})` : ''}</p>
+          )}
+
+          {/* Location */}
+          {e.location && (
+            <div className="flex items-start gap-1.5">
+              <svg xmlns="http://www.w3.org/2000/svg" height="13" viewBox="0 -960 960 960" width="13" fill="#79747E" className="mt-0.5 flex-shrink-0">
+                <path d="M480-480q33 0 56.5-23.5T560-560q0-33-23.5-56.5T480-640q-33 0-56.5 23.5T400-560q0 33 23.5 56.5T480-480Zm0 294q122-112 181-203.5T720-560q0-117-74.5-188.5T480-820q-91 0-165.5 71.5T240-560q0 75 59 166.5T480-186Z"/>
+              </svg>
+              <p className="text-xs text-[#49454F]">{e.location}</p>
+            </div>
+          )}
+
+          {/* Video call */}
+          {meetLink && (
+            <a href={meetLink} target="_blank" rel="noopener noreferrer"
+              onClick={(ev) => ev.stopPropagation()}
+              className="flex items-center gap-1.5 text-xs text-[#6750A4] font-medium"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" height="13" viewBox="0 -960 960 960" width="13" fill="currentColor">
+                <path d="M160-160q-33 0-56.5-23.5T80-240v-480q0-33 23.5-56.5T160-800h480q33 0 56.5 23.5T720-720v180l160-160v440L720-420v180q0 33-23.5 56.5T640-160H160Z"/>
+              </svg>
+              Join video call
+            </a>
+          )}
+
+          {/* RSVP */}
+          {selfRsvp && (
+            <p className={`text-xs font-medium capitalize ${rsvpColor[selfRsvp] ?? 'text-[#79747E]'}`}>
+              {selfRsvp === 'needsAction' ? 'Not responded' : selfRsvp === 'accepted' ? '✓ Accepted' : selfRsvp === 'declined' ? '✗ Declined' : '~ Tentative'}
+            </p>
+          )}
+
+          {/* Attendees */}
+          {attendees.length > 0 && (
+            <p className="text-xs text-[#79747E]">
+              {attendees.length} attendee{attendees.length !== 1 ? 's' : ''}
+              {attendees.slice(0, 3).map((a) => ` · ${a.displayName?.split(' ')[0] ?? a.email.split('@')[0]}`)}
+              {attendees.length > 3 ? ` +${attendees.length - 3}` : ''}
+            </p>
+          )}
+
+          {/* Description */}
+          {description && (
+            <p className="text-xs text-[#49454F] leading-relaxed line-clamp-3">{description}</p>
+          )}
+        </div>
+      </div>
+    </div>
+  )
 }
 
 async function fetchEvents(start, end) {
@@ -170,45 +275,8 @@ export default function Calendar() {
 
           {/* Events */}
           {selectedEvents.length > 0 && (
-            <div className="mb-3 space-y-2">
-              {selectedEvents.map((e) => {
-                const startTime = formatTime(e.start?.dateTime, e.start?.timeZone)
-                const endTime = formatTime(e.end?.dateTime, e.end?.timeZone)
-                const isAllDay = !!e.start?.date && !e.start?.dateTime
-                return (
-                  <button
-                    key={e.id}
-                    onClick={() => navigate(`/calendar/event/${e.id}`, { state: { event: e } })}
-                    className="flex gap-3 items-start w-full text-left active:opacity-70 transition-opacity"
-                  >
-                    <div className="w-10 flex-shrink-0 text-right pt-1.5">
-                      {isAllDay ? (
-                        <span className="text-xs text-[#79747E]">All day</span>
-                      ) : (
-                        <span className="text-xs font-medium text-[#6750A4]">{startTime}</span>
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0 bg-[#F3EDF7] rounded-lg px-2.5 py-1.5">
-                      <p className="text-sm font-medium text-[#1C1B1F] leading-snug">{e.summary}</p>
-                      {!isAllDay && endTime && (
-                        <p className="text-xs text-[#79747E]">until {endTime}</p>
-                      )}
-                      {(e.location || e.hangoutLink || (e.attendees?.length > 0)) && (
-                        <div className="flex items-center gap-2 mt-1 flex-wrap">
-                          {e.hangoutLink && <span className="text-[10px] text-[#6750A4] font-medium">Video call</span>}
-                          {e.location && <span className="text-[10px] text-[#79747E] truncate">{e.location}</span>}
-                          {e.attendees?.length > 0 && <span className="text-[10px] text-[#79747E]">{e.attendees.length} attendees</span>}
-                        </div>
-                      )}
-                    </div>
-                    <div className="pt-1.5 flex-shrink-0">
-                      <svg xmlns="http://www.w3.org/2000/svg" height="14" viewBox="0 -960 960 960" width="14" fill="#CAC4D0">
-                        <path d="M504-480 320-664l56-56 240 240-240 240-56-56 184-184Z"/>
-                      </svg>
-                    </div>
-                  </button>
-                )
-              })}
+            <div className="mb-3">
+              {selectedEvents.map((e) => <EventRow key={e.id} event={e} />)}
             </div>
           )}
 
