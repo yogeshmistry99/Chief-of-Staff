@@ -2,17 +2,24 @@ import { useState, useRef, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { getProjectTasks, PROJECTS } from '../lib/todoist'
 import { sendMessage, SYSTEM_PROMPTS } from '../lib/claude'
+import { getDiscussions, saveDiscussion, newDiscussion } from '../lib/discussions'
 
 export default function DiscussionThread() {
   const { bucket, id } = useParams()
   const navigate = useNavigate()
   const isNew = id === 'new'
 
-  const [title, setTitle] = useState(isNew ? '' : 'Discussion')
+  // Load existing discussion or initialise a new one
+  const [discussion, setDiscussion] = useState(() => {
+    if (isNew) return newDiscussion('')
+    return getDiscussions(bucket).find((d) => d.id === id) ?? null
+  })
+
   const [editingTitle, setEditingTitle] = useState(isNew)
-  const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [tasks, setTasks] = useState([])
+  const inputRef = useRef(null)
+  const endRef = useRef(null)
 
   useEffect(() => {
     const projectId = PROJECTS[bucket]
@@ -21,38 +28,44 @@ export default function DiscussionThread() {
       .then((data) => setTasks(data.map((t) => ({ ...t, _projectName: bucket }))))
       .catch(() => {})
   }, [bucket])
-  const inputRef = useRef(null)
-  const endRef = useRef(null)
 
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [discussion?.messages])
   useEffect(() => { if (isNew) inputRef.current?.focus() }, [isNew])
+
+  function updateDiscussion(updates) {
+    setDiscussion((prev) => {
+      const next = { ...prev, ...updates, updatedAt: new Date().toISOString() }
+      saveDiscussion(bucket, next)
+      return next
+    })
+  }
 
   async function handleSend() {
     const text = input.trim()
-    if (!text || (isNew && !title.trim())) return
+    if (!text || !discussion?.title?.trim()) return
     const userMsg = { role: 'user', content: text }
-    setMessages((prev) => [...prev, userMsg])
+    const withUser = [...(discussion.messages ?? []), userMsg]
+    updateDiscussion({ messages: [...withUser, { role: 'assistant', content: '…', pending: true }] })
     setInput('')
-    setMessages((prev) => [...prev, { role: 'assistant', content: '…', pending: true }])
     try {
-      const history = [...messages, userMsg]
-        .filter((m) => !m.pending)
-        .map(({ role, content }) => ({ role, content }))
-      const reply = await sendMessage(history, SYSTEM_PROMPTS.discussion(bucket, title, tasks))
-      setMessages((prev) => [...prev.slice(0, -1), { role: 'assistant', content: reply }])
+      const history = withUser.map(({ role, content }) => ({ role, content }))
+      const reply = await sendMessage(history, SYSTEM_PROMPTS.discussion(bucket, discussion.title, tasks))
+      updateDiscussion({ messages: [...withUser, { role: 'assistant', content: reply }] })
     } catch (err) {
-      setMessages((prev) => [...prev.slice(0, -1), { role: 'assistant', content: `Error: ${err.message}` }])
+      updateDiscussion({ messages: [...withUser, { role: 'assistant', content: `Error: ${err.message}` }] })
     }
   }
 
-  function handleArchive() {
-    navigate(`/buckets/${bucket}`)
+  if (!discussion) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-3">
+        <p className="text-sm text-[#49454F]">Discussion not found.</p>
+        <button onClick={() => navigate(`/buckets/${bucket}`)} className="text-xs text-[#6750A4]">← Back</button>
+      </div>
+    )
   }
 
-  function handleAddToTasks() {
-    // Future: parse last assistant message for task suggestions and add to Todoist
-    alert('Add to tasks — coming soon.')
-  }
+  const messages = discussion.messages ?? []
 
   return (
     <div className="flex flex-col h-full">
@@ -68,32 +81,32 @@ export default function DiscussionThread() {
             {editingTitle ? (
               <input
                 autoFocus
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                onBlur={() => { if (title.trim()) setEditingTitle(false) }}
-                onKeyDown={(e) => { if (e.key === 'Enter' && title.trim()) { setEditingTitle(false); inputRef.current?.focus() } }}
+                value={discussion.title}
+                onChange={(e) => setDiscussion((prev) => ({ ...prev, title: e.target.value }))}
+                onBlur={() => { if (discussion.title.trim()) { updateDiscussion({}); setEditingTitle(false) } }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && discussion.title.trim()) {
+                    updateDiscussion({})
+                    setEditingTitle(false)
+                    inputRef.current?.focus()
+                  }
+                }}
                 placeholder="Discussion title…"
                 className="w-full text-lg font-semibold text-[#1C1B1F] bg-transparent border-b border-[#6750A4] focus:outline-none pb-0.5"
               />
             ) : (
               <button onClick={() => setEditingTitle(true)} className="text-left w-full">
-                <h1 className="text-lg font-semibold text-[#1C1B1F] truncate">{title || 'Untitled'}</h1>
+                <h1 className="text-lg font-semibold text-[#1C1B1F] truncate">{discussion.title || 'Untitled'}</h1>
               </button>
             )}
             <p className="text-xs text-[#79747E]">{bucket} · Discussion</p>
           </div>
           <div className="flex gap-2 flex-shrink-0">
             <button
-              onClick={handleAddToTasks}
+              onClick={() => alert('Add to tasks — coming soon.')}
               className="text-xs font-medium px-3 py-1.5 rounded-full bg-[#EADDFF] text-[#6750A4] hover:bg-[#D8CBFF] transition-colors"
             >
               + Task
-            </button>
-            <button
-              onClick={handleArchive}
-              className="text-xs font-medium px-3 py-1.5 rounded-full bg-[#F3EDF7] text-[#49454F] hover:bg-[#E7E0EC] transition-colors"
-            >
-              Archive
             </button>
           </div>
         </div>
@@ -113,7 +126,7 @@ export default function DiscussionThread() {
               msg.role === 'user'
                 ? 'bg-[#6750A4] text-white rounded-br-sm'
                 : 'bg-white border border-[#CAC4D0] text-[#1C1B1F] rounded-bl-sm'
-            }`}>
+            } ${msg.pending ? 'opacity-50' : ''}`}>
               {msg.content}
             </div>
           </div>
@@ -123,6 +136,9 @@ export default function DiscussionThread() {
 
       {/* Input */}
       <div className="bg-white border-t border-[#CAC4D0] px-4 pt-3 pb-3">
+        {editingTitle && (
+          <p className="text-xs text-[#79747E] mb-2">Enter a title above first, then start the discussion.</p>
+        )}
         <div className="flex items-end gap-2">
           <textarea
             ref={inputRef}
@@ -136,7 +152,7 @@ export default function DiscussionThread() {
           />
           <button
             onClick={handleSend}
-            disabled={!input.trim() || (isNew && !title.trim())}
+            disabled={!input.trim() || !discussion.title.trim()}
             className="w-10 h-10 flex items-center justify-center rounded-full bg-[#6750A4] disabled:bg-[#CAC4D0] transition-colors flex-shrink-0"
           >
             <svg xmlns="http://www.w3.org/2000/svg" height="18" viewBox="0 -960 960 960" width="18" fill="white">

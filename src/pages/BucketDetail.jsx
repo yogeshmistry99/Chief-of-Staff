@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { getProjectTasks, PROJECTS } from '../lib/todoist'
 import { scoreTask, BUCKET_WEIGHTS } from '../lib/priority'
 import { sendMessage, SYSTEM_PROMPTS } from '../lib/claude'
+import { getDiscussions, deleteDiscussion } from '../lib/discussions'
 
 const BUCKET_DESCRIPTIONS = {
   Finance:  'Investments, tax, budgets, and financial decisions.',
@@ -91,7 +92,16 @@ function HeadTab({ bucket, tasks }) {
 
 function DiscussionsTab({ bucket }) {
   const navigate = useNavigate()
-  const [discussions] = useState([])
+  const [discussions, setDiscussions] = useState(() => getDiscussions(bucket))
+
+  useEffect(() => { setDiscussions(getDiscussions(bucket)) }, [bucket])
+
+  function handleDelete(e, id) {
+    e.stopPropagation()
+    if (!confirm('Delete this discussion?')) return
+    deleteDiscussion(bucket, id)
+    setDiscussions(getDiscussions(bucket))
+  }
 
   return (
     <div className="flex flex-col h-full">
@@ -104,14 +114,25 @@ function DiscussionsTab({ bucket }) {
         ) : (
           <div className="space-y-2">
             {discussions.map((d) => (
-              <button
-                key={d.id}
-                onClick={() => navigate(`/buckets/${bucket}/discussions/${d.id}`)}
-                className="w-full text-left bg-white border border-[#CAC4D0] rounded-2xl p-4 hover:border-[#6750A4] transition-colors"
-              >
-                <p className="text-sm font-medium text-[#1C1B1F]">{d.title}</p>
-                <p className="text-xs text-[#79747E] mt-0.5">{d.updatedAt}</p>
-              </button>
+              <div key={d.id} className="relative">
+                <button
+                  onClick={() => navigate(`/buckets/${bucket}/discussions/${d.id}`)}
+                  className="w-full text-left bg-white border border-[#CAC4D0] rounded-2xl p-4 hover:border-[#6750A4] transition-colors pr-10"
+                >
+                  <p className="text-sm font-medium text-[#1C1B1F]">{d.title}</p>
+                  <p className="text-xs text-[#79747E] mt-0.5">
+                    {d.messages.length} message{d.messages.length !== 1 ? 's' : ''} · {new Date(d.updatedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                  </p>
+                </button>
+                <button
+                  onClick={(e) => handleDelete(e, d.id)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[#CAC4D0] hover:text-red-400 p-1 transition-colors"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" height="18" viewBox="0 -960 960 960" width="18" fill="currentColor">
+                    <path d="M280-120q-33 0-56.5-23.5T200-200v-520h-40v-80h200v-40h240v40h200v80h-40v520q0 33-23.5 56.5T680-120H280Zm400-600H280v520h400v-520ZM360-280h80v-360h-80v360Zm160 0h80v-360h-80v360ZM280-720v520-520Z"/>
+                  </svg>
+                </button>
+              </div>
             ))}
           </div>
         )}
