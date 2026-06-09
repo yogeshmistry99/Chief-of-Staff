@@ -5,6 +5,7 @@ import Buckets from './pages/Buckets'
 import BucketDetail from './pages/BucketDetail'
 import DiscussionThread from './pages/DiscussionThread'
 import Settings from './pages/Settings'
+import Calendar from './pages/Calendar'
 
 export default function App() {
   return (
@@ -16,6 +17,7 @@ export default function App() {
             <Route path="/buckets" element={<Buckets />} />
             <Route path="/buckets/:bucket" element={<BucketDetail />} />
             <Route path="/buckets/:bucket/discussions/:id" element={<DiscussionThread />} />
+            <Route path="/calendar" element={<Calendar />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
