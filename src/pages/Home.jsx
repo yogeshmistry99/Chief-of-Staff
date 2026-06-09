@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { getAllTasks, closeTask } from '../lib/todoist'
 import { prioritise, scoreTask } from '../lib/priority'
+import { sendMessage, SYSTEM_PROMPTS } from '../lib/claude'
 
 const INPUT_MODES = [
   { id: 'task',     label: 'Quick task',  placeholder: 'Add a task — e.g. "Call dentist P1 Health"' },
@@ -81,18 +82,22 @@ export default function Home() {
 
   function removeTask(id) { setTasks((prev) => prev.filter((t) => t.id !== id)) }
 
-  function handleSend() {
+  async function handleSend() {
     const text = input.trim()
     if (!text) return
-    setMessages((prev) => [...prev, { role: 'user', content: text, mode }])
+    const userMsg = { role: 'user', content: text, mode }
+    setMessages((prev) => [...prev, userMsg])
     setInput('')
-    // Claude API wired in next step
-    setTimeout(() => {
-      setMessages((prev) => [...prev, {
-        role: 'assistant',
-        content: 'Claude API not connected yet — add VITE_ANTHROPIC_API_KEY in Settings to enable CoS responses.',
-      }])
-    }, 400)
+    setMessages((prev) => [...prev, { role: 'assistant', content: '…', pending: true }])
+    try {
+      const history = [...messages, userMsg]
+        .filter((m) => !m.pending)
+        .map(({ role, content }) => ({ role, content }))
+      const reply = await sendMessage(history, SYSTEM_PROMPTS.cos)
+      setMessages((prev) => [...prev.slice(0, -1), { role: 'assistant', content: reply }])
+    } catch (err) {
+      setMessages((prev) => [...prev.slice(0, -1), { role: 'assistant', content: `Error: ${err.message}` }])
+    }
   }
 
   const currentMode = INPUT_MODES.find((m) => m.id === mode)

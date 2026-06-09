@@ -1,8 +1,8 @@
 import { useState, useRef, useEffect } from 'react'
-import { useParams, useNavigate, Link } from 'react-router-dom'
-import { getProjectTasks, closeTask, PROJECTS, priorityLabel } from '../lib/todoist'
-import { scoreTask } from '../lib/priority'
-import { BUCKET_WEIGHTS } from '../lib/priority'
+import { useParams, useNavigate } from 'react-router-dom'
+import { getProjectTasks, PROJECTS } from '../lib/todoist'
+import { scoreTask, BUCKET_WEIGHTS } from '../lib/priority'
+import { sendMessage, SYSTEM_PROMPTS } from '../lib/claude'
 
 const BUCKET_DESCRIPTIONS = {
   Finance:  'Investments, tax, budgets, and financial decisions.',
@@ -22,17 +22,22 @@ function HeadTab({ bucket }) {
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
 
-  function handleSend() {
+  async function handleSend() {
     const text = input.trim()
     if (!text) return
-    setMessages((prev) => [...prev, { role: 'user', content: text }])
+    const userMsg = { role: 'user', content: text }
+    setMessages((prev) => [...prev, userMsg])
     setInput('')
-    setTimeout(() => {
-      setMessages((prev) => [...prev, {
-        role: 'assistant',
-        content: `${bucket} Head is not yet connected. Add VITE_ANTHROPIC_API_KEY in Settings to enable AI responses.`,
-      }])
-    }, 400)
+    setMessages((prev) => [...prev, { role: 'assistant', content: '…', pending: true }])
+    try {
+      const history = [...messages, userMsg]
+        .filter((m) => !m.pending)
+        .map(({ role, content }) => ({ role, content }))
+      const reply = await sendMessage(history, SYSTEM_PROMPTS.head(bucket))
+      setMessages((prev) => [...prev.slice(0, -1), { role: 'assistant', content: reply }])
+    } catch (err) {
+      setMessages((prev) => [...prev.slice(0, -1), { role: 'assistant', content: `Error: ${err.message}` }])
+    }
   }
 
   return (

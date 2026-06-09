@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { sendMessage, SYSTEM_PROMPTS } from '../lib/claude'
 
 export default function DiscussionThread() {
   const { bucket, id } = useParams()
@@ -16,18 +17,22 @@ export default function DiscussionThread() {
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
   useEffect(() => { if (isNew) inputRef.current?.focus() }, [isNew])
 
-  function handleSend() {
+  async function handleSend() {
     const text = input.trim()
-    if (!text) return
-    if (isNew && !title.trim()) return
-    setMessages((prev) => [...prev, { role: 'user', content: text }])
+    if (!text || (isNew && !title.trim())) return
+    const userMsg = { role: 'user', content: text }
+    setMessages((prev) => [...prev, userMsg])
     setInput('')
-    setTimeout(() => {
-      setMessages((prev) => [...prev, {
-        role: 'assistant',
-        content: `${bucket} Head is not yet connected. Add VITE_ANTHROPIC_API_KEY in Settings to enable AI responses.`,
-      }])
-    }, 400)
+    setMessages((prev) => [...prev, { role: 'assistant', content: '…', pending: true }])
+    try {
+      const history = [...messages, userMsg]
+        .filter((m) => !m.pending)
+        .map(({ role, content }) => ({ role, content }))
+      const reply = await sendMessage(history, SYSTEM_PROMPTS.discussion(bucket, title))
+      setMessages((prev) => [...prev.slice(0, -1), { role: 'assistant', content: reply }])
+    } catch (err) {
+      setMessages((prev) => [...prev.slice(0, -1), { role: 'assistant', content: `Error: ${err.message}` }])
+    }
   }
 
   function handleArchive() {
