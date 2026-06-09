@@ -60,29 +60,120 @@ function PriorityDot({ priority }) {
 }
 
 function TaskRow({ task, onComplete }) {
-  const [completing, setCompleting] = useState(false)
+  const [pendingComplete, setPendingComplete] = useState(false)
+  const [expanded, setExpanded] = useState(false)
+  const timerRef = useRef(null)
   const { bucket, isOverdue } = scoreTask(task)
 
-  async function handleComplete() {
+  function handleComplete(e) {
+    e.stopPropagation()
     haptic.success()
-    setCompleting(true)
-    try { await closeTask(task.id); onComplete(task.id) }
-    catch { haptic.error(); setCompleting(false) }
+    setPendingComplete(true)
+    timerRef.current = setTimeout(async () => {
+      try { await closeTask(task.id); onComplete(task.id) }
+      catch { haptic.error(); setPendingComplete(false) }
+    }, 5000)
+  }
+
+  function handleUndo(e) {
+    e.stopPropagation()
+    haptic.light()
+    clearTimeout(timerRef.current)
+    setPendingComplete(false)
   }
 
   return (
-    <div className={`flex items-start gap-3 py-3 border-b border-[#F3EDF7] last:border-0 transition-opacity ${completing ? 'opacity-20' : ''}`}>
-      <button
-        onClick={handleComplete}
-        disabled={completing}
-        className="w-5 h-5 rounded-full border-2 border-[#CAC4D0] hover:border-[#6750A4] hover:bg-[#EADDFF] flex-shrink-0 mt-0.5 transition-colors"
-      />
-      <div className="flex-1 min-w-0">
-        <p className={`text-sm leading-snug ${isOverdue ? 'text-red-900' : 'text-[#1C1B1F]'}`}>{task.content}</p>
-        <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-          <PriorityDot priority={task.priority} />
-          <PriorityBadge task={task} />
-          {bucket && <span className="text-xs text-[#79747E]">{bucket}</span>}
+    <div className={`border-b border-[#F3EDF7] last:border-0 transition-opacity ${pendingComplete ? 'opacity-40' : ''}`}>
+      <div
+        className="flex items-center gap-3 py-3 cursor-pointer select-none"
+        onClick={() => !pendingComplete && setExpanded((x) => !x)}
+      >
+        <button
+          onClick={handleComplete}
+          disabled={pendingComplete}
+          className={`w-5 h-5 rounded-full border-2 flex-shrink-0 transition-colors ${
+            pendingComplete ? 'border-[#6750A4] bg-[#6750A4]' : 'border-[#CAC4D0] hover:border-[#6750A4] hover:bg-[#EADDFF]'
+          }`}
+        >
+          {pendingComplete && (
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white" className="w-full h-full p-0.5">
+              <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+            </svg>
+          )}
+        </button>
+
+        <div className="flex-1 min-w-0">
+          <p className={`text-sm leading-snug ${pendingComplete ? 'line-through text-[#79747E]' : isOverdue ? 'text-red-900' : 'text-[#1C1B1F]'}`}>
+            {task.content}
+          </p>
+          <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+            <PriorityDot priority={task.priority} />
+            <PriorityBadge task={task} />
+            {bucket && <span className="text-xs text-[#79747E]">{bucket}</span>}
+          </div>
+        </div>
+
+        {pendingComplete ? (
+          <button
+            onClick={handleUndo}
+            className="text-xs font-semibold px-2.5 py-1 rounded-full bg-[#6750A4] text-white flex-shrink-0"
+          >
+            Undo
+          </button>
+        ) : (
+          <svg xmlns="http://www.w3.org/2000/svg" height="16" viewBox="0 -960 960 960" width="16" fill="#CAC4D0"
+            className={`flex-shrink-0 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}>
+            <path d="M480-345 240-585l56-56 184 184 184-184 56 56-240 240Z"/>
+          </svg>
+        )}
+      </div>
+
+      {/* Undo countdown bar */}
+      {pendingComplete && (
+        <div className="h-0.5 bg-[#EADDFF] mx-0 -mt-1 mb-1 rounded-full overflow-hidden">
+          <div
+            className="h-full bg-[#6750A4] rounded-full"
+            style={{ animation: 'shrink-bar 5s linear forwards' }}
+          />
+        </div>
+      )}
+
+      {/* Expanded details */}
+      <div style={{
+        maxHeight: expanded ? '160px' : '0',
+        overflow: 'hidden',
+        transition: 'max-height 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+      }}>
+        <div className="pb-3 pl-8 space-y-1.5">
+          {task.description && (
+            <p className="text-xs text-[#49454F] leading-relaxed">{task.description}</p>
+          )}
+          <div className="flex flex-wrap gap-x-3 gap-y-1">
+            {task.due?.date && (
+              <span className="text-xs text-[#79747E]">
+                Due {new Date(task.due.date + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}
+              </span>
+            )}
+            {task.due?.datetime && (
+              <span className="text-xs text-[#79747E]">
+                at {new Date(task.due.datetime).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+              </span>
+            )}
+            {task.labels?.length > 0 && (
+              <span className="text-xs text-[#79747E]">{task.labels.join(', ')}</span>
+            )}
+          </div>
+          {task.url && (
+            <a
+              href={task.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="text-xs text-[#6750A4] font-medium"
+            >
+              Open in Todoist ↗
+            </a>
+          )}
         </div>
       </div>
     </div>
