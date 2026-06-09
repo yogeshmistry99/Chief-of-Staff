@@ -3,13 +3,6 @@ const path = require('path');
 const app = express();
 
 app.use(express.json());
-
-// Disable caching on all responses
-app.use((req, res, next) => {
-  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
-  next();
-});
-
 app.use(express.static('public'));
 
 app.post('/api/todoist', async (req, res) => {
@@ -29,7 +22,8 @@ app.post('/api/todoist', async (req, res) => {
   }
 });
 
-app.post('/api/claude', async (req, res) => {
+app.post('/api/ai', async (req, res) => {
+  console.log('AI request received, key present:', !!process.env.ANTHROPIC_API_KEY);
   try {
     const r = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -40,9 +34,11 @@ app.post('/api/claude', async (req, res) => {
       },
       body: JSON.stringify(req.body)
     });
+    console.log('Anthropic status:', r.status);
     const text = await r.text();
     res.status(r.status).send(text);
   } catch(e) {
+    console.log('AI error:', e.message);
     res.status(500).json({ error: e.message });
   }
 });
