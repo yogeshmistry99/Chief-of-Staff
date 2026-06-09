@@ -16,6 +16,16 @@ const BUCKET_DESCRIPTIONS = {
   Systems:  'Tools, automations, life OS, and productivity systems.',
 }
 
+const BUCKET_META = {
+  Finance:  { emoji: '💰', bg: 'bg-[#C8F5E1]', text: 'text-[#002115]' },
+  Health:   { emoji: '🏃', bg: 'bg-[#FFD8E4]', text: 'text-[#31111D]' },
+  Home:     { emoji: '🏠', bg: 'bg-[#FFF0C8]', text: 'text-[#261900]' },
+  Work:     { emoji: '💼', bg: 'bg-[#D3E4FF]', text: 'text-[#001D36]' },
+  Family:   { emoji: '👨‍👩‍👧', bg: 'bg-[#FFE4F3]', text: 'text-[#31001D]' },
+  Personal: { emoji: '✨', bg: 'bg-[#E8F5E9]', text: 'text-[#1B5E20]' },
+  Systems:  { emoji: '⚙️', bg: 'bg-[#EADDFF]', text: 'text-[#21005D]' },
+}
+
 function HeadTab({ bucket, tasks }) {
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
@@ -259,23 +269,24 @@ export default function BucketDetail() {
   const weight = BUCKET_WEIGHTS[bucket] ?? 5
   const open = tasks.filter((t) => !t.is_completed)
   const overdue = open.filter((t) => scoreTask(t).isOverdue).length
+  const meta = BUCKET_META[bucket] ?? { emoji: '📁', bg: 'bg-[#E7E0EC]', text: 'text-[#49454F]' }
 
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="bg-white border-b border-[#CAC4D0] px-4 pt-4 pb-0">
-        <div className="flex items-center gap-2 mb-3">
-          <button onClick={() => navigate('/buckets')} className="text-[#6750A4] p-1 -ml-1">
+      <div className={`${meta.bg} ${meta.text} px-4 pt-4 pb-0`}>
+        <div className="flex items-center gap-3 mb-3">
+          <button onClick={() => navigate('/buckets')} className="opacity-70 p-1 -ml-1">
             <svg xmlns="http://www.w3.org/2000/svg" height="20" viewBox="0 -960 960 960" width="20" fill="currentColor">
               <path d="M560-240 320-480l240-240 56 56-184 184 184 184-56 56Z" />
             </svg>
           </button>
+          <span className="text-2xl">{meta.emoji}</span>
           <div className="flex-1">
-            <h1 className="text-lg font-semibold text-[#1C1B1F]">{bucket}</h1>
-            <p className="text-xs text-[#79747E]">
+            <h1 className="text-lg font-semibold leading-tight">{bucket}</h1>
+            <p className="text-xs opacity-60">
               {loading ? '…' : `${open.length} tasks`}
-              {overdue > 0 && <span className="text-red-600"> · {overdue} overdue</span>}
-              <span className="text-[#CAC4D0]"> · weight {weight}</span>
+              {overdue > 0 && <span className="text-red-600 opacity-100"> · {overdue} overdue</span>}
             </p>
           </div>
         </div>
@@ -283,7 +294,7 @@ export default function BucketDetail() {
         <div className="flex gap-0">
           {[
             { id: 'tasks', label: 'Tasks' },
-            { id: 'head', label: `${bucket} Head` },
+            { id: 'head', label: 'Head' },
             { id: 'discussions', label: 'Discussions' },
           ].map(({ id, label }) => (
             <button
@@ -291,8 +302,8 @@ export default function BucketDetail() {
               onClick={() => setTab(id)}
               className={`flex-1 py-2 text-sm font-medium border-b-2 transition-colors ${
                 tab === id
-                  ? 'border-[#6750A4] text-[#6750A4]'
-                  : 'border-transparent text-[#49454F] hover:text-[#6750A4]'
+                  ? 'border-current opacity-100'
+                  : 'border-transparent opacity-50'
               }`}
             >
               {label}

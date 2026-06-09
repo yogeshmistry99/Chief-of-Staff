@@ -52,21 +52,23 @@ export default function Buckets() {
           <button
             key={name}
             onClick={() => navigate(`/buckets/${name}`)}
-            className={`${color} ${text} rounded-2xl p-4 text-left active:scale-95 transition-transform`}
+            className={`${color} ${text} rounded-2xl p-4 text-left active:scale-95 transition-transform shadow-sm`}
           >
-            <span className="text-2xl mb-2 block">{emoji}</span>
-            <p className="font-semibold text-sm">{name}</p>
-            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-              <p className="text-xs opacity-60">
-                {loading ? '…' : `${count} task${count !== 1 ? 's' : ''}`}
-              </p>
-              {!loading && p1Count > 0 && (
-                <span className="text-xs font-bold opacity-80">{p1Count} P1</span>
-              )}
-              {!loading && overdueCount > 0 && (
-                <span className="text-xs font-bold text-red-600">{overdueCount} late</span>
-              )}
-            </div>
+            <span className="text-3xl mb-3 block">{emoji}</span>
+            <p className="font-semibold text-base">{name}</p>
+            <p className="text-xs opacity-60 mt-0.5">
+              {loading ? '…' : `${count} task${count !== 1 ? 's' : ''}`}
+            </p>
+            {!loading && (p1Count > 0 || overdueCount > 0) && (
+              <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                {p1Count > 0 && (
+                  <span className="text-[10px] font-bold bg-black/10 px-1.5 py-0.5 rounded-full">{p1Count} P1</span>
+                )}
+                {overdueCount > 0 && (
+                  <span className="text-[10px] font-bold bg-red-500/20 text-red-700 px-1.5 py-0.5 rounded-full">{overdueCount} late</span>
+                )}
+              </div>
+            )}
           </button>
         ))}
       </div>
