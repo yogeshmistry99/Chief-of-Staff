@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { getProjectTasks, PROJECTS } from '../lib/todoist'
 import { sendMessage, SYSTEM_PROMPTS } from '../lib/claude'
 
 export default function DiscussionThread() {
@@ -11,6 +12,15 @@ export default function DiscussionThread() {
   const [editingTitle, setEditingTitle] = useState(isNew)
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
+  const [tasks, setTasks] = useState([])
+
+  useEffect(() => {
+    const projectId = PROJECTS[bucket]
+    if (!projectId) return
+    getProjectTasks(projectId)
+      .then((data) => setTasks(data.map((t) => ({ ...t, _projectName: bucket }))))
+      .catch(() => {})
+  }, [bucket])
   const inputRef = useRef(null)
   const endRef = useRef(null)
 
@@ -28,7 +38,7 @@ export default function DiscussionThread() {
       const history = [...messages, userMsg]
         .filter((m) => !m.pending)
         .map(({ role, content }) => ({ role, content }))
-      const reply = await sendMessage(history, SYSTEM_PROMPTS.discussion(bucket, title))
+      const reply = await sendMessage(history, SYSTEM_PROMPTS.discussion(bucket, title, tasks))
       setMessages((prev) => [...prev.slice(0, -1), { role: 'assistant', content: reply }])
     } catch (err) {
       setMessages((prev) => [...prev.slice(0, -1), { role: 'assistant', content: `Error: ${err.message}` }])

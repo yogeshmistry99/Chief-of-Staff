@@ -14,7 +14,7 @@ const BUCKET_DESCRIPTIONS = {
   Systems:  'Tools, automations, life OS, and productivity systems.',
 }
 
-function HeadTab({ bucket }) {
+function HeadTab({ bucket, tasks }) {
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const inputRef = useRef(null)
@@ -33,7 +33,7 @@ function HeadTab({ bucket }) {
       const history = [...messages, userMsg]
         .filter((m) => !m.pending)
         .map(({ role, content }) => ({ role, content }))
-      const reply = await sendMessage(history, SYSTEM_PROMPTS.head(bucket))
+      const reply = await sendMessage(history, SYSTEM_PROMPTS.head(bucket, tasks))
       setMessages((prev) => [...prev.slice(0, -1), { role: 'assistant', content: reply }])
     } catch (err) {
       setMessages((prev) => [...prev.slice(0, -1), { role: 'assistant', content: `Error: ${err.message}` }])
@@ -140,6 +140,7 @@ export default function BucketDetail() {
   useEffect(() => {
     if (!projectId) return
     getProjectTasks(projectId)
+      .then((data) => data.map((t) => ({ ...t, _projectName: bucket })))
       .then(setTasks)
       .catch(() => {})
       .finally(() => setLoading(false))
@@ -197,7 +198,7 @@ export default function BucketDetail() {
 
       {/* Tab content */}
       <div className="flex-1 overflow-hidden">
-        {tab === 'head' ? <HeadTab bucket={bucket} /> : <DiscussionsTab bucket={bucket} />}
+        {tab === 'head' ? <HeadTab bucket={bucket} tasks={tasks} /> : <DiscussionsTab bucket={bucket} tasks={tasks} />}
       </div>
     </div>
   )

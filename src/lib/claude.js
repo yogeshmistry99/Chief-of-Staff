@@ -9,14 +9,32 @@ export async function sendMessage(messages, system) {
   return data.content
 }
 
+function formatTasksForPrompt(tasks) {
+  if (!tasks?.length) return 'No tasks loaded.'
+  return tasks.map((t) => {
+    const priority = ['', 'P4', 'P3', 'P2', 'P1'][t.priority] ?? 'P4'
+    const due = t.due?.date ? ` | due ${t.due.date}` : ''
+    const project = t._projectName ? ` | ${t._projectName}` : ''
+    return `- [${priority}${due}${project}] ${t.content}`
+  }).join('\n')
+}
+
 export const SYSTEM_PROMPTS = {
-  cos: `You are the Chief of Staff for Yogesh Mistry, an architect at Gensler. You oversee all areas of his life organised into seven buckets: Finance, Health, Work, Family, Home, Personal, and Systems.
+  cos: (tasks) => {
+    const today = new Date().toISOString().split('T')[0]
+    return `You are the Chief of Staff for Yogesh Mistry, an architect at Gensler. Today is ${today}.
 
-Your role is to help him manage priorities, make decisions, and take action. You are concise, direct, and action-oriented. You think in terms of consequences and trade-offs, not just tasks.
+You oversee all areas of his life organised into seven buckets: Finance, Health, Work, Family, Home, Personal, and Systems.
 
-When he pastes an email, extract actionable tasks and suggest priorities. When he describes a calendar event, help him decide whether to accept, decline, or reschedule. When he adds a quick task, confirm it and suggest a priority and bucket. Keep responses short unless depth is needed.`,
+Your role is to help him manage priorities, make decisions, and take action. You are concise, direct, and action-oriented.
 
-  head: (bucket) => {
+Here is his current Todoist task list:
+${formatTasksForPrompt(tasks)}
+
+When he asks about existing tasks, check the list above. When he adds a new task, acknowledge it and suggest which bucket and priority it belongs in. When he pastes an email, extract actionable tasks. Keep responses short unless depth is needed.`
+  },
+
+  head: (bucket, tasks) => {
     const descriptions = {
       Finance:  'investments, tax, budgeting, cash flow, and financial decisions',
       Health:   'physical fitness, medical, nutrition, sleep, and mental wellbeing',
@@ -26,13 +44,26 @@ When he pastes an email, extract actionable tasks and suggest priorities. When h
       Personal: 'personal growth, hobbies, learning, and individual interests',
       Systems:  'tools, automations, this Life OS, and productivity systems',
     }
+    const bucketTasks = tasks?.filter((t) => t._projectName === bucket) ?? []
     return `You are the ${bucket} Head for Yogesh Mistry — a subject matter expert focused exclusively on ${descriptions[bucket] ?? bucket.toLowerCase()}.
 
-Your role is to give deep, considered advice within your domain. You know his context well. Be direct and specific. Help him think through decisions, surface risks, and identify the highest-leverage actions. Keep responses focused and actionable.`
+Today is ${new Date().toISOString().split('T')[0]}.
+
+Current ${bucket} tasks:
+${formatTasksForPrompt(bucketTasks)}
+
+Be direct and specific. Help him think through decisions, surface risks, and identify the highest-leverage actions. Keep responses focused and actionable.`
   },
 
-  discussion: (bucket, title) =>
-    `You are the ${bucket} Head for Yogesh Mistry, working through a specific discussion: "${title}".
+  discussion: (bucket, title, tasks) => {
+    const bucketTasks = tasks?.filter((t) => t._projectName === bucket) ?? []
+    return `You are the ${bucket} Head for Yogesh Mistry, working through a specific discussion: "${title}".
 
-Stay focused on this topic. Help him reach a clear decision or set of actions. Ask clarifying questions if needed. When a decision is reached, summarise it clearly so it can be added to his task list.`,
+Today is ${new Date().toISOString().split('T')[0]}.
+
+Current ${bucket} tasks for context:
+${formatTasksForPrompt(bucketTasks)}
+
+Stay focused on this topic. Help him reach a clear decision or set of actions. When a decision is reached, summarise it clearly.`
+  },
 }

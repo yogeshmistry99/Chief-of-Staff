@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { getAllTasks, closeTask } from '../lib/todoist'
+import { getAllTasks, closeTask, PROJECTS } from '../lib/todoist'
 import { prioritise, scoreTask } from '../lib/priority'
 import { sendMessage, SYSTEM_PROMPTS } from '../lib/claude'
+
+const PROJECT_NAMES = Object.fromEntries(Object.entries(PROJECTS).map(([name, id]) => [id, name]))
 
 const INPUT_MODES = [
   { id: 'task',     label: 'Quick task',  placeholder: 'Add a task — e.g. "Call dentist P1 Health"' },
@@ -72,6 +74,7 @@ export default function Home() {
     if (showRefreshing) setRefreshing(true)
     else setLoading(true)
     getAllTasks()
+      .then((data) => data.map((t) => ({ ...t, _projectName: PROJECT_NAMES[t.project_id] })))
       .then(setTasks)
       .catch((e) => setError(e.message))
       .finally(() => { setLoading(false); setRefreshing(false) })
@@ -93,7 +96,7 @@ export default function Home() {
       const history = [...messages, userMsg]
         .filter((m) => !m.pending)
         .map(({ role, content }) => ({ role, content }))
-      const reply = await sendMessage(history, SYSTEM_PROMPTS.cos)
+      const reply = await sendMessage(history, SYSTEM_PROMPTS.cos(tasks))
       setMessages((prev) => [...prev.slice(0, -1), { role: 'assistant', content: reply }])
     } catch (err) {
       setMessages((prev) => [...prev.slice(0, -1), { role: 'assistant', content: `Error: ${err.message}` }])
