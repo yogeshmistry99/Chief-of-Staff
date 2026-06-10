@@ -21,9 +21,12 @@ async function get(path, params = {}) {
   return Array.isArray(data) ? data : (data.results ?? data)
 }
 
-// All tasks across all 7 projects
+// All tasks across all 7 projects — fetch per-project to avoid pagination gaps
 export async function getAllTasks() {
-  return get('tasks')
+  const results = await Promise.all(
+    Object.values(PROJECTS).map((id) => getProjectTasks(id))
+  )
+  return results.flat()
 }
 
 // Tasks for a single project
@@ -52,11 +55,11 @@ export function priorityLabel(p) {
 export function isToday(task) {
   if (!task.due) return false
   const _d = new Date(); const today = `${_d.getFullYear()}-${String(_d.getMonth()+1).padStart(2,'0')}-${String(_d.getDate()).padStart(2,'0')}`
-  return task.due.date === today
+  return task.due.date.slice(0, 10) === today
 }
 
 export function isOverdue(task) {
   if (!task.due) return false
   const _d = new Date(); const today = `${_d.getFullYear()}-${String(_d.getMonth()+1).padStart(2,'0')}-${String(_d.getDate()).padStart(2,'0')}`
-  return task.due.date < today
+  return task.due.date.slice(0, 10) < today
 }

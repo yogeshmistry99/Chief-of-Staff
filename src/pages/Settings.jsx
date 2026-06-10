@@ -2,43 +2,12 @@ import { useState, useEffect } from 'react'
 import { getMonthlyUsage } from '../lib/claude'
 
 const INTEGRATIONS = [
-  {
-    name: 'Claude (Anthropic)',
-    description: 'Powers the AI chat assistant.',
-    icon: '🤖',
-    envKey: 'VITE_ANTHROPIC_API_KEY',
-    status: 'Not connected',
-    color: 'bg-[#EADDFF]',
-  },
-  {
-    name: 'Todoist',
-    description: 'Syncs your tasks and buckets.',
-    icon: '✅',
-    envKey: 'VITE_TODOIST_API_KEY',
-    status: 'Not connected',
-    color: 'bg-[#FFD8E4]',
-  },
-  {
-    name: 'Google Calendar',
-    description: 'Shows upcoming events on the Home screen.',
-    icon: '📅',
-    envKey: 'VITE_GOOGLE_CLIENT_ID',
-    status: 'Not connected',
-    color: 'bg-[#D3E4FF]',
-  },
-  {
-    name: 'Supabase',
-    description: 'Persists your preferences and chat history.',
-    icon: '🗄️',
-    envKey: 'VITE_SUPABASE_URL',
-    status: 'Not connected',
-    color: 'bg-[#C8F5E1]',
-  },
+  { name: 'Claude (Anthropic)', description: 'Powers the AI chat assistant.',           icon: '🤖', statusKey: 'anthropic',      color: 'bg-[#EADDFF]' },
+  { name: 'Todoist',            description: 'Syncs your tasks and buckets.',            icon: '✅', statusKey: 'todoist',        color: 'bg-[#FFD8E4]' },
+  { name: 'Google Calendar',    description: 'Shows upcoming events on the Home screen.', icon: '📅', statusKey: 'googleCalendar', color: 'bg-[#D3E4FF]' },
 ]
 
-function ConnectionRow({ name, description, icon, status, color }) {
-  const connected = import.meta.env[`VITE_${name.toUpperCase().replace(/[^A-Z]/g, '_')}`]
-
+function ConnectionRow({ name, description, icon, color, connected }) {
   return (
     <div className="flex items-center gap-4 py-4 border-b border-[#F3EDF7] last:border-0">
       <div className={`w-10 h-10 rounded-xl ${color} flex items-center justify-center text-xl flex-shrink-0`}>
@@ -48,14 +17,11 @@ function ConnectionRow({ name, description, icon, status, color }) {
         <p className="text-sm font-semibold text-[#1C1B1F]">{name}</p>
         <p className="text-xs text-[#49454F] truncate">{description}</p>
       </div>
-      <span
-        className={`text-xs font-medium px-2 py-1 rounded-full flex-shrink-0 ${
-          connected
-            ? 'bg-[#C8F5E1] text-[#002115]'
-            : 'bg-[#F3EDF7] text-[#49454F]'
-        }`}
-      >
-        {connected ? 'Connected' : status}
+      <span className={`text-xs font-medium px-2 py-1 rounded-full flex-shrink-0 ${
+        connected === null ? 'bg-[#F3EDF7] text-[#49454F]' :
+        connected ? 'bg-[#C8F5E1] text-[#002115]' : 'bg-[#F3EDF7] text-[#49454F]'
+      }`}>
+        {connected === null ? '…' : connected ? 'Connected' : 'Not connected'}
       </span>
     </div>
   )
@@ -69,7 +35,11 @@ function calcCost({ input_tokens = 0, output_tokens = 0 }) {
 export default function Settings() {
   const [usage, setUsage] = useState({})
   const [resetDone, setResetDone] = useState(false)
+  const [status, setStatus] = useState({})
   useEffect(() => { setUsage(getMonthlyUsage()) }, [])
+  useEffect(() => {
+    fetch('/api/status').then((r) => r.json()).then(setStatus).catch(() => {})
+  }, [])
 
   function handleReset() {
     localStorage.clear()
@@ -112,7 +82,7 @@ export default function Settings() {
           Integrations
         </h2>
         {INTEGRATIONS.map((item) => (
-          <ConnectionRow key={item.name} {...item} />
+          <ConnectionRow key={item.name} {...item} connected={item.statusKey in status ? status[item.statusKey] : null} />
         ))}
       </div>
 

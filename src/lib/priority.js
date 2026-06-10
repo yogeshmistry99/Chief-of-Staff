@@ -29,7 +29,7 @@ export function scoreTask(task) {
 
   const bucket = PROJECT_TO_BUCKET[task.project_id]
   const bucketWeight = BUCKET_WEIGHTS[bucket] ?? 5
-  const days = task.due ? daysDiff(task.due.date) : null
+  const days = task.due ? daysDiff(task.due.date.slice(0, 10)) : null
   const isOverdue = days !== null && days < 0
   const isToday = days === 0
   const isSoon = days !== null && days > 0 && days <= 3

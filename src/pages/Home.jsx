@@ -604,7 +604,7 @@ export default function Home() {
 
   const { active, someday } = prioritise(tasks)
   const todayStr = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` })()
-  const todayCount   = tasks.filter((t) => t.due?.date === todayStr).length
+  const todayCount   = tasks.filter((t) => t.due?.date?.slice(0, 10) === todayStr).length
   const p1Count      = tasks.filter((t) => t.priority === 4).length
   const overdueCount = active.filter((t) => scoreTask(t).isOverdue).length
   const focusList    = active.slice(0, 8)
