@@ -61,7 +61,7 @@ async function executeTool(name, input) {
     if (input.due_string)   body.due_string = input.due_string
     if (input.project_name) body.project_id = PROJECTS[input.project_name]
     if (input.parent_id)    body.parent_id = input.parent_id
-    const r = await fetch('https://api.todoist.com/rest/v2/tasks', {
+    const r = await fetch('https://api.todoist.com/api/v1/tasks', {
       method: 'POST',
       headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -72,7 +72,7 @@ async function executeTool(name, input) {
   }
 
   if (name === 'complete_task') {
-    const r = await fetch(`https://api.todoist.com/rest/v2/tasks/${input.task_id}/close`, {
+    const r = await fetch(`https://api.todoist.com/api/v1/tasks/${input.task_id}/close`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${key}` },
     })
@@ -85,7 +85,7 @@ async function executeTool(name, input) {
     if (input.content)    body.content = input.content
     if (input.priority)   body.priority = input.priority
     if (input.due_string) body.due_string = input.due_string
-    const r = await fetch(`https://api.todoist.com/rest/v2/tasks/${input.task_id}`, {
+    const r = await fetch(`https://api.todoist.com/api/v1/tasks/${input.task_id}`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
