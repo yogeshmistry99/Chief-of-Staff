@@ -213,9 +213,11 @@ function PriorityDot({ priority }) {
   return null
 }
 
-function TaskRow({ task, onComplete }) {
+function TaskRow({ task, onComplete, index = 0 }) {
   const [localTask, setLocalTask] = useState(task)
   const [pendingComplete, setPendingComplete] = useState(false)
+  const [removing, setRemoving] = useState(false)
+  const [completingAnim, setCompletingAnim] = useState(false)
   const [expanded, setExpanded] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
   const [editContent, setEditContent] = useState(task.content)
@@ -228,14 +230,22 @@ function TaskRow({ task, onComplete }) {
   const isHoldRef = useRef(false)
   const { bucket, isOverdue } = scoreTask(localTask)
 
+  // When removing state triggers, wait for collapse animation then call API + remove
+  useEffect(() => {
+    if (!removing) return
+    const t = setTimeout(async () => {
+      try { await closeTask(localTask.id); onComplete(localTask.id) }
+      catch { haptic.error(); setRemoving(false); setPendingComplete(false) }
+    }, 380)
+    return () => clearTimeout(t)
+  }, [removing])
+
   function handleComplete(e) {
     e.stopPropagation()
     haptic.success()
+    setCompletingAnim(true)
     setPendingComplete(true)
-    timerRef.current = setTimeout(async () => {
-      try { await closeTask(localTask.id); onComplete(localTask.id) }
-      catch { haptic.error(); setPendingComplete(false) }
-    }, 5000)
+    timerRef.current = setTimeout(() => setRemoving(true), 5000)
   }
 
   function handleUndo(e) {
@@ -243,6 +253,7 @@ function TaskRow({ task, onComplete }) {
     haptic.light()
     clearTimeout(timerRef.current)
     setPendingComplete(false)
+    setRemoving(false)
   }
 
   function handleRowPointerDown() {
@@ -291,7 +302,17 @@ function TaskRow({ task, onComplete }) {
 
   return (
     <>
-    <div className={`border-b border-[#F3EDF7] last:border-0 transition-opacity ${pendingComplete ? 'opacity-40' : ''}`}>
+    {/* Grid wrapper: collapses height smoothly when removing */}
+    <div style={{
+      display: 'grid',
+      gridTemplateRows: removing ? '0fr' : '1fr',
+      opacity: removing ? 0 : 1,
+      transition: 'grid-template-rows 0.38s cubic-bezier(0.4,0,0.2,1), opacity 0.22s ease',
+      animation: `fade-up 0.36s ease ${0.18 + index * 0.065}s both`,
+    }}>
+    <div style={{ overflow: 'hidden' }}>
+    <div className={`border-b border-[#F3EDF7] last:border-0`}
+      style={{ opacity: pendingComplete ? 0.45 : 1, transition: 'opacity 0.15s ease' }}>
       <div
         className="flex items-center gap-3 py-3 cursor-pointer select-none"
         onPointerDown={handleRowPointerDown}
@@ -305,6 +326,8 @@ function TaskRow({ task, onComplete }) {
           className={`w-5 h-5 rounded-full border-2 flex-shrink-0 transition-colors ${
             pendingComplete ? 'border-[#6750A4] bg-[#6750A4]' : 'border-[#CAC4D0] hover:border-[#6750A4] hover:bg-[#EADDFF]'
           }`}
+          style={completingAnim ? { animation: 'complete-pop 0.42s cubic-bezier(0.34,1.56,0.64,1) both' } : undefined}
+          onAnimationEnd={() => setCompletingAnim(false)}
         >
           {pendingComplete && (
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white" className="w-full h-full p-0.5">
@@ -388,6 +411,8 @@ function TaskRow({ task, onComplete }) {
           <p className="text-[10px] text-[#CAC4D0]">Hold to edit</p>
         </div>
       </div>
+    </div>
+    </div>
     </div>
 
     <EditSheet open={editOpen} onClose={() => setEditOpen(false)} title="Edit task" onSave={handleSave} saving={saving}>
@@ -506,7 +531,7 @@ export default function Home() {
 
         {/* Header */}
         <div className="flex items-start justify-between mb-4">
-          <div>
+          <div style={{ animation: 'logo-in 0.55s cubic-bezier(0.34,1.56,0.64,1) both' }}>
             <p className="text-xs text-[#49454F]">{today}</p>
             <h1 className="text-xl font-semibold text-[#1C1B1F]">{greeting}, Yogesh</h1>
           </div>
@@ -529,8 +554,9 @@ export default function Home() {
             { label: 'Events',   value: eventsLoading ? '…' : todayEvents.length, color: 'bg-[#D3E4FF] text-[#001D36]' },
             { label: 'P1',       value: loading ? '…' : p1Count,       color: 'bg-[#FFD8E4] text-[#31111D]' },
             { label: 'Overdue',  value: loading ? '…' : overdueCount,  color: overdueCount > 0 ? 'bg-red-100 text-red-900' : 'bg-[#C8F5E1] text-[#002115]' },
-          ].map(({ label, value, color }) => (
-            <div key={label} className={`rounded-xl p-3 ${color}`}>
+          ].map(({ label, value, color }, i) => (
+            <div key={label} className={`rounded-xl p-3 ${color}`}
+              style={{ animation: `fade-up 0.4s ease ${0.08 + i * 0.07}s both` }}>
               <p className="text-xs opacity-60 mb-0.5">{label}</p>
               <p className="text-xl font-bold leading-none">{value}</p>
             </div>
@@ -590,8 +616,8 @@ export default function Home() {
             <p className="text-sm text-[#79747E]">Nothing active.</p>
           )}
 
-          {!loading && !error && focusList.map((task) => (
-            <TaskRow key={task.id} task={task} onComplete={removeTask} />
+          {!loading && !error && focusList.map((task, i) => (
+            <TaskRow key={task.id} task={task} onComplete={removeTask} index={i} />
           ))}
         </div>
 
