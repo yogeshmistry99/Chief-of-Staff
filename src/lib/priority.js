@@ -18,8 +18,8 @@ const PROJECT_TO_BUCKET = Object.fromEntries(
 function daysDiff(dateStr) {
   const today = new Date()
   today.setHours(0, 0, 0, 0)
-  const due = new Date(dateStr)
-  due.setHours(0, 0, 0, 0)
+  // Append T00:00:00 so the date parses as local midnight, not UTC midnight
+  const due = new Date(dateStr + 'T00:00:00')
   return Math.round((due - today) / (1000 * 60 * 60 * 24))
 }
 

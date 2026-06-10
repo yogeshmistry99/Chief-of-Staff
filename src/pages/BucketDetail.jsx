@@ -427,11 +427,12 @@ function TaskItem({ task: initialTask, onComplete, index = 0 }) {
     try {
       const body = { content: editContent, priority: editPriority, description: editDesc }
       if (editDue) body.due_date = editDue
-      await fetch(`/api/todoist?path=tasks/${localTask.id}`, {
+      const res = await fetch(`/api/todoist?path=tasks/${localTask.id}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       })
+      if (!res.ok) throw new Error(`Todoist error: ${res.status}`)
       haptic.success()
       setLocalTask((prev) => ({
         ...prev,
@@ -608,6 +609,7 @@ export default function BucketDetail() {
   const [tasks, setTasks] = useState([])
   const [sections, setSections] = useState([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(null)
   // Head chat — persisted to localStorage so history survives navigation and sessions
   const storageKey = `cos_head_${bucket}`
   const [headMessages, setHeadMessages] = useState(() => {
@@ -631,7 +633,7 @@ export default function BucketDetail() {
         setTasks(taskData.map((t) => ({ ...t, _projectName: bucket })))
         setSections(Array.isArray(sectionData) ? sectionData : [])
       })
-      .catch(() => {})
+      .catch((e) => setLoadError(e.message ?? 'Could not load tasks'))
       .finally(() => setLoading(false))
   }, [projectId])
 
@@ -689,7 +691,9 @@ export default function BucketDetail() {
       {/* Tab content — all three stay mounted; only active one is visible */}
       <div className="flex-1 overflow-hidden relative">
         <div className={`absolute inset-0 ${tab === 'tasks' ? '' : 'invisible pointer-events-none'}`}>
-          <TasksTab tasks={tasks} sections={sections} loading={loading} onComplete={removeTask} />
+          {loadError
+            ? <p className="px-4 pt-6 text-sm text-red-500">Could not load tasks — {loadError}</p>
+            : <TasksTab tasks={tasks} sections={sections} loading={loading} onComplete={removeTask} />}
         </div>
         <div className={`absolute inset-0 ${tab === 'head' ? '' : 'invisible pointer-events-none'}`}>
           <HeadTab bucket={bucket} tasks={tasks} messages={headMessages} setMessages={setHeadMessages} />

@@ -16,11 +16,11 @@ const BUCKET_META = {
 const BUCKETS = Object.keys(PROJECTS)
 
 // open/onClose controlled by parent
-export default function QuickAdd({ open, onClose, onAdd }) {
+export default function QuickAdd({ open, onClose, onAdd, initialBucket = 'Work' }) {
   const [mounted, setMounted] = useState(false)
   const [entered, setEntered] = useState(false)
   const [content, setContent] = useState('')
-  const [bucket, setBucket] = useState('Work')
+  const [bucket, setBucket] = useState(initialBucket)
   const [priority, setPriority] = useState(1)
   const [attachment, setAttachment] = useState(null) // { name, dataUrl, type }
   const [saving, setSaving] = useState(false)
@@ -35,6 +35,7 @@ export default function QuickAdd({ open, onClose, onAdd }) {
       setContent('')
       setAttachment(null)
       setSaved(false)
+      setBucket(initialBucket)
       setMounted(true)
       requestAnimationFrame(() => requestAnimationFrame(() => {
         setEntered(true)

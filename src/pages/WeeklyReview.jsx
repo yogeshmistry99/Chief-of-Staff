@@ -193,7 +193,7 @@ function BucketStep({ bucket, allTasks, onNext, reviewTextsRef, tasksAdded, setT
       </div>
 
       <QuickAdd open={quickAddOpen} onClose={() => setQuickAddOpen(false)}
-        onAdd={() => setTasksAdded((n) => n + 1)} />
+        onAdd={() => setTasksAdded((n) => n + 1)} initialBucket={bucket} />
     </div>
   )
 }
@@ -333,7 +333,7 @@ function StepSummary({ intention, bucketReviews, allTasks, onNext, setTasksAdded
       </div>
 
       <QuickAdd open={quickAddOpen} onClose={() => setQuickAddOpen(false)}
-        onAdd={() => setTasksAdded((n) => n + 1)} />
+        onAdd={() => setTasksAdded((n) => n + 1)} initialBucket={bucket} />
     </div>
   )
 }

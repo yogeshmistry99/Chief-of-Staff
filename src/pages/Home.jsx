@@ -329,11 +329,12 @@ function TaskRow({ task, onComplete, index = 0 }) {
     try {
       const body = { content: editContent, priority: editPriority, description: editDesc }
       if (editDue) body.due_date = editDue
-      await fetch(`/api/todoist?path=tasks/${localTask.id}`, {
+      const res = await fetch(`/api/todoist?path=tasks/${localTask.id}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       })
+      if (!res.ok) throw new Error(`Todoist error: ${res.status}`)
       haptic.success()
       setLocalTask((prev) => ({
         ...prev,

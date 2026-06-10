@@ -45,7 +45,11 @@ export async function sendMessageStream(messages, system, onChunk) {
       if (raw === '[DONE]') return full
       try {
         const evt = JSON.parse(raw)
-        if (evt.error) throw new Error(evt.error)
+        if (evt.error) {
+          let msg = evt.error
+          try { const parsed = JSON.parse(evt.error); msg = parsed?.error?.message ?? msg } catch {}
+          throw new Error(msg)
+        }
         if (evt.text) { full += evt.text; onChunk(evt.text) }
         if (evt.usage) accumulateUsage(evt.usage)
       } catch (e) {
