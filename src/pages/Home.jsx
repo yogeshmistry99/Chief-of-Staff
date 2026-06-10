@@ -9,8 +9,10 @@ import QuickAdd from '../components/QuickAdd'
 
 async function fetchUpcomingEvents() {
   const now = new Date()
-  const end = new Date(now); end.setDate(end.getDate() + 7)
-  const url = `/api/calendar?start=${encodeURIComponent(now.toISOString())}&end=${encodeURIComponent(end.toISOString())}`
+  // Start from midnight local time so already-started today events are included
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0)
+  const end = new Date(startOfToday); end.setDate(end.getDate() + 7)
+  const url = `/api/calendar?start=${encodeURIComponent(startOfToday.toISOString())}&end=${encodeURIComponent(end.toISOString())}`
   const res = await fetch(url)
   const data = await res.json()
   if (!res.ok) throw new Error(data.error ?? 'Calendar error')
@@ -610,8 +612,9 @@ export default function Home() {
   const overdueCount = active.filter((t) => scoreTask(t).isOverdue).length
   const focusList    = active.slice(0, 8)
   const todayEvents  = events.filter((e) => {
-    const d = e.start?.date ?? e.start?.dateTime?.split('T')[0]
-    return d === todayStr
+    if (e.start?.date) return e.start.date === todayStr
+    if (e.start?.dateTime) return new Date(e.start.dateTime).toLocaleDateString('en-CA') === todayStr
+    return false
   })
 
   return (
