@@ -1,3 +1,23 @@
+function usageKey() {
+  const d = new Date()
+  return `usage_${d.getFullYear()}_${String(d.getMonth() + 1).padStart(2, '0')}`
+}
+
+function accumulateUsage({ input_tokens = 0, output_tokens = 0 }) {
+  const key = usageKey()
+  let cur = { input_tokens: 0, output_tokens: 0, calls: 0 }
+  try { cur = JSON.parse(localStorage.getItem(key) ?? '{}') } catch {}
+  cur.input_tokens  = (cur.input_tokens  ?? 0) + input_tokens
+  cur.output_tokens = (cur.output_tokens ?? 0) + output_tokens
+  cur.calls         = (cur.calls         ?? 0) + 1
+  localStorage.setItem(key, JSON.stringify(cur))
+}
+
+export function getMonthlyUsage() {
+  const key = usageKey()
+  try { return JSON.parse(localStorage.getItem(key) ?? '{}') } catch { return {} }
+}
+
 // Streams a response chunk-by-chunk, calling onChunk(text) for each piece.
 // Returns the full text when done.
 export async function sendMessageStream(messages, system, onChunk) {
@@ -27,6 +47,7 @@ export async function sendMessageStream(messages, system, onChunk) {
         const evt = JSON.parse(raw)
         if (evt.error) throw new Error(evt.error)
         if (evt.text) { full += evt.text; onChunk(evt.text) }
+        if (evt.usage) accumulateUsage(evt.usage)
       } catch (e) {
         if (e.message !== 'Unexpected end of JSON input') throw e
       }

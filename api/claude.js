@@ -147,6 +147,8 @@ export default async function handler(req, res) {
         // Index → accumulated block (text or tool_use)
         const blocks = {}
         let stopReason = null
+        let roundInputTokens = 0
+        let roundOutputTokens = 0
 
         while (true) {
           const { done, value } = await reader.read()
@@ -180,8 +182,13 @@ export default async function handler(req, res) {
                 }
               }
 
+              if (evt.type === 'message_start') {
+                roundInputTokens += evt.message?.usage?.input_tokens ?? 0
+              }
+
               if (evt.type === 'message_delta') {
                 stopReason = evt.delta?.stop_reason
+                roundOutputTokens += evt.usage?.output_tokens ?? 0
               }
             } catch {}
           }
@@ -215,6 +222,7 @@ export default async function handler(req, res) {
         break // end_turn or max_tokens — done
       }
 
+      res.write(`data: ${JSON.stringify({ usage: { input_tokens: roundInputTokens, output_tokens: roundOutputTokens } })}\n\n`)
       res.write('data: [DONE]\n\n')
       res.end()
     } catch (err) {

@@ -1,3 +1,6 @@
+import { useState, useEffect } from 'react'
+import { getMonthlyUsage } from '../lib/claude'
+
 const INTEGRATIONS = [
   {
     name: 'Claude (Anthropic)',
@@ -58,13 +61,41 @@ function ConnectionRow({ name, description, icon, status, color }) {
   )
 }
 
+// Haiku 4.5 pricing: $0.80/MTok input, $4.00/MTok output
+function calcCost({ input_tokens = 0, output_tokens = 0 }) {
+  return (input_tokens / 1_000_000) * 0.80 + (output_tokens / 1_000_000) * 4.00
+}
+
 export default function Settings() {
+  const [usage, setUsage] = useState({})
+  useEffect(() => { setUsage(getMonthlyUsage()) }, [])
+
+  const cost = calcCost(usage)
+  const monthLabel = (() => {
+    const d = new Date()
+    return d.toLocaleString('default', { month: 'long', year: 'numeric' })
+  })()
+
   return (
     <div className="px-4 pt-6 pb-4 max-w-lg mx-auto">
       {/* Header */}
       <div className="mb-6">
         <h1 className="text-2xl font-semibold text-[#1C1B1F]">Settings</h1>
         <p className="text-sm text-[#49454F] mt-1">Manage your integrations and preferences.</p>
+      </div>
+
+      {/* Monthly cost card */}
+      <div className="bg-white border border-[#CAC4D0] rounded-2xl px-4 py-3 mb-4">
+        <h2 className="text-xs font-semibold text-[#49454F] uppercase tracking-wide mb-3">AI Usage · {monthLabel}</h2>
+        <div className="flex items-end justify-between mb-2">
+          <span className="text-3xl font-semibold text-[#1C1B1F]">${cost.toFixed(4)}</span>
+          <span className="text-xs text-[#79747E] mb-1">{usage.calls ?? 0} {usage.calls === 1 ? 'conversation' : 'conversations'}</span>
+        </div>
+        <div className="flex gap-4 text-xs text-[#49454F]">
+          <span>{(usage.input_tokens ?? 0).toLocaleString()} input tokens</span>
+          <span>{(usage.output_tokens ?? 0).toLocaleString()} output tokens</span>
+        </div>
+        <p className="text-[10px] text-[#79747E] mt-2">Haiku 4.5 · $0.80/M input · $4.00/M output</p>
       </div>
 
       {/* Integrations card */}
