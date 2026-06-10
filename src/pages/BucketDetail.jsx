@@ -352,6 +352,7 @@ function TaskItem({ task: initialTask, onComplete, index = 0 }) {
   function handleComplete(e) {
     e.stopPropagation()
     haptic.success()
+    haptic.fanfare()
     setCompletingAnim(true)
     setPendingComplete(true)
     timerRef.current = setTimeout(() => setRemoving(true), 5000)
