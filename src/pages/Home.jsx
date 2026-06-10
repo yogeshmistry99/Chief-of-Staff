@@ -524,7 +524,71 @@ function TaskRow({ task, onComplete, index = 0 }) {
   )
 }
 
-export default function Home() {
+const QUOTES = [
+  { text: "The details are not the details. They make the design.", author: "Charles Eames" },
+  { text: "You can't connect the dots looking forward; you can only connect them looking backwards.", author: "Steve Jobs" },
+  { text: "Compound interest is the eighth wonder of the world. He who understands it, earns it.", author: "Albert Einstein" },
+  { text: "Be the change you wish to see in the world.", author: "Gandhi" },
+  { text: "The quality of a father can be seen in the goals, dreams and aspirations he sets not only for himself, but for his family.", author: "Reed Markham" },
+  { text: "An architect's most useful tools are an eraser at the drafting board and a wrecking ball on the site.", author: "Frank Lloyd Wright" },
+  { text: "Small daily improvements over time lead to stunning results.", author: "Robin Sharma" },
+  { text: "The secret of getting ahead is getting started.", author: "Mark Twain" },
+  { text: "Your body is your most priceless possession. Take care of it.", author: "Jack LaLanne" },
+  { text: "A man who dares to waste one hour of time has not discovered the value of life.", author: "Charles Darwin" },
+  { text: "The best time to plant a tree was 20 years ago. The second best time is now.", author: "Chinese Proverb" },
+  { text: "Design is not just what it looks like and feels like. Design is how it works.", author: "Steve Jobs" },
+  { text: "It always seems impossible until it's done.", author: "Nelson Mandela" },
+  { text: "The most important investment you can make is in yourself.", author: "Warren Buffett" },
+  { text: "We do not remember days, we remember moments.", author: "Cesare Pavese" },
+  { text: "Architecture is the learned game, correct and magnificent, of forms assembled in the light.", author: "Le Corbusier" },
+  { text: "What you do today can improve all your tomorrows.", author: "Ralph Marston" },
+  { text: "The groundwork of all happiness is health.", author: "Leigh Hunt" },
+  { text: "Your children need your presence more than your presents.", author: "Jesse Jackson" },
+  { text: "A good system shortens the road to the goal.", author: "Orison Swett Marden" },
+  { text: "Build your own dreams, or someone else will hire you to build theirs.", author: "Farrah Gray" },
+  { text: "The first wealth is health.", author: "Ralph Waldo Emerson" },
+  { text: "You will never always be motivated. You have to learn to be disciplined.", author: "Unknown" },
+  { text: "Success is the sum of small efforts, repeated day in and day out.", author: "Robert Collier" },
+  { text: "The home should be the treasure chest of living.", author: "Le Corbusier" },
+  { text: "Don't count the days, make the days count.", author: "Muhammad Ali" },
+  { text: "Every moment is a fresh beginning.", author: "T.S. Eliot" },
+  { text: "Work hard in silence, let success be your noise.", author: "Frank Ocean" },
+  { text: "You miss 100% of the shots you don't take.", author: "Wayne Gretzky" },
+  { text: "The scariest moment is always just before you start.", author: "Stephen King" },
+  { text: "To design is much more than simply to assemble, to order, or even to edit: it is to add value and meaning.", author: "Paul Rand" },
+  { text: "Nothing will work unless you do.", author: "Maya Angelou" },
+  { text: "The key is not to prioritise what's on your schedule, but to schedule your priorities.", author: "Stephen Covey" },
+  { text: "A strong man stands up for himself. A stronger man stands up for others.", author: "Unknown" },
+  { text: "You are the average of the five people you spend the most time with.", author: "Jim Rohn" },
+  { text: "Don't wish it were easier; wish you were better.", author: "Jim Rohn" },
+  { text: "The goal is not to be perfect by the end. The goal is to be better today.", author: "Simon Sinek" },
+  { text: "Good enough never is.", author: "Debbi Fields" },
+  { text: "Take care of your body. It's the only place you have to live.", author: "Jim Rohn" },
+  { text: "The future belongs to those who believe in the beauty of their dreams.", author: "Eleanor Roosevelt" },
+  { text: "Either you run the day or the day runs you.", author: "Jim Rohn" },
+  { text: "A home is a kingdom of its own in the midst of the world.", author: "Dietrich Bonhoeffer" },
+  { text: "If you want to go fast, go alone. If you want to go far, go together.", author: "African Proverb" },
+  { text: "The secret to getting ahead is getting started.", author: "Agatha Christie" },
+  { text: "Energy and persistence conquer all things.", author: "Benjamin Franklin" },
+  { text: "The way to get started is to quit talking and begin doing.", author: "Walt Disney" },
+  { text: "You don't have to be great to start, but you have to start to be great.", author: "Zig Ziglar" },
+  { text: "Do not wait to strike till the iron is hot, but make it hot by striking.", author: "W.B. Yeats" },
+  { text: "The expert in anything was once a beginner.", author: "Helen Hayes" },
+  { text: "Start where you are. Use what you have. Do what you can.", author: "Arthur Ashe" },
+  { text: "A year from now you will wish you had started today.", author: "Karen Lamb" },
+  { text: "It's not about having time, it's about making time.", author: "Unknown" },
+  { text: "In the middle of every difficulty lies opportunity.", author: "Albert Einstein" },
+  { text: "Simplicity is the ultimate sophistication.", author: "Leonardo da Vinci" },
+]
+
+function getDailyQuote() {
+  const now = new Date()
+  const start = new Date(now.getFullYear(), 0, 0)
+  const dayOfYear = Math.floor((now - start) / (1000 * 60 * 60 * 24))
+  return QUOTES[dayOfYear % QUOTES.length]
+}
+
+
   const navigate = useNavigate()
   const today = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
   const hour = new Date().getHours()
@@ -645,6 +709,15 @@ export default function Home() {
             {refreshing ? 'Refreshing…' : 'Refresh all'}
           </button>
         </div>
+
+        {/* Quote of the day */}
+        {(() => { const q = getDailyQuote(); return (
+          <div className="bg-[#F3EDF7] rounded-2xl px-4 py-3 mb-4" style={{ animation: 'fade-up 0.6s cubic-bezier(0.22,1,0.36,1) 0.1s both' }}>
+            <p className="text-xs font-medium text-[#6750A4] mb-1">Quote of the day</p>
+            <p className="text-sm text-[#1C1B1F] leading-snug italic">"{q.text}"</p>
+            <p className="text-xs text-[#79747E] mt-1.5">— {q.author}</p>
+          </div>
+        )})()}
 
         {/* Stats */}
         <div className="grid grid-cols-4 gap-2 mb-4">
