@@ -11,6 +11,8 @@ import Settings from './pages/Settings'
 import Calendar from './pages/Calendar'
 import CalendarEvent from './pages/CalendarEvent'
 import WeeklyReview from './pages/WeeklyReview'
+import ChiefPage from './pages/ChiefPage'
+import HeadConfig from './pages/HeadConfig'
 
 const TABS = [
   { path: '/',          Component: Home },
@@ -27,7 +29,9 @@ function getTabIdx(pathname) {
 function isSubRoute(pathname) {
   return (pathname.startsWith('/buckets/') && pathname !== '/buckets') ||
          pathname.startsWith('/calendar/event') ||
-         pathname === '/weekly-review'
+         pathname === '/weekly-review' ||
+         pathname === '/chief' ||
+         pathname.startsWith('/chief/')
 }
 
 function TabStrip() {
@@ -148,6 +152,9 @@ function AppInner() {
             <Route path="/buckets/:bucket/discussions/:id"      element={<DiscussionThread />} />
             <Route path="/calendar/event/:id"                   element={<CalendarEvent />} />
             <Route path="/weekly-review"                        element={<WeeklyReview />} />
+            <Route path="/chief"                                element={<ChiefPage />} />
+            <Route path="/chief/config"                         element={<HeadConfig />} />
+            <Route path="/buckets/:bucket/config"               element={<HeadConfig />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </div>

@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { getProjectTasks, PROJECTS } from '../lib/todoist'
 import { sendMessageStream, SYSTEM_PROMPTS } from '../lib/claude'
+import { loadHeadConfig } from '../lib/headConfig'
 import { getDiscussions, saveDiscussion, newDiscussion } from '../lib/discussions'
 import Markdown from '../components/Markdown'
 import ChatInput from '../components/ChatInput'
@@ -48,8 +49,9 @@ export default function DiscussionThread() {
     setDiscussion((prev) => ({ ...prev, messages: [...withUser, { role: 'assistant', content: '', streaming: true }] }))
     try {
       const history = withUser.map(({ role, content }) => ({ role, content }))
+      const cfg = loadHeadConfig(bucket)
       let full = ''
-      await sendMessageStream(history, SYSTEM_PROMPTS.discussion(bucket, discussion.title, tasks), (chunk) => {
+      await sendMessageStream(history, SYSTEM_PROMPTS.discussion(bucket, discussion.title, tasks, cfg), (chunk) => {
         full += chunk
         setDiscussion((prev) => {
           if (!prev) return prev

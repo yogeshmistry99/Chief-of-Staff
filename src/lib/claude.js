@@ -56,8 +56,23 @@ function formatTasksForPrompt(tasks) {
   }).join('\n')
 }
 
+function buildKnowledgeBlock({ instructions, context, files } = {}) {
+  const parts = []
+  if (instructions?.trim()) {
+    parts.push(`== Instructions ==\n${instructions.trim()}`)
+  }
+  if (context?.trim()) {
+    parts.push(`== Context ==\n${context.trim()}`)
+  }
+  if (files?.length) {
+    const docs = files.map((f) => `[File: ${f.name}]\n${f.content}`).join('\n\n')
+    parts.push(`== Reference documents ==\n${docs}`)
+  }
+  return parts.length ? '\n\n' + parts.join('\n\n') : ''
+}
+
 export const SYSTEM_PROMPTS = {
-  cos: (tasks) => {
+  cos: (tasks, cfg) => {
     const today = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` })()
     return `You are the Chief of Staff for Yogesh Mistry, an architect at Gensler. Today is ${today}.
 
@@ -66,12 +81,12 @@ You oversee all areas of his life organised into seven buckets: Finance, Health,
 Your role is to help him manage priorities, make decisions, and take action. Be concise, direct, and conversational — write in plain prose, no markdown, no bullet points, no bold text, no headers. Just clear sentences.
 
 Here is his current Todoist task list:
-${formatTasksForPrompt(tasks)}
+${formatTasksForPrompt(tasks)}${buildKnowledgeBlock(cfg)}
 
 When he asks about existing tasks, check the list above. When he adds a new task, acknowledge it and suggest which bucket and priority it belongs in. When he pastes an email, extract actionable tasks. Keep responses short unless depth is needed.`
   },
 
-  head: (bucket, tasks, context) => {
+  head: (bucket, tasks, cfg) => {
     const descriptions = {
       Finance:  'investments, tax, budgeting, cash flow, and financial decisions',
       Health:   'physical fitness, medical, nutrition, sleep, and mental wellbeing',
@@ -87,19 +102,19 @@ When he asks about existing tasks, check the list above. When he adds a new task
 Today is ${(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` })()}.
 
 Current ${bucket} tasks:
-${formatTasksForPrompt(bucketTasks)}
-${context ? `\nContext notes for ${bucket}:\n${context}\n` : ''}
+${formatTasksForPrompt(bucketTasks)}${buildKnowledgeBlock(cfg)}
+
 Be direct, specific, and conversational — write in plain prose, no markdown, no bullet points, no bold text, no headers. Help him think through decisions, surface risks, and identify the highest-leverage actions.`
   },
 
-  discussion: (bucket, title, tasks) => {
+  discussion: (bucket, title, tasks, cfg) => {
     const bucketTasks = tasks?.filter((t) => t._projectName === bucket) ?? []
     return `You are the ${bucket} Head for Yogesh Mistry, working through a specific discussion: "${title}".
 
 Today is ${(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` })()}.
 
 Current ${bucket} tasks for context:
-${formatTasksForPrompt(bucketTasks)}
+${formatTasksForPrompt(bucketTasks)}${buildKnowledgeBlock(cfg)}
 
 Stay focused on this topic. Write in plain conversational prose — no markdown, no bullet points, no bold text, no headers. Help him reach a clear decision or set of actions. When a decision is reached, summarise it clearly in plain sentences.`
   },

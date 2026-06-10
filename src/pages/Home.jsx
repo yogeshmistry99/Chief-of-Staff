@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { getAllTasks, closeTask, PROJECTS } from '../lib/todoist'
 import { prioritise, scoreTask } from '../lib/priority'
 import { sendMessageStream, SYSTEM_PROMPTS } from '../lib/claude'
+import { loadHeadConfig } from '../lib/headConfig'
 import { haptic } from '../lib/haptic'
 import Markdown from '../components/Markdown'
 import ChatInput from '../components/ChatInput'
@@ -614,7 +615,8 @@ export default function Home() {
       const history = [...messages, userMsg]
         .filter((m) => !m.streaming && !m.pending)
         .map(({ role, content }) => ({ role, content }))
-      await sendMessageStream(history, SYSTEM_PROMPTS.cos(tasks), (chunk) => {
+      const cfg = loadHeadConfig('chief')
+      await sendMessageStream(history, SYSTEM_PROMPTS.cos(tasks, cfg), (chunk) => {
         setMessages((prev) => {
           const last = prev[prev.length - 1]
           if (!last?.streaming) return prev
@@ -790,7 +792,11 @@ export default function Home() {
       </div>
 
       {/* CoS input bar — fixed at bottom */}
-      <div className="bg-white border-t border-[#CAC4D0] px-4 pt-3 pb-2 safe-bottom max-w-lg mx-auto w-full">
+      <div className="bg-white border-t border-[#CAC4D0] px-4 pt-2.5 pb-2 safe-bottom max-w-lg mx-auto w-full">
+        <div className="flex items-center justify-between mb-1.5">
+          <p className="text-xs text-[#79747E]">Chief of Staff</p>
+          <button onClick={() => navigate('/chief')} className="text-xs font-medium text-[#6750A4]">Full view →</button>
+        </div>
         <ChatInput
           placeholder="Message your Chief of Staff…"
           onSend={handleSend}

@@ -4,6 +4,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { getProjectTasks, getProjectSections, PROJECTS } from '../lib/todoist'
 import { scoreTask, BUCKET_WEIGHTS } from '../lib/priority'
 import { sendMessageStream, SYSTEM_PROMPTS } from '../lib/claude'
+import { loadHeadConfig } from '../lib/headConfig'
 import { haptic } from '../lib/haptic'
 import Markdown from '../components/Markdown'
 import ChatInput from '../components/ChatInput'
@@ -29,43 +30,9 @@ const BUCKET_META = {
   Systems:  { emoji: '⚙️', bg: 'bg-[#EADDFF]', text: 'text-[#21005D]' },
 }
 
-function ContextTab({ bucket, contextText, setContextText }) {
-  const [draft, setDraft] = useState(contextText)
-  const [saved, setSaved] = useState(false)
-
-  function handleSave() {
-    localStorage.setItem(`bucket_context_${bucket}`, draft)
-    setContextText(draft)
-    setSaved(true)
-    haptic.success()
-    setTimeout(() => setSaved(false), 2000)
-  }
-
-  return (
-    <div className="flex flex-col h-full px-4 pt-4 pb-4">
-      <p className="text-xs text-[#79747E] mb-3">
-        Add context your {bucket} Head will always reference — goals, constraints, background info.
-      </p>
-      <textarea
-        value={draft}
-        onChange={(e) => { setDraft(e.target.value); setSaved(false) }}
-        placeholder={`e.g. goals, key constraints, background information your ${bucket} Head should always know...`}
-        className="flex-1 rounded-xl border border-[#CAC4D0] px-3 py-2.5 text-sm text-[#1C1B1F] focus:outline-none focus:border-[#6750A4] resize-none"
-      />
-      <button
-        onClick={handleSave}
-        className={`mt-3 py-2.5 rounded-full text-sm font-medium transition-colors ${
-          saved ? 'bg-green-500 text-white' : 'bg-[#6750A4] text-white hover:bg-[#5B4397]'
-        }`}
-      >
-        {saved ? '✓ Saved' : 'Save context'}
-      </button>
-    </div>
-  )
-}
-
 // HeadTab receives messages/setMessages from parent so state survives tab switches
-function HeadTab({ bucket, tasks, messages, setMessages, context }) {
+function HeadTab({ bucket, tasks, messages, setMessages }) {
+  const navigate = useNavigate()
   const endRef = useRef(null)
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
@@ -75,11 +42,12 @@ function HeadTab({ bucket, tasks, messages, setMessages, context }) {
     setMessages((prev) => [...prev, userMsg])
     // Add empty streaming message immediately
     setMessages((prev) => [...prev, { role: 'assistant', content: '', streaming: true }])
+    const cfg = loadHeadConfig(bucket)
     try {
       const history = [...messages, userMsg]
         .filter((m) => !m.streaming)
         .map(({ role, content }) => ({ role, content }))
-      await sendMessageStream(history, SYSTEM_PROMPTS.head(bucket, tasks, context), (chunk) => {
+      await sendMessageStream(history, SYSTEM_PROMPTS.head(bucket, tasks, cfg), (chunk) => {
         setMessages((prev) => {
           const last = prev[prev.length - 1]
           if (!last || !last.streaming) return prev
@@ -98,13 +66,37 @@ function HeadTab({ bucket, tasks, messages, setMessages, context }) {
     }
   }
 
+  const cfg = loadHeadConfig(bucket)
+  const hasKnowledge = !!(cfg.instructions || cfg.context || cfg.files?.length)
+
   return (
     <div className="flex flex-col h-full">
+      {/* Head toolbar */}
+      <div className="flex items-center justify-between px-4 pt-2 pb-1 border-b border-[#F3EDF7]">
+        <p className="text-xs text-[#79747E]">{BUCKET_DESCRIPTIONS[bucket]}</p>
+        <button
+          onClick={() => navigate(`/buckets/${bucket}/config`)}
+          className="flex items-center gap-1 text-xs font-medium text-[#6750A4] py-1 px-2 rounded-full hover:bg-[#F3EDF7] transition-colors"
+        >
+          {hasKnowledge ? (
+            <span className="w-1.5 h-1.5 rounded-full bg-[#6750A4] inline-block" />
+          ) : null}
+          Knowledge
+          <svg xmlns="http://www.w3.org/2000/svg" height="14" viewBox="0 -960 960 960" width="14" fill="currentColor">
+            <path d="M480-120q-33 0-56.5-23.5T400-200q0-33 23.5-56.5T480-280q33 0 56.5 23.5T560-200q0 33-23.5 56.5T480-120Zm0-240q-33 0-56.5-23.5T400-440v-320q0-33 23.5-56.5T480-840q33 0 56.5 23.5T560-760v320q0 33-23.5 56.5T480-360Z"/>
+          </svg>
+        </button>
+      </div>
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
         {messages.length === 0 && (
           <div className="text-center py-10">
             <p className="text-sm text-[#49454F]">Chat with your {bucket} Head.</p>
-            <p className="text-xs text-[#79747E] mt-1">{BUCKET_DESCRIPTIONS[bucket]}</p>
+            {!hasKnowledge && (
+              <button onClick={() => navigate(`/buckets/${bucket}/config`)}
+                className="text-xs text-[#6750A4] mt-2 underline">
+                Add knowledge →
+              </button>
+            )}
           </div>
         )}
         {messages.map((msg, i) => (
@@ -615,8 +607,6 @@ export default function BucketDetail() {
   const [tasks, setTasks] = useState([])
   const [sections, setSections] = useState([])
   const [loading, setLoading] = useState(true)
-  const [contextText, setContextText] = useState(() => localStorage.getItem(`bucket_context_${bucket}`) ?? '')
-
   // Head chat — persisted to localStorage so history survives navigation and sessions
   const storageKey = `cos_head_${bucket}`
   const [headMessages, setHeadMessages] = useState(() => {
@@ -684,7 +674,6 @@ export default function BucketDetail() {
             { id: 'tasks', label: 'Tasks' },
             { id: 'head', label: 'Head' },
             { id: 'discussions', label: 'Discuss' },
-            { id: 'context', label: 'Context' },
           ].map(({ id, label }) => (
             <button key={id} onClick={() => { haptic.light(); setTab(id) }}
               className={`flex-1 py-2 text-sm font-medium border-b-2 transition-colors ${
@@ -696,19 +685,16 @@ export default function BucketDetail() {
         </div>
       </div>
 
-      {/* Tab content — all four stay mounted; only active one is visible */}
+      {/* Tab content — all three stay mounted; only active one is visible */}
       <div className="flex-1 overflow-hidden relative">
         <div className={`absolute inset-0 ${tab === 'tasks' ? '' : 'invisible pointer-events-none'}`}>
           <TasksTab tasks={tasks} sections={sections} loading={loading} onComplete={removeTask} />
         </div>
         <div className={`absolute inset-0 ${tab === 'head' ? '' : 'invisible pointer-events-none'}`}>
-          <HeadTab bucket={bucket} tasks={tasks} messages={headMessages} setMessages={setHeadMessages} context={contextText} />
+          <HeadTab bucket={bucket} tasks={tasks} messages={headMessages} setMessages={setHeadMessages} />
         </div>
         <div className={`absolute inset-0 ${tab === 'discussions' ? '' : 'invisible pointer-events-none'}`}>
           <DiscussionsTab bucket={bucket} />
-        </div>
-        <div className={`absolute inset-0 ${tab === 'context' ? '' : 'invisible pointer-events-none'}`}>
-          <ContextTab bucket={bucket} contextText={contextText} setContextText={setContextText} />
         </div>
       </div>
     </div>
