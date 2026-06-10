@@ -169,7 +169,7 @@ function BucketStep({ bucket, allTasks, onNext, reviewTextsRef, tasksAdded, setT
               </div>
             ) : (
               <div className="text-sm text-[#1C1B1F] leading-relaxed">
-                <Markdown content={aiText} />
+                <Markdown text={aiText} />
               </div>
             )}
             <div ref={endRef} />
@@ -284,7 +284,7 @@ function StepSummary({ intention, bucketReviews, allTasks, onNext, setTasksAdded
                 </div>
               ) : (
                 <div className="bg-white border border-[#CAC4D0] rounded-2xl rounded-tl-sm px-4 py-3 text-sm text-[#1C1B1F] leading-relaxed">
-                  <Markdown content={m.content} />
+                  <Markdown text={m.content} />
                   {streaming && i === messages.length - 1 && (
                     <span className="inline-flex gap-0.5 ml-1 align-middle">
                       {[0, 1, 2].map((j) => (
