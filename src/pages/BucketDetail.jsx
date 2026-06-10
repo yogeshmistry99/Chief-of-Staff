@@ -29,8 +29,8 @@ const BUCKET_META = {
   Systems:  { emoji: '⚙️', bg: 'bg-[#EADDFF]', text: 'text-[#21005D]' },
 }
 
-function HeadTab({ bucket, tasks }) {
-  const [messages, setMessages] = useState([])
+// HeadTab receives messages/setMessages from parent so state survives tab switches
+function HeadTab({ bucket, tasks, messages, setMessages }) {
   const endRef = useRef(null)
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
@@ -145,12 +145,41 @@ function DiscussionsTab({ bucket }) {
   )
 }
 
+const SORT_OPTIONS = [
+  { id: 'priority', label: 'Priority' },
+  { id: 'date',     label: 'Date' },
+  { id: 'label',    label: 'Label' },
+]
+
+function sortTasks(tasks, sort) {
+  const copy = [...tasks]
+  if (sort === 'priority') {
+    return copy.sort((a, b) => (b.priority ?? 1) - (a.priority ?? 1))
+  }
+  if (sort === 'date') {
+    return copy.sort((a, b) => {
+      const da = a.due?.date ?? a.due?.datetime?.split('T')[0] ?? '9999'
+      const db = b.due?.date ?? b.due?.datetime?.split('T')[0] ?? '9999'
+      return da.localeCompare(db)
+    })
+  }
+  if (sort === 'label') {
+    return copy.sort((a, b) => {
+      const la = (a.labels?.[0] ?? '').toLowerCase()
+      const lb = (b.labels?.[0] ?? '').toLowerCase()
+      return la.localeCompare(lb) || a.content.localeCompare(b.content)
+    })
+  }
+  return copy
+}
+
 function TasksTab({ tasks, loading, onComplete }) {
-  const scored = tasks
-    .map((t) => ({ ...t, _scored: scoreTask(t) }))
-    .filter((t) => t._scored.score >= 0)
-    .sort((a, b) => b._scored.score - a._scored.score)
-  const someday = tasks.filter((t) => scoreTask(t).score === -1)
+  const [sort, setSort] = useState('priority')
+
+  const allScored = tasks.map((t) => ({ ...t, _scored: scoreTask(t) }))
+  const active  = allScored.filter((t) => t._scored.score >= 0)
+  const someday = allScored.filter((t) => t._scored.score === -1)
+  const sorted  = sortTasks(active, sort)
 
   if (loading) return (
     <div className="px-4 py-4 space-y-3">
@@ -163,34 +192,49 @@ function TasksTab({ tasks, loading, onComplete }) {
     </div>
   )
 
-  if (!scored.length && !someday.length) return (
+  if (!sorted.length && !someday.length) return (
     <div className="text-center py-10">
       <p className="text-sm text-[#49454F]">No tasks in this bucket.</p>
     </div>
   )
 
   return (
-    <div className="overflow-y-auto h-full px-4 py-3">
-      {scored.map((task) => {
-        const { isOverdue, isToday, days, bucket: b } = task._scored
-        return (
-          <TaskItem key={task.id} task={task} isOverdue={isOverdue} isToday={isToday} days={days} onComplete={onComplete} />
-        )
-      })}
-      {someday.length > 0 && (
-        <div className="bg-[#F3EDF7] rounded-xl px-4 py-2.5 mt-3">
-          <p className="text-xs text-[#49454F]">
-            <span className="font-semibold text-[#6750A4]">{someday.length} someday</span> — no date, P4.
-          </p>
-        </div>
-      )}
+    <div className="overflow-y-auto h-full">
+      {/* Sort controls */}
+      <div className="flex gap-2 px-4 pt-3 pb-2">
+        {SORT_OPTIONS.map(({ id, label }) => (
+          <button key={id} onClick={() => setSort(id)}
+            className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors ${
+              sort === id
+                ? 'bg-[#6750A4] text-white'
+                : 'bg-[#F3EDF7] text-[#6750A4] hover:bg-[#EADDFF]'
+            }`}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <div className="px-4 pb-4">
+        {sorted.map((task, i) => (
+          <TaskItem key={task.id} task={task} onComplete={onComplete} index={i} />
+        ))}
+        {someday.length > 0 && (
+          <div className="bg-[#F3EDF7] rounded-xl px-4 py-2.5 mt-3">
+            <p className="text-xs text-[#49454F]">
+              <span className="font-semibold text-[#6750A4]">{someday.length} someday</span> — no date, P4.
+            </p>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
 
-function TaskItem({ task: initialTask, isOverdue: initOverdue, isToday: initToday, days: initDays, onComplete }) {
+function TaskItem({ task: initialTask, onComplete, index = 0 }) {
   const [localTask, setLocalTask] = useState(initialTask)
   const [pendingComplete, setPendingComplete] = useState(false)
+  const [removing, setRemoving] = useState(false)
+  const [completingAnim, setCompletingAnim] = useState(false)
   const [expanded, setExpanded] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
   const [editContent, setEditContent] = useState(initialTask.content)
@@ -202,22 +246,26 @@ function TaskItem({ task: initialTask, isOverdue: initOverdue, isToday: initToda
   const holdRef = useRef(null)
   const isHoldRef = useRef(false)
 
-  const scored = scoreTask(localTask)
-  const isOverdue = scored.isOverdue
-  const isToday = scored.isToday
-  const days = scored.days
+  const { isOverdue, isToday, days } = scoreTask(localTask)
 
-  function handleComplete(e) {
-    e.stopPropagation()
-    haptic.success()
-    setPendingComplete(true)
-    timerRef.current = setTimeout(async () => {
+  useEffect(() => {
+    if (!removing) return
+    const t = setTimeout(async () => {
       try {
         const { closeTask } = await import('../lib/todoist')
         await closeTask(localTask.id)
         onComplete(localTask.id)
-      } catch { haptic.error(); setPendingComplete(false) }
-    }, 5000)
+      } catch { haptic.error(); setRemoving(false); setPendingComplete(false) }
+    }, 380)
+    return () => clearTimeout(t)
+  }, [removing])
+
+  function handleComplete(e) {
+    e.stopPropagation()
+    haptic.success()
+    setCompletingAnim(true)
+    setPendingComplete(true)
+    timerRef.current = setTimeout(() => setRemoving(true), 5000)
   }
 
   function handleUndo(e) {
@@ -225,6 +273,7 @@ function TaskItem({ task: initialTask, isOverdue: initOverdue, isToday: initToda
     haptic.light()
     clearTimeout(timerRef.current)
     setPendingComplete(false)
+    setRemoving(false)
   }
 
   function handleRowPointerDown() {
@@ -271,7 +320,17 @@ function TaskItem({ task: initialTask, isOverdue: initOverdue, isToday: initToda
 
   return (
     <>
-    <div className={`border-b border-[#F3EDF7] last:border-0 transition-opacity ${pendingComplete ? 'opacity-40' : ''}`}>
+    <div style={{
+      display: 'grid',
+      gridTemplateRows: removing ? '0fr' : '1fr',
+      opacity: removing ? 0 : 1,
+      transition: 'grid-template-rows 0.38s cubic-bezier(0.4,0,0.2,1), opacity 0.22s ease',
+      animation: `fade-up 0.36s ease ${0.12 + index * 0.055}s both`,
+    }}>
+    <div style={{ overflow: 'hidden' }}>
+    <div className="border-b border-[#F3EDF7] last:border-0"
+      style={{ opacity: pendingComplete ? 0.45 : 1, transition: 'opacity 0.15s ease' }}>
+
       <div
         className="flex items-center gap-3 py-3 cursor-pointer select-none"
         onPointerDown={handleRowPointerDown}
@@ -285,6 +344,8 @@ function TaskItem({ task: initialTask, isOverdue: initOverdue, isToday: initToda
           className={`w-5 h-5 rounded-full border-2 flex-shrink-0 transition-colors ${
             pendingComplete ? 'border-[#6750A4] bg-[#6750A4]' : 'border-[#CAC4D0] hover:border-[#6750A4] hover:bg-[#EADDFF]'
           }`}
+          style={completingAnim ? { animation: 'complete-pop 0.42s cubic-bezier(0.34,1.56,0.64,1) both' } : undefined}
+          onAnimationEnd={() => setCompletingAnim(false)}
         >
           {pendingComplete && (
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white" className="w-full h-full p-0.5">
@@ -308,14 +369,15 @@ function TaskItem({ task: initialTask, isOverdue: initOverdue, isToday: initToda
                 {new Date(localTask.due.date + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}
               </span>
             )}
+            {localTask.labels?.length > 0 && (
+              <span className="text-xs text-[#79747E]">{localTask.labels.join(', ')}</span>
+            )}
           </div>
         </div>
 
         {pendingComplete ? (
-          <button
-            onClick={handleUndo}
-            className="text-xs font-semibold px-2.5 py-1 rounded-full bg-[#6750A4] text-white flex-shrink-0"
-          >
+          <button onClick={handleUndo}
+            className="text-xs font-semibold px-2.5 py-1 rounded-full bg-[#6750A4] text-white flex-shrink-0">
             Undo
           </button>
         ) : (
@@ -352,67 +414,47 @@ function TaskItem({ task: initialTask, isOverdue: initOverdue, isToday: initToda
                 at {new Date(localTask.due.datetime).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
               </span>
             )}
-            {localTask.labels?.length > 0 && (
-              <span className="text-xs text-[#79747E]">{localTask.labels.join(', ')}</span>
-            )}
           </div>
           {localTask.url && (
-            <a
-              href={localTask.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={(e) => e.stopPropagation()}
-              className="text-xs text-[#6750A4] font-medium"
-            >
+            <a href={localTask.url} target="_blank" rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()} className="text-xs text-[#6750A4] font-medium">
               Open in Todoist ↗
             </a>
           )}
           <p className="text-[10px] text-[#CAC4D0]">Hold to edit</p>
         </div>
       </div>
+
+    </div>
+    </div>
     </div>
 
     <EditSheet open={editOpen} onClose={() => setEditOpen(false)} title="Edit task" onSave={handleSave} saving={saving}>
       <div className="space-y-1">
         <label className="text-xs font-medium text-[#49454F]">Task</label>
-        <textarea
-          value={editContent}
-          onChange={(ev) => setEditContent(ev.target.value)}
-          className="w-full rounded-xl border border-[#79747E] px-3 py-2 text-sm text-[#1C1B1F] focus:outline-none focus:border-[#6750A4] resize-none"
-          rows={2}
-        />
+        <textarea value={editContent} onChange={(ev) => setEditContent(ev.target.value)}
+          className="w-full rounded-xl border border-[#79747E] px-3 py-2 text-sm text-[#1C1B1F] focus:outline-none focus:border-[#6750A4] resize-none" rows={2} />
       </div>
       <div className="space-y-1">
         <label className="text-xs font-medium text-[#49454F]">Priority</label>
         <div className="flex gap-2">
           {[{label:'P1',val:4},{label:'P2',val:3},{label:'P3',val:2},{label:'P4',val:1}].map(({label,val}) => (
-            <button key={val}
-              onClick={() => setEditPriority(val)}
+            <button key={val} onClick={() => setEditPriority(val)}
               className={`flex-1 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
                 editPriority === val ? 'bg-[#6750A4] text-white border-[#6750A4]' : 'border-[#CAC4D0] text-[#49454F]'
-              }`}
-            >{label}</button>
+              }`}>{label}</button>
           ))}
         </div>
       </div>
       <div className="space-y-1">
         <label className="text-xs font-medium text-[#49454F]">Due date</label>
-        <input
-          type="date"
-          value={editDue}
-          onChange={(ev) => setEditDue(ev.target.value)}
-          className="w-full rounded-xl border border-[#79747E] px-3 py-2 text-sm text-[#1C1B1F] focus:outline-none focus:border-[#6750A4]"
-        />
+        <input type="date" value={editDue} onChange={(ev) => setEditDue(ev.target.value)}
+          className="w-full rounded-xl border border-[#79747E] px-3 py-2 text-sm text-[#1C1B1F] focus:outline-none focus:border-[#6750A4]" />
       </div>
       <div className="space-y-1">
         <label className="text-xs font-medium text-[#49454F]">Notes</label>
-        <textarea
-          value={editDesc}
-          onChange={(ev) => setEditDesc(ev.target.value)}
-          placeholder="Add notes"
-          className="w-full rounded-xl border border-[#79747E] px-3 py-2 text-sm text-[#1C1B1F] focus:outline-none focus:border-[#6750A4] resize-none"
-          rows={3}
-        />
+        <textarea value={editDesc} onChange={(ev) => setEditDesc(ev.target.value)} placeholder="Add notes"
+          className="w-full rounded-xl border border-[#79747E] px-3 py-2 text-sm text-[#1C1B1F] focus:outline-none focus:border-[#6750A4] resize-none" rows={3} />
       </div>
     </EditSheet>
     </>
@@ -425,6 +467,8 @@ export default function BucketDetail() {
   const [tab, setTab] = useState('tasks')
   const [tasks, setTasks] = useState([])
   const [loading, setLoading] = useState(true)
+  // Head chat messages lifted here so they survive tab switches
+  const [headMessages, setHeadMessages] = useState([])
 
   const projectId = PROJECTS[bucket]
 
@@ -448,7 +492,6 @@ export default function BucketDetail() {
 
   function removeTask(id) { setTasks((prev) => prev.filter((t) => t.id !== id)) }
 
-  const weight = BUCKET_WEIGHTS[bucket] ?? 5
   const open = tasks.filter((t) => !t.is_completed)
   const overdue = open.filter((t) => scoreTask(t).isOverdue).length
   const meta = BUCKET_META[bucket] ?? { emoji: '📁', bg: 'bg-[#E7E0EC]', text: 'text-[#49454F]' }
@@ -479,26 +522,27 @@ export default function BucketDetail() {
             { id: 'head', label: 'Head' },
             { id: 'discussions', label: 'Discussions' },
           ].map(({ id, label }) => (
-            <button
-              key={id}
-              onClick={() => setTab(id)}
+            <button key={id} onClick={() => { haptic.light(); setTab(id) }}
               className={`flex-1 py-2 text-sm font-medium border-b-2 transition-colors ${
-                tab === id
-                  ? 'border-current opacity-100'
-                  : 'border-transparent opacity-50'
-              }`}
-            >
+                tab === id ? 'border-current opacity-100' : 'border-transparent opacity-50'
+              }`}>
               {label}
             </button>
           ))}
         </div>
       </div>
 
-      {/* Tab content */}
-      <div className="flex-1 overflow-hidden">
-        {tab === 'tasks' && <TasksTab tasks={tasks} loading={loading} onComplete={removeTask} />}
-        {tab === 'head' && <HeadTab bucket={bucket} tasks={tasks} />}
-        {tab === 'discussions' && <DiscussionsTab bucket={bucket} tasks={tasks} />}
+      {/* Tab content — all three stay mounted; only active one is visible */}
+      <div className="flex-1 overflow-hidden relative">
+        <div className={`absolute inset-0 ${tab === 'tasks' ? '' : 'invisible pointer-events-none'}`}>
+          <TasksTab tasks={tasks} loading={loading} onComplete={removeTask} />
+        </div>
+        <div className={`absolute inset-0 ${tab === 'head' ? '' : 'invisible pointer-events-none'}`}>
+          <HeadTab bucket={bucket} tasks={tasks} messages={headMessages} setMessages={setHeadMessages} />
+        </div>
+        <div className={`absolute inset-0 ${tab === 'discussions' ? '' : 'invisible pointer-events-none'}`}>
+          <DiscussionsTab bucket={bucket} />
+        </div>
       </div>
     </div>
   )
