@@ -55,6 +55,8 @@ function TabStrip() {
     function onMove(e) {
       const tr = touchRef.current
       if (!tr) return
+      // Let task rows handle their own horizontal swipe
+      if (e.target.closest('[data-task-swipe]')) return
       const t  = e.touches[0]
       const dx = t.clientX - tr.startX
       const dy = t.clientY - tr.startY

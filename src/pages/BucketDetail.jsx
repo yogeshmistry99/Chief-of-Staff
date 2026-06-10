@@ -472,6 +472,7 @@ function TaskItem({ task: initialTask, onComplete, index = 0 }) {
         </svg>
       </div>
       <div
+        data-task-swipe
         style={{ transform: `translateX(${swipeX}px)`, transition: isSwiping ? 'none' : 'transform 0.28s cubic-bezier(0.25,1,0.5,1)', background: 'white' }}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
