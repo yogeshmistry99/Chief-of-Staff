@@ -108,54 +108,113 @@ export default async function handler(req, res) {
   const { messages, system } = req.body ?? {}
   if (!messages?.length) return res.status(400).json({ error: 'messages required' })
 
-  // Streaming branch — used by Head/Discussion chats (no tool loop needed)
+  // Streaming branch — agentic loop with tool support
   if (req.query.stream === '1') {
     res.setHeader('Content-Type', 'text/event-stream; charset=utf-8')
     res.setHeader('Cache-Control', 'no-cache')
     res.setHeader('X-Accel-Buffering', 'no')
     res.setHeader('Access-Control-Allow-Origin', '*')
     try {
-      const upstream = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01',
-          'content-type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'claude-haiku-4-5-20251001',
-          max_tokens: 1024,
-          stream: true,
-          ...(system ? { system } : {}),
-          messages,
-        }),
-      })
-      if (!upstream.ok) {
-        const err = await upstream.text()
-        res.write(`data: ${JSON.stringify({ error: err })}\n\n`)
-        return res.end()
-      }
-      const reader = upstream.body.getReader()
-      const decoder = new TextDecoder()
-      let buf = ''
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        buf += decoder.decode(value, { stream: true })
-        const lines = buf.split('\n')
-        buf = lines.pop()
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue
-          const raw = line.slice(6).trim()
-          if (raw === '[DONE]') continue
-          try {
-            const evt = JSON.parse(raw)
-            if (evt.type === 'content_block_delta' && evt.delta?.type === 'text_delta') {
-              res.write(`data: ${JSON.stringify({ text: evt.delta.text })}\n\n`)
-            }
-          } catch {}
+      let currentMessages = messages
+
+      for (let round = 0; round < 5; round++) {
+        const upstream = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'x-api-key': apiKey,
+            'anthropic-version': '2023-06-01',
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: 'claude-haiku-4-5-20251001',
+            max_tokens: 1024,
+            stream: true,
+            ...(system ? { system } : {}),
+            messages: currentMessages,
+            tools: TOOLS,
+          }),
+        })
+
+        if (!upstream.ok) {
+          const err = await upstream.text()
+          res.write(`data: ${JSON.stringify({ error: err })}\n\n`)
+          break
         }
+
+        const reader = upstream.body.getReader()
+        const decoder = new TextDecoder()
+        let buf = ''
+        // Index → accumulated block (text or tool_use)
+        const blocks = {}
+        let stopReason = null
+
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          buf += decoder.decode(value, { stream: true })
+          const lines = buf.split('\n')
+          buf = lines.pop()
+
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue
+            const raw = line.slice(6).trim()
+            if (raw === '[DONE]') continue
+            try {
+              const evt = JSON.parse(raw)
+
+              if (evt.type === 'content_block_start') {
+                const { index, content_block: cb } = evt
+                blocks[index] = cb.type === 'tool_use'
+                  ? { type: 'tool_use', id: cb.id, name: cb.name, input: '' }
+                  : { type: 'text', text: '' }
+              }
+
+              if (evt.type === 'content_block_delta') {
+                const { index, delta } = evt
+                if (!blocks[index]) continue
+                if (delta.type === 'text_delta') {
+                  blocks[index].text += delta.text
+                  res.write(`data: ${JSON.stringify({ text: delta.text })}\n\n`)
+                } else if (delta.type === 'input_json_delta') {
+                  blocks[index].input += delta.partial_json
+                }
+              }
+
+              if (evt.type === 'message_delta') {
+                stopReason = evt.delta?.stop_reason
+              }
+            } catch {}
+          }
+        }
+
+        if (stopReason === 'tool_use') {
+          // Build the assistant content array with parsed tool inputs
+          const assistantContent = Object.values(blocks).map((b) =>
+            b.type === 'tool_use'
+              ? { ...b, input: (() => { try { return JSON.parse(b.input) } catch { return {} } })() }
+              : b
+          )
+          const toolUseBlocks = assistantContent.filter((b) => b.type === 'tool_use')
+
+          // Execute all tools in parallel
+          const toolResults = await Promise.all(
+            toolUseBlocks.map(async (block) => {
+              const result = await executeTool(block.name, block.input)
+              return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(result) }
+            })
+          )
+
+          currentMessages = [
+            ...currentMessages,
+            { role: 'assistant', content: assistantContent },
+            { role: 'user', content: toolResults },
+          ]
+          continue // next round
+        }
+
+        break // end_turn or max_tokens — done
       }
+
       res.write('data: [DONE]\n\n')
       res.end()
     } catch (err) {
