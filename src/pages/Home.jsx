@@ -609,6 +609,7 @@ export default function Home() {
   const [loading, setLoading]         = useState(true)
   const [refreshing, setRefreshing]   = useState(false)
   const [error, setError]             = useState(null)
+  const [lastRefreshed, setLastRefreshed] = useState(null)
   const [events, setEvents]           = useState([])
   const [eventsLoading, setEventsLoading] = useState(true)
   const [quickAddOpen, setQuickAddOpen] = useState(false)
@@ -623,7 +624,7 @@ export default function Home() {
     else setLoading(true)
     getAllTasks()
       .then((data) => data.map((t) => ({ ...t, _projectName: PROJECT_NAMES[t.project_id] })))
-      .then(setTasks)
+      .then((data) => { setTasks(data); setLastRefreshed(new Date()) })
       .catch((e) => setError(e.message))
       .finally(() => { setLoading(false); setRefreshing(false) })
   }
@@ -744,8 +745,10 @@ export default function Home() {
         <div className="bg-white border border-[#CAC4D0] rounded-2xl p-4 mb-3 shadow-sm">
           <div className="flex items-center justify-between mb-2">
             <h2 className="text-sm font-semibold text-[#1C1B1F]">Priority list</h2>
-            {!loading && active.length > 8 && (
-              <span className="text-xs text-[#79747E]">{active.length} active</span>
+            {lastRefreshed && (
+              <span className="text-[11px] text-[#CAC4D0]">
+                Updated {lastRefreshed.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}, {lastRefreshed.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+              </span>
             )}
           </div>
 
