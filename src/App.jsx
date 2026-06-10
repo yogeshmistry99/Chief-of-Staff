@@ -1,8 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom'
 import { useEffect, useRef, useState } from 'react'
 import { haptic } from './lib/haptic'
-import BottomNav from './components/BottomNav'
-import QuickAdd from './components/QuickAdd'
 import Home from './pages/Home'
 import Buckets from './pages/Buckets'
 import BucketDetail from './pages/BucketDetail'
@@ -166,10 +164,6 @@ function AppInner() {
   return (
     <div className="flex flex-col h-full">
       <TabStrip />
-      {/* Quick-add FAB — sits above bottom nav */}
-      <div className="absolute bottom-20 right-4 z-40 safe-bottom" style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 72px)' }}>
-        <QuickAdd />
-      </div>
       <BottomNav />
     </div>
   )

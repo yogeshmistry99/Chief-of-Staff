@@ -8,6 +8,7 @@ import { haptic } from '../lib/haptic'
 import Markdown from '../components/Markdown'
 import ChatInput from '../components/ChatInput'
 import EditSheet from '../components/EditSheet'
+import QuickAdd from '../components/QuickAdd'
 
 async function fetchUpcomingEvents() {
   const now = new Date()
@@ -539,11 +540,13 @@ export default function Home() {
     try { return JSON.parse(localStorage.getItem('cos_home_messages') ?? '[]') }
     catch { return [] }
   })
+  const [quickAddOpen, setQuickAddOpen] = useState(false)
   const inputRef = useRef(null)
   const messagesEndRef = useRef(null)
   const scrollRef = useRef(null)
   const pullRef = useRef({ startY: 0, pulling: false, dist: 0 })
   const [pullDistance, setPullDistance] = useState(0)
+  const inputHoldRef = useRef(null)
 
   function loadTasks(showRefreshing = false) {
     if (showRefreshing) setRefreshing(true)
@@ -792,9 +795,20 @@ export default function Home() {
       </div>
 
       {/* CoS input bar — fixed at bottom */}
-      <div className="bg-white border-t border-[#CAC4D0] px-4 pt-2.5 pb-2 safe-bottom max-w-lg mx-auto w-full">
+      <div
+        className="bg-white border-t border-[#CAC4D0] px-4 pt-2.5 pb-2 safe-bottom max-w-lg mx-auto w-full"
+        onPointerDown={() => {
+          inputHoldRef.current = setTimeout(() => {
+            haptic.medium()
+            setQuickAddOpen(true)
+            inputHoldRef.current = null
+          }, 550)
+        }}
+        onPointerUp={() => clearTimeout(inputHoldRef.current)}
+        onPointerLeave={() => clearTimeout(inputHoldRef.current)}
+      >
         <div className="flex items-center justify-between mb-1.5">
-          <p className="text-xs text-[#79747E]">Chief of Staff</p>
+          <p className="text-xs text-[#79747E]">Chief of Staff · <span className="text-[#CAC4D0]">hold to add task</span></p>
           <button onClick={() => navigate('/chief')} className="text-xs font-medium text-[#6750A4]">Full view →</button>
         </div>
         <ChatInput
@@ -803,6 +817,7 @@ export default function Home() {
           textareaRef={inputRef}
         />
       </div>
+      <QuickAdd open={quickAddOpen} onClose={() => setQuickAddOpen(false)} />
     </div>
   )
 }
