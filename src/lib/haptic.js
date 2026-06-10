@@ -11,25 +11,20 @@ export const haptic = {
         { freq: 523, when: 0,    dur: 0.09, vol: 0.15 },
         { freq: 659, when: 0.07, dur: 0.09, vol: 0.15 },
         { freq: 784, when: 0.14, dur: 0.09, vol: 0.15 },
-        { freq: 1047,when: 0.21, dur: 0.12, vol: 0.13 },
-        { freq: 1047,when: 0.30, dur: 0.22, vol: 0.11, zing: true },
+        { freq: 1047,when: 0.21, dur: 0.18, vol: 0.13 },
       ]
-      notes.forEach(({ freq, when, dur, vol, zing }) => {
+      notes.forEach(({ freq, when, dur, vol }) => {
         const osc  = ctx.createOscillator()
         const gain = ctx.createGain()
         osc.connect(gain); gain.connect(ctx.destination)
         osc.type = 'sine'
         osc.frequency.setValueAtTime(freq, ctx.currentTime + when)
-        if (zing) {
-          // punch up to a high squeak — happy and silly
-          osc.frequency.linearRampToValueAtTime(freq * 1.6, ctx.currentTime + when + dur * 0.4)
-          osc.frequency.linearRampToValueAtTime(freq * 1.9, ctx.currentTime + when + dur)
-        }
         gain.gain.setValueAtTime(vol, ctx.currentTime + when)
         gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + when + dur)
         osc.start(ctx.currentTime + when)
         osc.stop(ctx.currentTime + when + dur + 0.01)
       })
+
     } catch {}
   },
 }
