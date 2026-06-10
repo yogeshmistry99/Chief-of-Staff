@@ -77,34 +77,34 @@ function formatTasksForPrompt(tasks) {
   }).join('\n')
 }
 
-function buildKnowledgeBlock({ instructions, context, files } = {}) {
+function buildKnowledgeSystemBlocks({ instructions, context, files } = {}) {
   const parts = []
-  if (instructions?.trim()) {
-    parts.push(`== Instructions ==\n${instructions.trim()}`)
-  }
-  if (context?.trim()) {
-    parts.push(`== Context ==\n${context.trim()}`)
-  }
+  if (instructions?.trim()) parts.push(`== Instructions ==\n${instructions.trim()}`)
+  if (context?.trim())      parts.push(`== Context ==\n${context.trim()}`)
   if (files?.length) {
     const docs = files.map((f) => `[File: ${f.name}]\n${f.content}`).join('\n\n')
     parts.push(`== Reference documents ==\n${docs}`)
   }
-  return parts.length ? '\n\n' + parts.join('\n\n') : ''
+  if (!parts.length) return []
+  // Single block with cache_control — placed first in system array so its
+  // cache key is independent of the dynamic task list that follows.
+  return [{ type: 'text', text: parts.join('\n\n'), cache_control: { type: 'ephemeral' } }]
 }
 
 export const SYSTEM_PROMPTS = {
   cos: (tasks, cfg) => {
     const today = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` })()
-    return `You are the Chief of Staff for Yogesh Mistry, an architect at Gensler. Today is ${today}.
+    const base = { type: 'text', text: `You are the Chief of Staff for Yogesh Mistry, an architect at Gensler. Today is ${today}.
 
 You oversee all areas of his life organised into seven buckets: Finance, Health, Work, Family, Home, Personal, and Systems.
 
 Your role is to help him manage priorities, make decisions, and take action. Be concise, direct, and conversational — write in plain prose, no markdown, no bullet points, no bold text, no headers. Just clear sentences.
 
 Here is his current Todoist task list:
-${formatTasksForPrompt(tasks)}${buildKnowledgeBlock(cfg)}
+${formatTasksForPrompt(tasks)}
 
-When he asks about existing tasks, check the list above. When he adds a new task, acknowledge it and suggest which bucket and priority it belongs in. When he pastes an email, extract actionable tasks. Keep responses short unless depth is needed.`
+When he asks about existing tasks, check the list above. When he adds a new task, acknowledge it and suggest which bucket and priority it belongs in. When he pastes an email, extract actionable tasks. Keep responses short unless depth is needed.` }
+    return [...buildKnowledgeSystemBlocks(cfg), base]
   },
 
   head: (bucket, tasks, cfg) => {
@@ -118,25 +118,29 @@ When he asks about existing tasks, check the list above. When he adds a new task
       Systems:  'tools, automations, this Life OS, and productivity systems',
     }
     const bucketTasks = tasks?.filter((t) => t._projectName === bucket) ?? []
-    return `You are the ${bucket} Head for Yogesh Mistry — a subject matter expert focused exclusively on ${descriptions[bucket] ?? bucket.toLowerCase()}.
+    const today = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` })()
+    const base = { type: 'text', text: `You are the ${bucket} Head for Yogesh Mistry — a subject matter expert focused exclusively on ${descriptions[bucket] ?? bucket.toLowerCase()}.
 
-Today is ${(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` })()}.
+Today is ${today}.
 
 Current ${bucket} tasks:
-${formatTasksForPrompt(bucketTasks)}${buildKnowledgeBlock(cfg)}
+${formatTasksForPrompt(bucketTasks)}
 
-Be direct, specific, and conversational — write in plain prose, no markdown, no bullet points, no bold text, no headers. Help him think through decisions, surface risks, and identify the highest-leverage actions.`
+Be direct, specific, and conversational — write in plain prose, no markdown, no bullet points, no bold text, no headers. Help him think through decisions, surface risks, and identify the highest-leverage actions.` }
+    return [...buildKnowledgeSystemBlocks(cfg), base]
   },
 
   discussion: (bucket, title, tasks, cfg) => {
     const bucketTasks = tasks?.filter((t) => t._projectName === bucket) ?? []
-    return `You are the ${bucket} Head for Yogesh Mistry, working through a specific discussion: "${title}".
+    const today = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` })()
+    const base = { type: 'text', text: `You are the ${bucket} Head for Yogesh Mistry, working through a specific discussion: "${title}".
 
-Today is ${(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` })()}.
+Today is ${today}.
 
 Current ${bucket} tasks for context:
-${formatTasksForPrompt(bucketTasks)}${buildKnowledgeBlock(cfg)}
+${formatTasksForPrompt(bucketTasks)}
 
-Stay focused on this topic. Write in plain conversational prose — no markdown, no bullet points, no bold text, no headers. Help him reach a clear decision or set of actions. When a decision is reached, summarise it clearly in plain sentences.`
+Stay focused on this topic. Write in plain conversational prose — no markdown, no bullet points, no bold text, no headers. Help him reach a clear decision or set of actions. When a decision is reached, summarise it clearly in plain sentences.` }
+    return [...buildKnowledgeSystemBlocks(cfg), base]
   },
 }

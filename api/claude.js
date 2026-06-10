@@ -127,6 +127,7 @@ export default async function handler(req, res) {
           headers: {
             'x-api-key': apiKey,
             'anthropic-version': '2023-06-01',
+            'anthropic-beta': 'prompt-caching-1',
             'content-type': 'application/json',
           },
           body: JSON.stringify({
@@ -245,6 +246,7 @@ export default async function handler(req, res) {
         headers: {
           'x-api-key': apiKey,
           'anthropic-version': '2023-06-01',
+          'anthropic-beta': 'prompt-caching-1',
           'content-type': 'application/json',
         },
         body: JSON.stringify({
