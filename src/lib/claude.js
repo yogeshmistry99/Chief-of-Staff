@@ -71,9 +71,9 @@ function formatTasksForPrompt(tasks) {
   if (!tasks?.length) return 'No tasks loaded.'
   return tasks.map((t) => {
     const priority = ['', 'P4', 'P3', 'P2', 'P1'][t.priority] ?? 'P4'
-    const due = t.due?.date ? ` | due ${t.due.date}` : ''
+    const due = t.due?.date ? ` | due ${t.due.date.slice(0, 10)}` : ''
     const project = t._projectName ? ` | ${t._projectName}` : ''
-    return `- [${priority}${due}${project}] ${t.content}`
+    return `- [id:${t.id} | ${priority}${due}${project}] ${t.content}`
   }).join('\n')
 }
 

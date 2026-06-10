@@ -11,7 +11,7 @@ const PROJECTS = {
 const TOOLS = [
   {
     name: 'create_task',
-    description: 'Create a new task in Todoist for Yogesh.',
+    description: 'Create a new task in Todoist for Yogesh. To create a subtask, pass the parent task\'s ID as parent_id.',
     input_schema: {
       type: 'object',
       properties: {
@@ -19,6 +19,7 @@ const TOOLS = [
         priority:     { type: 'integer', description: '4=P1 (urgent), 3=P2, 2=P3, 1=P4 (someday)', enum: [1,2,3,4] },
         due_string:   { type: 'string', description: 'Due date in natural language, e.g. "today", "tomorrow", "next Monday"' },
         project_name: { type: 'string', description: 'Bucket: Finance, Health, Work, Family, Home, Personal, or Systems', enum: Object.keys(PROJECTS) },
+        parent_id:    { type: 'string', description: 'ID of the parent task to nest this as a subtask. Use the task ID from the task list.' },
       },
       required: ['content'],
     },
@@ -59,6 +60,7 @@ async function executeTool(name, input) {
     if (input.priority)     body.priority = input.priority
     if (input.due_string)   body.due_string = input.due_string
     if (input.project_name) body.project_id = PROJECTS[input.project_name]
+    if (input.parent_id)    body.parent_id = input.parent_id
     const r = await fetch('https://api.todoist.com/rest/v2/tasks', {
       method: 'POST',
       headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
