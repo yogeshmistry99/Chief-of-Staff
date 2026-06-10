@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { haptic } from '../lib/haptic'
 import { PROJECTS } from '../lib/todoist'
@@ -30,24 +30,22 @@ export default function QuickAdd({ open, onClose }) {
   const galleryRef = useRef(null)
   const cameraRef = useRef(null)
 
-  // Controlled open/close
-  const prevOpen = useRef(false)
-  if (open && !prevOpen.current) {
-    prevOpen.current = true
-    setContent('')
-    setAttachment(null)
-    setSaved(false)
-    setMounted(true)
-    requestAnimationFrame(() => requestAnimationFrame(() => {
-      setEntered(true)
-      setTimeout(() => inputRef.current?.focus(), 80)
-    }))
-  }
-  if (!open && prevOpen.current) {
-    prevOpen.current = false
-    setEntered(false)
-    setTimeout(() => setMounted(false), 280)
-  }
+  useEffect(() => {
+    if (open) {
+      setContent('')
+      setAttachment(null)
+      setSaved(false)
+      setMounted(true)
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        setEntered(true)
+        setTimeout(() => inputRef.current?.focus(), 80)
+      }))
+    } else {
+      setEntered(false)
+      const t = setTimeout(() => setMounted(false), 280)
+      return () => clearTimeout(t)
+    }
+  }, [open])
 
   function handleClose() {
     setEntered(false)
