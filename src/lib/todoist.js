@@ -31,7 +31,12 @@ export async function getProjectTasks(projectId) {
   return get('tasks', { project_id: projectId })
 }
 
-// Close (complete) a task
+// Sections for a single project
+export async function getProjectSections(projectId) {
+  return get('sections', { project_id: projectId })
+}
+
+
 export async function closeTask(taskId) {
   const url = new URL(BASE, window.location.origin)
   url.searchParams.set('path', `tasks/${taskId}/close`)

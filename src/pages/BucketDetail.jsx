@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import EditSheet from '../components/EditSheet'
 import { useParams, useNavigate } from 'react-router-dom'
-import { getProjectTasks, PROJECTS } from '../lib/todoist'
+import { getProjectTasks, getProjectSections, PROJECTS } from '../lib/todoist'
 import { scoreTask, BUCKET_WEIGHTS } from '../lib/priority'
 import { sendMessage, SYSTEM_PROMPTS } from '../lib/claude'
 import { haptic } from '../lib/haptic'
@@ -148,7 +148,7 @@ function DiscussionsTab({ bucket }) {
 const SORT_OPTIONS = [
   { id: 'priority', label: 'Priority' },
   { id: 'date',     label: 'Date' },
-  { id: 'label',    label: 'Label' },
+  { id: 'category', label: 'Category' },
 ]
 
 function sortTasks(tasks, sort) {
@@ -163,23 +163,52 @@ function sortTasks(tasks, sort) {
       return da.localeCompare(db)
     })
   }
-  if (sort === 'label') {
-    return copy.sort((a, b) => {
-      const la = (a.labels?.[0] ?? '').toLowerCase()
-      const lb = (b.labels?.[0] ?? '').toLowerCase()
-      return la.localeCompare(lb) || a.content.localeCompare(b.content)
-    })
-  }
   return copy
 }
 
-function TasksTab({ tasks, loading, onComplete }) {
-  const [sort, setSort] = useState('priority')
+// Build an ordered list of { sectionId, name, tasks[] } groups
+function groupBySection(tasks, sections) {
+  const sectionMap = Object.fromEntries(sections.map((s) => [s.id, s.name]))
+  const groups = {}
+  const order = []
+  // Preserve section order from the sections array
+  sections.forEach((s) => { groups[s.id] = []; order.push(s.id) })
+  // No-section bucket
+  groups['__none__'] = []
+  tasks.forEach((t) => {
+    const sid = t.section_id ?? '__none__'
+    if (!groups[sid]) { groups[sid] = []; order.push(sid) }
+    groups[sid].push(t)
+  })
+  const result = order
+    .map((sid) => ({ id: sid, name: sectionMap[sid] ?? (sid === '__none__' ? null : sid), tasks: groups[sid] ?? [] }))
+    .filter((g) => g.tasks.length > 0)
+  return result
+}
+
+function TaskCard({ title, tasks, onComplete, indexOffset = 0 }) {
+  return (
+    <div className="bg-white border border-[#CAC4D0] rounded-2xl px-4 pt-3 pb-1 shadow-sm mb-3"
+      style={{ animation: `fade-up 0.4s cubic-bezier(0.22,1,0.36,1) ${0.05 + indexOffset * 0.06}s both` }}>
+      {title && (
+        <div className="flex items-center justify-between mb-1">
+          <h3 className="text-xs font-semibold text-[#49454F] uppercase tracking-wide">{title}</h3>
+          <span className="text-xs text-[#79747E]">{tasks.length}</span>
+        </div>
+      )}
+      {tasks.map((task, i) => (
+        <TaskItem key={task.id} task={task} onComplete={onComplete} index={indexOffset + i} />
+      ))}
+    </div>
+  )
+}
+
+function TasksTab({ tasks, sections, loading, onComplete }) {
+  const [sort, setSort] = useState('category')
 
   const allScored = tasks.map((t) => ({ ...t, _scored: scoreTask(t) }))
   const active  = allScored.filter((t) => t._scored.score >= 0)
   const someday = allScored.filter((t) => t._scored.score === -1)
-  const sorted  = sortTasks(active, sort)
 
   if (loading) return (
     <div className="px-4 py-4 space-y-3">
@@ -192,11 +221,25 @@ function TasksTab({ tasks, loading, onComplete }) {
     </div>
   )
 
-  if (!sorted.length && !someday.length) return (
+  if (!active.length && !someday.length) return (
     <div className="text-center py-10">
       <p className="text-sm text-[#49454F]">No tasks in this bucket.</p>
     </div>
   )
+
+  let content
+  if (sort === 'category') {
+    const groups = groupBySection(active, sections)
+    let offset = 0
+    content = groups.map((g) => {
+      const el = <TaskCard key={g.id} title={g.name} tasks={g.tasks} onComplete={onComplete} indexOffset={offset} />
+      offset += g.tasks.length
+      return el
+    })
+  } else {
+    const sorted = sortTasks(active, sort)
+    content = <TaskCard title={null} tasks={sorted} onComplete={onComplete} />
+  }
 
   return (
     <div className="overflow-y-auto h-full">
@@ -215,11 +258,9 @@ function TasksTab({ tasks, loading, onComplete }) {
       </div>
 
       <div className="px-4 pb-4">
-        {sorted.map((task, i) => (
-          <TaskItem key={task.id} task={task} onComplete={onComplete} index={i} />
-        ))}
+        {content}
         {someday.length > 0 && (
-          <div className="bg-[#F3EDF7] rounded-xl px-4 py-2.5 mt-3">
+          <div className="bg-[#F3EDF7] rounded-xl px-4 py-2.5 mt-1">
             <p className="text-xs text-[#49454F]">
               <span className="font-semibold text-[#6750A4]">{someday.length} someday</span> — no date, P4.
             </p>
@@ -466,6 +507,7 @@ export default function BucketDetail() {
   const navigate = useNavigate()
   const [tab, setTab] = useState('tasks')
   const [tasks, setTasks] = useState([])
+  const [sections, setSections] = useState([])
   const [loading, setLoading] = useState(true)
   // Head chat messages lifted here so they survive tab switches
   const [headMessages, setHeadMessages] = useState([])
@@ -474,9 +516,14 @@ export default function BucketDetail() {
 
   useEffect(() => {
     if (!projectId) return
-    getProjectTasks(projectId)
-      .then((data) => data.map((t) => ({ ...t, _projectName: bucket })))
-      .then(setTasks)
+    Promise.all([
+      getProjectTasks(projectId),
+      getProjectSections(projectId),
+    ])
+      .then(([taskData, sectionData]) => {
+        setTasks(taskData.map((t) => ({ ...t, _projectName: bucket })))
+        setSections(Array.isArray(sectionData) ? sectionData : [])
+      })
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [projectId])
@@ -535,7 +582,7 @@ export default function BucketDetail() {
       {/* Tab content — all three stay mounted; only active one is visible */}
       <div className="flex-1 overflow-hidden relative">
         <div className={`absolute inset-0 ${tab === 'tasks' ? '' : 'invisible pointer-events-none'}`}>
-          <TasksTab tasks={tasks} loading={loading} onComplete={removeTask} />
+          <TasksTab tasks={tasks} sections={sections} loading={loading} onComplete={removeTask} />
         </div>
         <div className={`absolute inset-0 ${tab === 'head' ? '' : 'invisible pointer-events-none'}`}>
           <HeadTab bucket={bucket} tasks={tasks} messages={headMessages} setMessages={setHeadMessages} />
