@@ -588,6 +588,17 @@ function getDailyQuote() {
   return QUOTES[dayOfYear % QUOTES.length]
 }
 
+function DailyQuote() {
+  const q = getDailyQuote()
+  return (
+    <div className="bg-[#F3EDF7] rounded-2xl px-4 py-3 mb-4" style={{ animation: 'fade-up 0.6s cubic-bezier(0.22,1,0.36,1) 0.1s both' }}>
+      <p className="text-xs font-medium text-[#6750A4] mb-1">Quote of the day</p>
+      <p className="text-sm text-[#1C1B1F] leading-snug italic">"{q.text}"</p>
+      <p className="text-xs text-[#79747E] mt-1.5">— {q.author}</p>
+    </div>
+  )
+}
+
 
   const navigate = useNavigate()
   const today = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
@@ -711,13 +722,7 @@ function getDailyQuote() {
         </div>
 
         {/* Quote of the day */}
-        {(() => { const q = getDailyQuote(); return (
-          <div className="bg-[#F3EDF7] rounded-2xl px-4 py-3 mb-4" style={{ animation: 'fade-up 0.6s cubic-bezier(0.22,1,0.36,1) 0.1s both' }}>
-            <p className="text-xs font-medium text-[#6750A4] mb-1">Quote of the day</p>
-            <p className="text-sm text-[#1C1B1F] leading-snug italic">"{q.text}"</p>
-            <p className="text-xs text-[#79747E] mt-1.5">— {q.author}</p>
-          </div>
-        )})()}
+        <DailyQuote />
 
         {/* Stats */}
         <div className="grid grid-cols-4 gap-2 mb-4">
