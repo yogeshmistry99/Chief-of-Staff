@@ -599,7 +599,7 @@ function DailyQuote() {
   )
 }
 
-
+export default function Home() {
   const navigate = useNavigate()
   const today = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
   const hour = new Date().getHours()
