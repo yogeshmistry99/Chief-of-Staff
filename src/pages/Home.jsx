@@ -531,7 +531,7 @@ export default function Home() {
 
         {/* Header */}
         <div className="flex items-start justify-between mb-4">
-          <div style={{ animation: 'logo-in 0.55s cubic-bezier(0.34,1.56,0.64,1) both' }}>
+          <div style={{ animation: 'logo-in 0.9s cubic-bezier(0.22, 1, 0.36, 1) both' }}>
             <p className="text-xs text-[#49454F]">{today}</p>
             <h1 className="text-xl font-semibold text-[#1C1B1F]">{greeting}, Yogesh</h1>
           </div>
@@ -556,7 +556,7 @@ export default function Home() {
             { label: 'Overdue',  value: loading ? '…' : overdueCount,  color: overdueCount > 0 ? 'bg-red-100 text-red-900' : 'bg-[#C8F5E1] text-[#002115]' },
           ].map(({ label, value, color }, i) => (
             <div key={label} className={`rounded-xl p-3 ${color}`}
-              style={{ animation: `fade-up 0.4s ease ${0.08 + i * 0.07}s both` }}>
+              style={{ animation: `fade-up 0.5s cubic-bezier(0.22,1,0.36,1) ${0.18 + i * 0.08}s both` }}>
               <p className="text-xs opacity-60 mb-0.5">{label}</p>
               <p className="text-xl font-bold leading-none">{value}</p>
             </div>
