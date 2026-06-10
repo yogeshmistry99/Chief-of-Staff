@@ -14,6 +14,35 @@ const HEAD_LABELS = {
   chief:    { emoji: '🎯', role: 'Chief of Staff' },
 }
 
+const DEFAULT_CONTEXT = {
+  Finance:  `Goal: Stop surviving, start thriving. House purchase. Pensions consolidated and on track. Side income stream started. Financial trajectory improving year on year. Children's savings organised. Insurance in place.
+Key people: Ryan Tuff (mortgage broker, Vector), Svetlana Promislova, Maria Grazia Barruttu.
+Constraints: Budget is real. Every financial decision has genuine consequences.`,
+
+  Health:   `Goal: Long, strong, healthy life. Lean muscular body. Optimised for longevity. Mental clarity and positive self image.
+Current state: Active medical referrals in progress. Fitness habit being established — strength training and cycling. Mental health support ongoing.
+Constraints: Multiple parallel medical threads. Do not let any referral go cold.`,
+
+  Work:     `Goal: Become a high performing, trusted Design Manager at Gensler. Grow Mistry Architects into something meaningful. Build side income streams.
+Key people: Nick (manager), Russell (senior, career development).
+Constraints: Work laptop only — no software installs.`,
+
+  Family:   `Goal: Give Arya and Neo the best possible start. Build shared memories. Be present. Raise smart, curious, connected children.
+Key people: Mitika (partner), Arya (daughter), Neo (son).
+Constraints: Time with young children is irreversible. Prioritise presence.`,
+
+  Home:     `Goal: Buy a home of their own. Create a calm, well designed space. Eventually a home worthy of architectural ambitions.
+Current state: House purchase is the single biggest home priority. Currently living with parents.
+Constraints: House purchase takes precedence over all home optimisation.`,
+
+  Personal: `Goal: Continuously optimise how he lives, thinks and operates. Build systems that compound over time.
+Constraints: Time and energy are scarce. Only optimise what genuinely compounds.`,
+
+  Systems:  `Goal: Build a Life OS that compounds — getting more useful the longer it runs. Eventually fully autonomous.
+Current phase: Phase 1 — proving the system works daily.
+Constraints: Work laptop only — Claude Code web used for all development. Commit to GitHub every session.`,
+}
+
 const DEFAULT_INSTRUCTIONS = {
   chief:    `You are the Chief of Staff for Yogesh's Life OS. Read all buckets holistically. Apply the bucket weighting framework. Surface conflicts, challenge priorities and ensure time is spent on highest consequence items. Be direct. No waffle.`,
   Finance:  `You are a specialist finance advisor. Focus on financial protection, house purchase, pensions, insurance and side income. Flag anything that affects financial security or trajectory. Be direct. Numbers matter.`,
@@ -34,8 +63,9 @@ export default function HeadConfig() {
   const initial = loadHeadConfig(key)
   // Pre-populate instructions with default if field is empty
   const defaultInstructions = initial.instructions || DEFAULT_INSTRUCTIONS[key] || ''
+  const defaultContext = initial.context || DEFAULT_CONTEXT[key] || ''
   const [instructions, setInstructions] = useState(defaultInstructions)
-  const [context, setContext] = useState(initial.context)
+  const [context, setContext] = useState(defaultContext)
   const [files, setFiles] = useState(initial.files)
   const [saved, setSaved] = useState(false)
   const fileInputRef = useRef(null)
