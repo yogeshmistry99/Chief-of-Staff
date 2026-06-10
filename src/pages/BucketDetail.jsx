@@ -3,7 +3,7 @@ import EditSheet from '../components/EditSheet'
 import { useParams, useNavigate } from 'react-router-dom'
 import { getProjectTasks, getProjectSections, PROJECTS } from '../lib/todoist'
 import { scoreTask, BUCKET_WEIGHTS } from '../lib/priority'
-import { sendMessage, SYSTEM_PROMPTS } from '../lib/claude'
+import { sendMessageStream, SYSTEM_PROMPTS } from '../lib/claude'
 import { haptic } from '../lib/haptic'
 import Markdown from '../components/Markdown'
 import ChatInput from '../components/ChatInput'
@@ -38,13 +38,26 @@ function HeadTab({ bucket, tasks, messages, setMessages }) {
   async function handleSend(content, attachmentName) {
     const userMsg = { role: 'user', content, attachmentName }
     setMessages((prev) => [...prev, userMsg])
-    setMessages((prev) => [...prev, { role: 'assistant', content: '…', pending: true }])
+    // Add empty streaming message immediately
+    setMessages((prev) => [...prev, { role: 'assistant', content: '', streaming: true }])
     try {
       const history = [...messages, userMsg]
-        .filter((m) => !m.pending)
+        .filter((m) => !m.streaming)
         .map(({ role, content }) => ({ role, content }))
-      const reply = await sendMessage(history, SYSTEM_PROMPTS.head(bucket, tasks))
-      setMessages((prev) => [...prev.slice(0, -1), { role: 'assistant', content: reply }])
+      await sendMessageStream(history, SYSTEM_PROMPTS.head(bucket, tasks), (chunk) => {
+        setMessages((prev) => {
+          const last = prev[prev.length - 1]
+          if (!last || !last.streaming) return prev
+          return [...prev.slice(0, -1), { ...last, content: last.content + chunk }]
+        })
+        endRef.current?.scrollIntoView({ behavior: 'smooth' })
+      })
+      // Mark streaming done
+      setMessages((prev) => {
+        const last = prev[prev.length - 1]
+        if (!last || !last.streaming) return prev
+        return [...prev.slice(0, -1), { ...last, streaming: false }]
+      })
     } catch (err) {
       setMessages((prev) => [...prev.slice(0, -1), { role: 'assistant', content: `Error: ${err.message}` }])
     }
@@ -67,7 +80,12 @@ function HeadTab({ bucket, tasks, messages, setMessages }) {
                 : 'bg-white border border-[#CAC4D0] text-[#1C1B1F] rounded-bl-sm'
             }`}>
               {msg.role === 'assistant' ? (
-                <Markdown text={msg.content} />
+                <>
+                  <Markdown text={msg.content || ' '} />
+                  {msg.streaming && (
+                    <span style={{ animation: 'blink 0.9s step-end infinite', display: 'inline-block', marginLeft: '1px', lineHeight: 1 }}>▌</span>
+                  )}
+                </>
               ) : (
                 <>
                   {msg.attachmentName && <span className="text-xs opacity-70 block mb-0.5">📎 {msg.attachmentName}</span>}
@@ -509,8 +527,16 @@ export default function BucketDetail() {
   const [tasks, setTasks] = useState([])
   const [sections, setSections] = useState([])
   const [loading, setLoading] = useState(true)
-  // Head chat messages lifted here so they survive tab switches
-  const [headMessages, setHeadMessages] = useState([])
+  // Head chat — persisted to localStorage so history survives navigation and sessions
+  const storageKey = `cos_head_${bucket}`
+  const [headMessages, setHeadMessages] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(`cos_head_${bucket}`) ?? '[]') }
+    catch { return [] }
+  })
+  useEffect(() => {
+    const toSave = headMessages.filter((m) => !m.streaming)
+    if (toSave.length) localStorage.setItem(storageKey, JSON.stringify(toSave))
+  }, [headMessages, storageKey])
 
   const projectId = PROJECTS[bucket]
 

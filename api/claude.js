@@ -108,6 +108,63 @@ export default async function handler(req, res) {
   const { messages, system } = req.body ?? {}
   if (!messages?.length) return res.status(400).json({ error: 'messages required' })
 
+  // Streaming branch — used by Head/Discussion chats (no tool loop needed)
+  if (req.query.stream === '1') {
+    res.setHeader('Content-Type', 'text/event-stream; charset=utf-8')
+    res.setHeader('Cache-Control', 'no-cache')
+    res.setHeader('X-Accel-Buffering', 'no')
+    res.setHeader('Access-Control-Allow-Origin', '*')
+    try {
+      const upstream = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 1024,
+          stream: true,
+          ...(system ? { system } : {}),
+          messages,
+        }),
+      })
+      if (!upstream.ok) {
+        const err = await upstream.text()
+        res.write(`data: ${JSON.stringify({ error: err })}\n\n`)
+        return res.end()
+      }
+      const reader = upstream.body.getReader()
+      const decoder = new TextDecoder()
+      let buf = ''
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buf += decoder.decode(value, { stream: true })
+        const lines = buf.split('\n')
+        buf = lines.pop()
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          const raw = line.slice(6).trim()
+          if (raw === '[DONE]') continue
+          try {
+            const evt = JSON.parse(raw)
+            if (evt.type === 'content_block_delta' && evt.delta?.type === 'text_delta') {
+              res.write(`data: ${JSON.stringify({ text: evt.delta.text })}\n\n`)
+            }
+          } catch {}
+        }
+      }
+      res.write('data: [DONE]\n\n')
+      res.end()
+    } catch (err) {
+      res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`)
+      res.end()
+    }
+    return
+  }
+
   try {
     let currentMessages = messages
     let finalText = ''

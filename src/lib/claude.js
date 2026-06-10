@@ -1,3 +1,40 @@
+// Streams a response chunk-by-chunk, calling onChunk(text) for each piece.
+// Returns the full text when done.
+export async function sendMessageStream(messages, system, onChunk) {
+  const res = await fetch('/api/claude?stream=1', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ messages, system }),
+  })
+  if (!res.ok) throw new Error(`Claude API error: ${res.status}`)
+
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+  let buf = ''
+  let full = ''
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buf += decoder.decode(value, { stream: true })
+    const lines = buf.split('\n')
+    buf = lines.pop()
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue
+      const raw = line.slice(6).trim()
+      if (raw === '[DONE]') return full
+      try {
+        const evt = JSON.parse(raw)
+        if (evt.error) throw new Error(evt.error)
+        if (evt.text) { full += evt.text; onChunk(evt.text) }
+      } catch (e) {
+        if (e.message !== 'Unexpected end of JSON input') throw e
+      }
+    }
+  }
+  return full
+}
+
 export async function sendMessage(messages, system) {
   const res = await fetch('/api/claude', {
     method: 'POST',
