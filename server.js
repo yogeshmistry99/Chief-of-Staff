@@ -19,10 +19,12 @@ app.use(express.static(path.join(__dirname, 'dist'), {
 
 app.post('/api/todoist', async (req, res) => {
   try {
-    const { path: apiPath, method, body, token } = req.body
+    const { path: apiPath, method, body } = req.body
+    const key = process.env.TODOIST_API_KEY
+    if (!key) return res.status(500).json({ error: 'TODOIST_API_KEY not configured' })
     const opts = {
       method: method || 'GET',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
     }
     if (body) opts.body = JSON.stringify(body)
     const url = `https://api.todoist.com/api/v1/${apiPath.replace(/^\//, '')}`

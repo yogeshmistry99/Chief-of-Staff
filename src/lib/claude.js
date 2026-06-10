@@ -91,9 +91,14 @@ function buildKnowledgeSystemBlocks({ instructions, context, files } = {}) {
   return [{ type: 'text', text: parts.join('\n\n'), cache_control: { type: 'ephemeral' } }]
 }
 
+function todayISO() {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 export const SYSTEM_PROMPTS = {
   cos: (tasks, cfg) => {
-    const today = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` })()
+    const today = todayISO()
     const base = { type: 'text', text: `You are the Chief of Staff for Yogesh Mistry, an architect at Gensler. Today is ${today}.
 
 You oversee all areas of his life organised into seven buckets: Finance, Health, Work, Family, Home, Personal, and Systems.
@@ -118,7 +123,7 @@ When he asks about existing tasks, check the list above. When he adds a new task
       Systems:  'tools, automations, this Life OS, and productivity systems',
     }
     const bucketTasks = tasks?.filter((t) => t._projectName === bucket) ?? []
-    const today = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` })()
+    const today = todayISO()
     const base = { type: 'text', text: `You are the ${bucket} Head for Yogesh Mistry — a subject matter expert focused exclusively on ${descriptions[bucket] ?? bucket.toLowerCase()}.
 
 Today is ${today}.
@@ -132,7 +137,7 @@ Be direct, specific, and conversational — write in plain prose, no markdown, n
 
   discussion: (bucket, title, tasks, cfg) => {
     const bucketTasks = tasks?.filter((t) => t._projectName === bucket) ?? []
-    const today = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` })()
+    const today = todayISO()
     const base = { type: 'text', text: `You are the ${bucket} Head for Yogesh Mistry, working through a specific discussion: "${title}".
 
 Today is ${today}.
