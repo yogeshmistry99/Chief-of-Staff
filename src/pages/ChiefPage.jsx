@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { getAllTasks, PROJECTS } from '../lib/todoist'
 import { sendMessageStream, SYSTEM_PROMPTS } from '../lib/claude'
 import { loadHeadConfig } from '../lib/headConfig'
@@ -11,20 +11,32 @@ const PROJECT_NAMES = Object.fromEntries(Object.entries(PROJECTS).map(([name, id
 
 export default function ChiefPage() {
   const navigate = useNavigate()
+  const location = useLocation()
   const [tasks, setTasks] = useState([])
   const [messages, setMessages] = useState(() => {
-    // Shared with Home's CoS chat
     try { return JSON.parse(localStorage.getItem('cos_home_messages') ?? '[]') }
     catch { return [] }
   })
   const endRef = useRef(null)
   const inputRef = useRef(null)
+  const autoSentRef = useRef(false)
 
   useEffect(() => {
     getAllTasks()
       .then((data) => data.map((t) => ({ ...t, _projectName: PROJECT_NAMES[t.project_id] })))
       .then(setTasks)
       .catch(() => {})
+  }, [])
+
+  // Auto-send message passed from Home via navigation state
+  useEffect(() => {
+    const { initialMessage, attachmentName } = location.state ?? {}
+    if (initialMessage && !autoSentRef.current) {
+      autoSentRef.current = true
+      // Clear state so back/forward doesn't re-trigger
+      window.history.replaceState({}, '')
+      handleSend(initialMessage, attachmentName)
+    }
   }, [])
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])

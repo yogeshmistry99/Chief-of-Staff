@@ -2,10 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getAllTasks, closeTask, PROJECTS } from '../lib/todoist'
 import { prioritise, scoreTask } from '../lib/priority'
-import { sendMessageStream, SYSTEM_PROMPTS } from '../lib/claude'
-import { loadHeadConfig } from '../lib/headConfig'
 import { haptic } from '../lib/haptic'
-import Markdown from '../components/Markdown'
 import ChatInput from '../components/ChatInput'
 import EditSheet from '../components/EditSheet'
 import QuickAdd from '../components/QuickAdd'
@@ -536,13 +533,8 @@ export default function Home() {
   const [error, setError]             = useState(null)
   const [events, setEvents]           = useState([])
   const [eventsLoading, setEventsLoading] = useState(true)
-  const [messages, setMessages] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('cos_home_messages') ?? '[]') }
-    catch { return [] }
-  })
   const [quickAddOpen, setQuickAddOpen] = useState(false)
   const inputRef = useRef(null)
-  const messagesEndRef = useRef(null)
   const scrollRef = useRef(null)
   const pullRef = useRef({ startY: 0, pulling: false, dist: 0 })
   const [pullDistance, setPullDistance] = useState(0)
@@ -565,11 +557,6 @@ export default function Home() {
       .catch(() => {})
       .finally(() => setEventsLoading(false))
   }, [])
-  useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
-  useEffect(() => {
-    const toSave = messages.filter((m) => !m.streaming && !m.pending)
-    localStorage.setItem('cos_home_messages', JSON.stringify(toSave))
-  }, [messages])
 
   // Pull-to-refresh
   useEffect(() => {
@@ -611,29 +598,8 @@ export default function Home() {
 
   function removeTask(id) { setTasks((prev) => prev.filter((t) => t.id !== id)) }
 
-  async function handleSend(content, attachmentName) {
-    const userMsg = { role: 'user', content, attachmentName }
-    setMessages((prev) => [...prev, userMsg, { role: 'assistant', content: '', streaming: true }])
-    try {
-      const history = [...messages, userMsg]
-        .filter((m) => !m.streaming && !m.pending)
-        .map(({ role, content }) => ({ role, content }))
-      const cfg = loadHeadConfig('chief')
-      await sendMessageStream(history, SYSTEM_PROMPTS.cos(tasks, cfg), (chunk) => {
-        setMessages((prev) => {
-          const last = prev[prev.length - 1]
-          if (!last?.streaming) return prev
-          return [...prev.slice(0, -1), { ...last, content: last.content + chunk }]
-        })
-      })
-      setMessages((prev) => {
-        const last = prev[prev.length - 1]
-        if (!last?.streaming) return prev
-        return [...prev.slice(0, -1), { ...last, streaming: false }]
-      })
-    } catch (err) {
-      setMessages((prev) => [...prev.slice(0, -1), { role: 'assistant', content: `Error: ${err.message}` }])
-    }
+  function handleSend(content, attachmentName) {
+    navigate('/chief', { state: { initialMessage: content, attachmentName } })
   }
 
   const { active, someday } = prioritise(tasks)
@@ -691,38 +657,6 @@ export default function Home() {
             </div>
           ))}
         </div>
-
-        {/* CoS conversation */}
-        {messages.length > 0 && (
-          <div className="space-y-2 mb-4">
-            {messages.map((msg, i) => (
-              <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm leading-relaxed ${
-                  msg.role === 'user'
-                    ? 'bg-[#6750A4] text-white rounded-br-sm'
-                    : 'bg-white border border-[#CAC4D0] text-[#1C1B1F] rounded-bl-sm'
-                }`}>
-                  {msg.role === 'assistant' ? (
-                    <>
-                      <Markdown text={msg.content || ' '} />
-                      {msg.streaming && (
-                        <span style={{ animation: 'blink 0.9s step-end infinite', display: 'inline-block', marginLeft: '1px', lineHeight: 1 }}>▌</span>
-                      )}
-                    </>
-                  ) : (
-                    <>
-                      {msg.attachmentName && (
-                        <span className="text-xs opacity-70 block mb-0.5">📎 {msg.attachmentName}</span>
-                      )}
-                      {typeof msg.content === 'string' ? msg.content : msg.content.find((b) => b.type === 'text')?.text ?? ''}
-                    </>
-                  )}
-                </div>
-              </div>
-            ))}
-            <div ref={messagesEndRef} />
-          </div>
-        )}
 
         {/* Priority list */}
         <div className="bg-white border border-[#CAC4D0] rounded-2xl p-4 mb-3 shadow-sm">
@@ -794,7 +728,7 @@ export default function Home() {
         </div>
       </div>
 
-      {/* CoS input bar — fixed at bottom */}
+      {/* CoS input bar */}
       <div
         className="bg-white border-t border-[#CAC4D0] px-4 pt-2.5 pb-2 safe-bottom max-w-lg mx-auto w-full"
         onPointerDown={() => {
@@ -807,10 +741,6 @@ export default function Home() {
         onPointerUp={() => clearTimeout(inputHoldRef.current)}
         onPointerLeave={() => clearTimeout(inputHoldRef.current)}
       >
-        <div className="flex items-center justify-between mb-1.5">
-          <p className="text-xs text-[#79747E]">Chief of Staff · <span className="text-[#CAC4D0]">hold to add task</span></p>
-          <button onClick={() => navigate('/chief')} className="text-xs font-medium text-[#6750A4]">Full view →</button>
-        </div>
         <ChatInput
           placeholder="Message your Chief of Staff…"
           onSend={handleSend}
