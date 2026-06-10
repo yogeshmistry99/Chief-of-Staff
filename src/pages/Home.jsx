@@ -612,6 +612,9 @@ export default function Home() {
   const [refreshing, setRefreshing]   = useState(false)
   const [error, setError]             = useState(null)
   const [lastRefreshed, setLastRefreshed] = useState(null)
+  const [lastWeeklyReview] = useState(() => {
+    try { const s = localStorage.getItem('lastWeeklyReview'); return s ? new Date(s) : null } catch { return null }
+  })
   const [events, setEvents]           = useState([])
   const [eventsLoading, setEventsLoading] = useState(true)
   const [quickAddOpen, setQuickAddOpen] = useState(false)
@@ -712,16 +715,24 @@ export default function Home() {
             <p className="text-xs text-[#49454F]">{today}</p>
             <h1 className="text-xl font-semibold text-[#1C1B1F]">{greeting}, Yogesh</h1>
           </div>
-          <button
-            onClick={() => loadTasks(true)}
-            disabled={refreshing}
-            className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full bg-[#EADDFF] text-[#6750A4] hover:bg-[#D8CBFF] transition-colors disabled:opacity-50 mt-1"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" height="14" viewBox="0 -960 960 960" width="14" fill="currentColor" className={refreshing ? 'animate-spin' : ''}>
-              <path d="M480-160q-134 0-227-93t-93-227q0-134 93-227t227-93q69 0 132 28.5T720-690v-110h80v280H520v-80h168q-32-56-87.5-88T480-720q-100 0-170 70t-70 170q0 100 70 170t170 70q77 0 139-44t87-116h84q-28 106-114 173t-196 67Z" />
-            </svg>
-            {refreshing ? 'Refreshing…' : 'Refresh all'}
-          </button>
+          <div className="flex flex-col gap-1.5 items-end mt-1">
+            <button
+              onClick={() => loadTasks(true)}
+              disabled={refreshing}
+              className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full bg-[#EADDFF] text-[#6750A4] hover:bg-[#D8CBFF] transition-colors disabled:opacity-50"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" height="14" viewBox="0 -960 960 960" width="14" fill="currentColor" className={refreshing ? 'animate-spin' : ''}>
+                <path d="M480-160q-134 0-227-93t-93-227q0-134 93-227t227-93q69 0 132 28.5T720-690v-110h80v280H520v-80h168q-32-56-87.5-88T480-720q-100 0-170 70t-70 170q0 100 70 170t170 70q77 0 139-44t87-116h84q-28 106-114 173t-196 67Z" />
+              </svg>
+              {refreshing ? 'Refreshing…' : 'Refresh all'}
+            </button>
+            <button
+              onClick={() => navigate('/weekly-review')}
+              className="flex items-center gap-1 text-xs font-medium px-3 py-1.5 rounded-full bg-[#F3EDF7] text-[#6750A4] hover:bg-[#EADDFF] transition-colors"
+            >
+              Weekly review →
+            </button>
+          </div>
         </div>
 
         {/* Quote of the day */}
@@ -745,12 +756,19 @@ export default function Home() {
 
         {/* Priority list */}
         <div className="bg-white border border-[#CAC4D0] rounded-2xl p-4 mb-3 shadow-sm">
-          <div className="flex items-center justify-between mb-2">
-            <h2 className="text-sm font-semibold text-[#1C1B1F]">Priority list</h2>
-            {lastRefreshed && (
-              <span className="text-[11px] text-[#CAC4D0]">
-                Updated {lastRefreshed.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}, {lastRefreshed.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
-              </span>
+          <div className="mb-2">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-[#1C1B1F]">Priority list</h2>
+              {lastRefreshed && (
+                <span className="text-[11px] text-[#CAC4D0]">
+                  Updated {lastRefreshed.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}, {lastRefreshed.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+                </span>
+              )}
+            </div>
+            {lastWeeklyReview && (
+              <p className="text-[11px] text-[#CAC4D0] mt-0.5">
+                Last reviewed: {lastWeeklyReview.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short' })}, {lastWeeklyReview.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+              </p>
             )}
           </div>
 
@@ -776,14 +794,6 @@ export default function Home() {
           ))}
         </div>
 
-        {/* Weekly Review */}
-        {!loading && (
-          <div className="flex justify-end mb-3">
-            <button onClick={() => navigate('/weekly-review')} className="text-xs font-semibold text-[#6750A4]">
-              Weekly review →
-            </button>
-          </div>
-        )}
 
         {/* Upcoming events */}
         <div className="bg-white border border-[#CAC4D0] rounded-2xl p-4 mb-4 shadow-sm">

@@ -16,7 +16,7 @@ const BUCKET_META = {
 const BUCKETS = Object.keys(PROJECTS)
 
 // open/onClose controlled by parent
-export default function QuickAdd({ open, onClose }) {
+export default function QuickAdd({ open, onClose, onAdd }) {
   const [mounted, setMounted] = useState(false)
   const [entered, setEntered] = useState(false)
   const [content, setContent] = useState('')
@@ -81,6 +81,7 @@ export default function QuickAdd({ open, onClose }) {
         }),
       })
       haptic.success()
+      onAdd?.()
       setSaved(true)
       setTimeout(handleClose, 600)
     } catch {
