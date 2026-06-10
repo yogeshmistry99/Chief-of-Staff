@@ -35,7 +35,7 @@ function formatEventDay(event) {
   const dStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
   if (dStr === todayStr) return 'Today'
   if (dStr === tomorrowStr) return 'Tomorrow'
-  return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
+  return d.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: '2-digit' })
 }
 
 function formatDuration(start, end) {
@@ -446,7 +446,7 @@ function TaskRow({ task, onComplete, index = 0 }) {
           <div className="flex flex-wrap gap-x-3 gap-y-1">
             {localTask.due?.date && (
               <span className="text-xs text-[#79747E]">
-                Due {new Date(localTask.due.date + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}
+                Due {new Date(localTask.due.date + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: '2-digit' })}
               </span>
             )}
             {localTask.due?.datetime && (
@@ -601,7 +601,9 @@ function DailyQuote() {
 
 export default function Home() {
   const navigate = useNavigate()
-  const today = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
+  const _d = new Date()
+  const ordinal = (n) => { const s = ['th','st','nd','rd']; const v = n % 100; return n + (s[(v-20)%10] || s[v] || s[0]) }
+  const today = _d.toLocaleDateString('en-GB', { weekday: 'long' }) + ', ' + ordinal(_d.getDate()) + ' ' + _d.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
   const hour = new Date().getHours()
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
 
@@ -678,7 +680,7 @@ export default function Home() {
   function removeTask(id) { setTasks((prev) => prev.filter((t) => t.id !== id)) }
 
   function handleSend(content, attachmentName) {
-    navigate('/chief', { state: { initialMessage: content, attachmentName } })
+    navigate('/chief', { state: { initialMessage: content, attachmentName, from: '/' } })
   }
 
   const { active, someday } = prioritise(tasks)
@@ -774,13 +776,10 @@ export default function Home() {
           ))}
         </div>
 
-        {/* Someday / Weekly Review */}
-        {!loading && someday.length > 0 && (
-          <div className="bg-[#F3EDF7] rounded-xl px-4 py-2.5 mb-3 flex items-center justify-between">
-            <p className="text-xs text-[#49454F]">
-              <span className="font-semibold text-[#6750A4]">{someday.length} someday</span> — no date, P4.
-            </p>
-            <button onClick={() => navigate('/weekly-review')} className="text-xs font-semibold text-[#6750A4] ml-2 flex-shrink-0">
+        {/* Weekly Review */}
+        {!loading && (
+          <div className="flex justify-end mb-3">
+            <button onClick={() => navigate('/weekly-review')} className="text-xs font-semibold text-[#6750A4]">
               Weekly review →
             </button>
           </div>

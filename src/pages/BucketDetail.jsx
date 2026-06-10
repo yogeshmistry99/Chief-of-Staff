@@ -162,7 +162,7 @@ function DiscussionsTab({ bucket }) {
                 >
                   <p className="text-sm font-medium text-[#1C1B1F]">{d.title}</p>
                   <p className="text-xs text-[#79747E] mt-0.5">
-                    {d.messages.length} message{d.messages.length !== 1 ? 's' : ''} · {new Date(d.updatedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                    {d.messages.length} message{d.messages.length !== 1 ? 's' : ''} · {new Date(d.updatedAt).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: '2-digit' })}
                   </p>
                 </button>
                 <button
@@ -506,7 +506,7 @@ function TaskItem({ task: initialTask, onComplete, index = 0 }) {
             {days === 1 && <span className="text-xs font-semibold text-[#49454F] bg-[#E7E0EC] px-1.5 py-0.5 rounded">Tomorrow</span>}
             {localTask.due?.date && days > 1 && (
               <span className="text-xs text-[#79747E]">
-                {new Date(localTask.due.date + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}
+                {new Date(localTask.due.date + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: '2-digit' })}
               </span>
             )}
             {localTask.labels?.length > 0 && (
@@ -546,7 +546,7 @@ function TaskItem({ task: initialTask, onComplete, index = 0 }) {
           <div className="flex flex-wrap gap-x-3 gap-y-1">
             {localTask.due?.date && (
               <span className="text-xs text-[#79747E]">
-                Due {new Date(localTask.due.date + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}
+                Due {new Date(localTask.due.date + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: '2-digit' })}
               </span>
             )}
             {localTask.due?.datetime && (

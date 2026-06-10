@@ -124,14 +124,6 @@ export default function DiscussionThread() {
             )}
             <p className="text-xs text-[#79747E]">{bucket} · Discussion</p>
           </div>
-          <div className="flex gap-2 flex-shrink-0">
-            <button
-              onClick={() => alert('Add to tasks — coming soon.')}
-              className="text-xs font-medium px-3 py-1.5 rounded-full bg-[#EADDFF] text-[#6750A4] hover:bg-[#D8CBFF] transition-colors"
-            >
-              + Task
-            </button>
-          </div>
         </div>
       </div>
 

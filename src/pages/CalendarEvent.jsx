@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 function formatDate(dateStr) {
   if (!dateStr) return null
   const d = new Date(dateStr)
-  return d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+  return d.toLocaleDateString('en-GB', { weekday: 'long', day: '2-digit', month: '2-digit', year: '2-digit' })
 }
 
 function formatTime(dateTimeStr, timeZone) {

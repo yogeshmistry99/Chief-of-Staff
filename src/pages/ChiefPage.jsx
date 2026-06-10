@@ -30,11 +30,11 @@ export default function ChiefPage() {
 
   // Auto-send message passed from Home via navigation state
   useEffect(() => {
-    const { initialMessage, attachmentName } = location.state ?? {}
+    const { initialMessage, attachmentName, from } = location.state ?? {}
     if (initialMessage && !autoSentRef.current) {
       autoSentRef.current = true
-      // Clear state so back/forward doesn't re-trigger
-      window.history.replaceState({}, '')
+      // Clear transient fields but preserve 'from' for back navigation
+      window.history.replaceState({ from }, '')
       handleSend(initialMessage, attachmentName)
     }
   }, [])
@@ -79,7 +79,7 @@ export default function ChiefPage() {
       {/* Header */}
       <div className="bg-white border-b border-[#CAC4D0] px-4 pt-5 pb-3 flex-shrink-0">
         <div className="flex items-center gap-3">
-          <button onClick={() => navigate('/')} className="text-[#6750A4] p-1 -ml-1 flex-shrink-0">
+          <button onClick={() => navigate(location.state?.from ?? '/')} className="text-[#6750A4] p-1 -ml-1 flex-shrink-0">
             <svg xmlns="http://www.w3.org/2000/svg" height="20" viewBox="0 -960 960 960" width="20" fill="currentColor">
               <path d="M560-240 320-480l240-240 56 56-184 184 184 184-56 56Z"/>
             </svg>
