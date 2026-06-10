@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from
 import { useEffect, useRef, useState } from 'react'
 import { haptic } from './lib/haptic'
 import BottomNav from './components/BottomNav'
+import QuickAdd from './components/QuickAdd'
 import Home from './pages/Home'
 import Buckets from './pages/Buckets'
 import BucketDetail from './pages/BucketDetail'
@@ -9,6 +10,7 @@ import DiscussionThread from './pages/DiscussionThread'
 import Settings from './pages/Settings'
 import Calendar from './pages/Calendar'
 import CalendarEvent from './pages/CalendarEvent'
+import WeeklyReview from './pages/WeeklyReview'
 
 const TABS = [
   { path: '/',          Component: Home },
@@ -24,7 +26,8 @@ function getTabIdx(pathname) {
 
 function isSubRoute(pathname) {
   return (pathname.startsWith('/buckets/') && pathname !== '/buckets') ||
-         pathname.startsWith('/calendar/event')
+         pathname.startsWith('/calendar/event') ||
+         pathname === '/weekly-review'
 }
 
 function TabStrip() {
@@ -142,6 +145,7 @@ function AppInner() {
             <Route path="/buckets/:bucket"                      element={<BucketDetail />} />
             <Route path="/buckets/:bucket/discussions/:id"      element={<DiscussionThread />} />
             <Route path="/calendar/event/:id"                   element={<CalendarEvent />} />
+            <Route path="/weekly-review"                        element={<WeeklyReview />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </div>
@@ -153,6 +157,10 @@ function AppInner() {
   return (
     <div className="flex flex-col h-full">
       <TabStrip />
+      {/* Quick-add FAB — sits above bottom nav */}
+      <div className="absolute bottom-20 right-4 z-40 safe-bottom" style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 72px)' }}>
+        <QuickAdd />
+      </div>
       <BottomNav />
     </div>
   )

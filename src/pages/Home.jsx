@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { getAllTasks, closeTask, PROJECTS } from '../lib/todoist'
 import { prioritise, scoreTask } from '../lib/priority'
-import { sendMessage, SYSTEM_PROMPTS } from '../lib/claude'
+import { sendMessageStream, SYSTEM_PROMPTS } from '../lib/claude'
 import { haptic } from '../lib/haptic'
 import Markdown from '../components/Markdown'
 import ChatInput from '../components/ChatInput'
@@ -225,9 +226,12 @@ function TaskRow({ task, onComplete, index = 0 }) {
   const [editDue, setEditDue] = useState(task.due?.date ?? '')
   const [editDesc, setEditDesc] = useState(task.description ?? '')
   const [saving, setSaving] = useState(false)
+  const [swipeX, setSwipeX] = useState(0)
+  const [isSwiping, setIsSwiping] = useState(false)
   const timerRef = useRef(null)
   const holdRef = useRef(null)
   const isHoldRef = useRef(false)
+  const swipeRef = useRef(null)
   const { bucket, isOverdue } = scoreTask(localTask)
 
   // When removing state triggers, wait for collapse animation then call API + remove
@@ -274,7 +278,48 @@ function TaskRow({ task, onComplete, index = 0 }) {
 
   function handleRowClick() {
     if (isHoldRef.current) { isHoldRef.current = false; return }
-    if (!pendingComplete) setExpanded((x) => !x)
+    if (!pendingComplete && swipeX === 0) setExpanded((x) => !x)
+  }
+
+  function handleTouchStart(e) {
+    if (pendingComplete) return
+    const t = e.touches[0]
+    swipeRef.current = { startX: t.clientX, startY: t.clientY, decided: false, horizontal: false, dx: 0 }
+  }
+
+  function handleTouchMove(e) {
+    const tr = swipeRef.current
+    if (!tr) return
+    const t = e.touches[0]
+    const dx = t.clientX - tr.startX
+    const dy = t.clientY - tr.startY
+    if (!tr.decided) {
+      if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return
+      tr.decided = true
+      tr.horizontal = Math.abs(dx) > Math.abs(dy) * 1.2 && dx < 0
+    }
+    if (!tr.horizontal) return
+    clearTimeout(holdRef.current)
+    tr.dx = Math.max(dx, -96)
+    setSwipeX(tr.dx)
+    setIsSwiping(true)
+  }
+
+  function handleTouchEnd() {
+    const tr = swipeRef.current
+    swipeRef.current = null
+    if (!tr?.horizontal) { setIsSwiping(false); return }
+    if (tr.dx < -70) {
+      setSwipeX(-96)
+      setTimeout(() => {
+        setSwipeX(0)
+        setIsSwiping(false)
+        handleComplete({ stopPropagation: () => {} })
+      }, 200)
+    } else {
+      setSwipeX(0)
+      setIsSwiping(false)
+    }
   }
 
   async function handleSave() {
@@ -311,8 +356,21 @@ function TaskRow({ task, onComplete, index = 0 }) {
       animation: `fade-up 0.36s ease ${0.18 + index * 0.065}s both`,
     }}>
     <div style={{ overflow: 'hidden' }}>
-    <div className={`border-b border-[#F3EDF7] last:border-0`}
+    <div className="border-b border-[#F3EDF7] last:border-0 relative overflow-hidden"
       style={{ opacity: pendingComplete ? 0.45 : 1, transition: 'opacity 0.15s ease' }}>
+      {/* Swipe-left reveal */}
+      <div className="absolute right-0 top-0 bottom-0 w-24 bg-[#4CAF50] flex items-center justify-center rounded-r-2xl"
+        style={{ opacity: swipeX < -10 ? Math.min((-swipeX - 10) / 50, 1) : 0 }}>
+        <svg xmlns="http://www.w3.org/2000/svg" height="22" viewBox="0 0 24 24" width="22" fill="white">
+          <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+        </svg>
+      </div>
+      <div
+        style={{ transform: `translateX(${swipeX}px)`, transition: isSwiping ? 'none' : 'transform 0.28s cubic-bezier(0.25,1,0.5,1)', background: 'white' }}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+      >
       <div
         className="flex items-center gap-3 py-3 cursor-pointer select-none"
         onPointerDown={handleRowPointerDown}
@@ -408,9 +466,10 @@ function TaskRow({ task, onComplete, index = 0 }) {
               Open in Todoist ↗
             </a>
           )}
-          <p className="text-[10px] text-[#CAC4D0]">Hold to edit</p>
+          <p className="text-[10px] text-[#CAC4D0]">Hold to edit · swipe left to complete</p>
         </div>
       </div>
+      </div>{/* end swipe wrapper */}
     </div>
     </div>
     </div>
@@ -463,6 +522,7 @@ function TaskRow({ task, onComplete, index = 0 }) {
 }
 
 export default function Home() {
+  const navigate = useNavigate()
   const today = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
   const hour = new Date().getHours()
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
@@ -473,9 +533,15 @@ export default function Home() {
   const [error, setError]             = useState(null)
   const [events, setEvents]           = useState([])
   const [eventsLoading, setEventsLoading] = useState(true)
-  const [messages, setMessages]       = useState([])
+  const [messages, setMessages] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('cos_home_messages') ?? '[]') }
+    catch { return [] }
+  })
   const inputRef = useRef(null)
   const messagesEndRef = useRef(null)
+  const scrollRef = useRef(null)
+  const pullRef = useRef({ startY: 0, pulling: false, dist: 0 })
+  const [pullDistance, setPullDistance] = useState(0)
 
   function loadTasks(showRefreshing = false) {
     if (showRefreshing) setRefreshing(true)
@@ -495,19 +561,70 @@ export default function Home() {
       .finally(() => setEventsLoading(false))
   }, [])
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
+  useEffect(() => {
+    const toSave = messages.filter((m) => !m.streaming && !m.pending)
+    localStorage.setItem('cos_home_messages', JSON.stringify(toSave))
+  }, [messages])
+
+  // Pull-to-refresh
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    function onTouchStart(e) {
+      if (el.scrollTop === 0) {
+        pullRef.current = { startY: e.touches[0].clientY, pulling: true, dist: 0 }
+      }
+    }
+    function onTouchMove(e) {
+      if (!pullRef.current.pulling) return
+      const dy = e.touches[0].clientY - pullRef.current.startY
+      if (dy > 0) {
+        e.preventDefault()
+        pullRef.current.dist = Math.min(dy * 0.5, 60)
+        setPullDistance(pullRef.current.dist)
+      } else {
+        pullRef.current.pulling = false
+        setPullDistance(0)
+      }
+    }
+    function onTouchEnd() {
+      if (pullRef.current.pulling && pullRef.current.dist > 40) {
+        loadTasks(true)
+      }
+      pullRef.current = { startY: 0, pulling: false, dist: 0 }
+      setPullDistance(0)
+    }
+    el.addEventListener('touchstart', onTouchStart, { passive: true })
+    el.addEventListener('touchmove', onTouchMove, { passive: false })
+    el.addEventListener('touchend', onTouchEnd, { passive: true })
+    return () => {
+      el.removeEventListener('touchstart', onTouchStart)
+      el.removeEventListener('touchmove', onTouchMove)
+      el.removeEventListener('touchend', onTouchEnd)
+    }
+  }, [])
 
   function removeTask(id) { setTasks((prev) => prev.filter((t) => t.id !== id)) }
 
   async function handleSend(content, attachmentName) {
     const userMsg = { role: 'user', content, attachmentName }
-    setMessages((prev) => [...prev, userMsg])
-    setMessages((prev) => [...prev, { role: 'assistant', content: '…', pending: true }])
+    setMessages((prev) => [...prev, userMsg, { role: 'assistant', content: '', streaming: true }])
     try {
       const history = [...messages, userMsg]
-        .filter((m) => !m.pending)
+        .filter((m) => !m.streaming && !m.pending)
         .map(({ role, content }) => ({ role, content }))
-      const reply = await sendMessage(history, SYSTEM_PROMPTS.cos(tasks))
-      setMessages((prev) => [...prev.slice(0, -1), { role: 'assistant', content: reply }])
+      await sendMessageStream(history, SYSTEM_PROMPTS.cos(tasks), (chunk) => {
+        setMessages((prev) => {
+          const last = prev[prev.length - 1]
+          if (!last?.streaming) return prev
+          return [...prev.slice(0, -1), { ...last, content: last.content + chunk }]
+        })
+      })
+      setMessages((prev) => {
+        const last = prev[prev.length - 1]
+        if (!last?.streaming) return prev
+        return [...prev.slice(0, -1), { ...last, streaming: false }]
+      })
     } catch (err) {
       setMessages((prev) => [...prev.slice(0, -1), { role: 'assistant', content: `Error: ${err.message}` }])
     }
@@ -526,8 +643,14 @@ export default function Home() {
 
   return (
     <div className="flex flex-col h-full">
+      {/* Pull-to-refresh indicator */}
+      {pullDistance > 0 && (
+        <div className="flex justify-center py-1" style={{ height: pullDistance, transition: 'height 0.1s', overflow: 'hidden' }}>
+          <div className={`w-6 h-6 rounded-full border-2 border-[#6750A4] border-t-transparent ${pullDistance > 40 ? 'animate-spin' : ''}`} style={{ marginTop: Math.max(pullDistance - 28, 0) }} />
+        </div>
+      )}
       {/* Scrollable content */}
-      <div className="flex-1 overflow-y-auto px-4 pt-5 pb-2 max-w-lg mx-auto w-full">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 pt-5 pb-2 max-w-lg mx-auto w-full">
 
         {/* Header */}
         <div className="flex items-start justify-between mb-4">
@@ -574,7 +697,12 @@ export default function Home() {
                     : 'bg-white border border-[#CAC4D0] text-[#1C1B1F] rounded-bl-sm'
                 }`}>
                   {msg.role === 'assistant' ? (
-                    <Markdown text={msg.content} />
+                    <>
+                      <Markdown text={msg.content || ' '} />
+                      {msg.streaming && (
+                        <span style={{ animation: 'blink 0.9s step-end infinite', display: 'inline-block', marginLeft: '1px', lineHeight: 1 }}>▌</span>
+                      )}
+                    </>
                   ) : (
                     <>
                       {msg.attachmentName && (
@@ -621,12 +749,15 @@ export default function Home() {
           ))}
         </div>
 
-        {/* Someday */}
+        {/* Someday / Weekly Review */}
         {!loading && someday.length > 0 && (
-          <div className="bg-[#F3EDF7] rounded-xl px-4 py-2.5 mb-3">
+          <div className="bg-[#F3EDF7] rounded-xl px-4 py-2.5 mb-3 flex items-center justify-between">
             <p className="text-xs text-[#49454F]">
-              <span className="font-semibold text-[#6750A4]">{someday.length} someday</span> — no date, P4. Surface in weekly review.
+              <span className="font-semibold text-[#6750A4]">{someday.length} someday</span> — no date, P4.
             </p>
+            <button onClick={() => navigate('/weekly-review')} className="text-xs font-semibold text-[#6750A4] ml-2 flex-shrink-0">
+              Weekly review →
+            </button>
           </div>
         )}
 

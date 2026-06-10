@@ -29,8 +29,43 @@ const BUCKET_META = {
   Systems:  { emoji: '⚙️', bg: 'bg-[#EADDFF]', text: 'text-[#21005D]' },
 }
 
+function ContextTab({ bucket, contextText, setContextText }) {
+  const [draft, setDraft] = useState(contextText)
+  const [saved, setSaved] = useState(false)
+
+  function handleSave() {
+    localStorage.setItem(`bucket_context_${bucket}`, draft)
+    setContextText(draft)
+    setSaved(true)
+    haptic.success()
+    setTimeout(() => setSaved(false), 2000)
+  }
+
+  return (
+    <div className="flex flex-col h-full px-4 pt-4 pb-4">
+      <p className="text-xs text-[#79747E] mb-3">
+        Add context your {bucket} Head will always reference — goals, constraints, background info.
+      </p>
+      <textarea
+        value={draft}
+        onChange={(e) => { setDraft(e.target.value); setSaved(false) }}
+        placeholder={`e.g. goals, key constraints, background information your ${bucket} Head should always know...`}
+        className="flex-1 rounded-xl border border-[#CAC4D0] px-3 py-2.5 text-sm text-[#1C1B1F] focus:outline-none focus:border-[#6750A4] resize-none"
+      />
+      <button
+        onClick={handleSave}
+        className={`mt-3 py-2.5 rounded-full text-sm font-medium transition-colors ${
+          saved ? 'bg-green-500 text-white' : 'bg-[#6750A4] text-white hover:bg-[#5B4397]'
+        }`}
+      >
+        {saved ? '✓ Saved' : 'Save context'}
+      </button>
+    </div>
+  )
+}
+
 // HeadTab receives messages/setMessages from parent so state survives tab switches
-function HeadTab({ bucket, tasks, messages, setMessages }) {
+function HeadTab({ bucket, tasks, messages, setMessages, context }) {
   const endRef = useRef(null)
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
@@ -44,7 +79,7 @@ function HeadTab({ bucket, tasks, messages, setMessages }) {
       const history = [...messages, userMsg]
         .filter((m) => !m.streaming)
         .map(({ role, content }) => ({ role, content }))
-      await sendMessageStream(history, SYSTEM_PROMPTS.head(bucket, tasks), (chunk) => {
+      await sendMessageStream(history, SYSTEM_PROMPTS.head(bucket, tasks, context), (chunk) => {
         setMessages((prev) => {
           const last = prev[prev.length - 1]
           if (!last || !last.streaming) return prev
@@ -301,9 +336,12 @@ function TaskItem({ task: initialTask, onComplete, index = 0 }) {
   const [editDue, setEditDue] = useState(initialTask.due?.date ?? '')
   const [editDesc, setEditDesc] = useState(initialTask.description ?? '')
   const [saving, setSaving] = useState(false)
+  const [swipeX, setSwipeX] = useState(0)
+  const [isSwiping, setIsSwiping] = useState(false)
   const timerRef = useRef(null)
   const holdRef = useRef(null)
   const isHoldRef = useRef(false)
+  const swipeRef = useRef(null)
 
   const { isOverdue, isToday, days } = scoreTask(localTask)
 
@@ -351,7 +389,44 @@ function TaskItem({ task: initialTask, onComplete, index = 0 }) {
   function handleRowPointerUp() { clearTimeout(holdRef.current) }
   function handleRowClick() {
     if (isHoldRef.current) { isHoldRef.current = false; return }
-    if (!pendingComplete) setExpanded((x) => !x)
+    if (!pendingComplete && swipeX === 0) setExpanded((x) => !x)
+  }
+
+  function handleTouchStart(e) {
+    if (pendingComplete) return
+    const t = e.touches[0]
+    swipeRef.current = { startX: t.clientX, startY: t.clientY, decided: false, horizontal: false, dx: 0 }
+  }
+  function handleTouchMove(e) {
+    const tr = swipeRef.current
+    if (!tr) return
+    const t = e.touches[0]
+    const dx = t.clientX - tr.startX
+    const dy = t.clientY - tr.startY
+    if (!tr.decided) {
+      if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return
+      tr.decided = true
+      tr.horizontal = Math.abs(dx) > Math.abs(dy) * 1.2 && dx < 0
+    }
+    if (!tr.horizontal) return
+    clearTimeout(holdRef.current)
+    tr.dx = Math.max(dx, -96)
+    setSwipeX(tr.dx)
+    setIsSwiping(true)
+  }
+  function handleTouchEnd() {
+    const tr = swipeRef.current
+    swipeRef.current = null
+    if (!tr?.horizontal) { setIsSwiping(false); return }
+    if (tr.dx < -70) {
+      setSwipeX(-96)
+      setTimeout(() => {
+        setSwipeX(0); setIsSwiping(false)
+        handleComplete({ stopPropagation: () => {} })
+      }, 200)
+    } else {
+      setSwipeX(0); setIsSwiping(false)
+    }
   }
 
   async function handleSave() {
@@ -387,9 +462,21 @@ function TaskItem({ task: initialTask, onComplete, index = 0 }) {
       animation: `fade-up 0.36s ease ${0.12 + index * 0.055}s both`,
     }}>
     <div style={{ overflow: 'hidden' }}>
-    <div className="border-b border-[#F3EDF7] last:border-0"
+    <div className="border-b border-[#F3EDF7] last:border-0 relative overflow-hidden"
       style={{ opacity: pendingComplete ? 0.45 : 1, transition: 'opacity 0.15s ease' }}>
-
+      {/* Swipe reveal */}
+      <div className="absolute right-0 top-0 bottom-0 w-24 bg-[#4CAF50] flex items-center justify-center"
+        style={{ opacity: swipeX < -10 ? Math.min((-swipeX - 10) / 50, 1) : 0 }}>
+        <svg xmlns="http://www.w3.org/2000/svg" height="22" viewBox="0 0 24 24" width="22" fill="white">
+          <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+        </svg>
+      </div>
+      <div
+        style={{ transform: `translateX(${swipeX}px)`, transition: isSwiping ? 'none' : 'transform 0.28s cubic-bezier(0.25,1,0.5,1)', background: 'white' }}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+      >
       <div
         className="flex items-center gap-3 py-3 cursor-pointer select-none"
         onPointerDown={handleRowPointerDown}
@@ -480,10 +567,10 @@ function TaskItem({ task: initialTask, onComplete, index = 0 }) {
               Open in Todoist ↗
             </a>
           )}
-          <p className="text-[10px] text-[#CAC4D0]">Hold to edit</p>
+          <p className="text-[10px] text-[#CAC4D0]">Hold to edit · swipe left to complete</p>
         </div>
       </div>
-
+      </div>{/* end swipe wrapper */}
     </div>
     </div>
     </div>
@@ -527,6 +614,8 @@ export default function BucketDetail() {
   const [tasks, setTasks] = useState([])
   const [sections, setSections] = useState([])
   const [loading, setLoading] = useState(true)
+  const [contextText, setContextText] = useState(() => localStorage.getItem(`bucket_context_${bucket}`) ?? '')
+
   // Head chat — persisted to localStorage so history survives navigation and sessions
   const storageKey = `cos_head_${bucket}`
   const [headMessages, setHeadMessages] = useState(() => {
@@ -593,7 +682,8 @@ export default function BucketDetail() {
           {[
             { id: 'tasks', label: 'Tasks' },
             { id: 'head', label: 'Head' },
-            { id: 'discussions', label: 'Discussions' },
+            { id: 'discussions', label: 'Discuss' },
+            { id: 'context', label: 'Context' },
           ].map(({ id, label }) => (
             <button key={id} onClick={() => { haptic.light(); setTab(id) }}
               className={`flex-1 py-2 text-sm font-medium border-b-2 transition-colors ${
@@ -605,16 +695,19 @@ export default function BucketDetail() {
         </div>
       </div>
 
-      {/* Tab content — all three stay mounted; only active one is visible */}
+      {/* Tab content — all four stay mounted; only active one is visible */}
       <div className="flex-1 overflow-hidden relative">
         <div className={`absolute inset-0 ${tab === 'tasks' ? '' : 'invisible pointer-events-none'}`}>
           <TasksTab tasks={tasks} sections={sections} loading={loading} onComplete={removeTask} />
         </div>
         <div className={`absolute inset-0 ${tab === 'head' ? '' : 'invisible pointer-events-none'}`}>
-          <HeadTab bucket={bucket} tasks={tasks} messages={headMessages} setMessages={setHeadMessages} />
+          <HeadTab bucket={bucket} tasks={tasks} messages={headMessages} setMessages={setHeadMessages} context={contextText} />
         </div>
         <div className={`absolute inset-0 ${tab === 'discussions' ? '' : 'invisible pointer-events-none'}`}>
           <DiscussionsTab bucket={bucket} />
+        </div>
+        <div className={`absolute inset-0 ${tab === 'context' ? '' : 'invisible pointer-events-none'}`}>
+          <ContextTab bucket={bucket} contextText={contextText} setContextText={setContextText} />
         </div>
       </div>
     </div>

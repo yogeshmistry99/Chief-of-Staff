@@ -71,7 +71,7 @@ ${formatTasksForPrompt(tasks)}
 When he asks about existing tasks, check the list above. When he adds a new task, acknowledge it and suggest which bucket and priority it belongs in. When he pastes an email, extract actionable tasks. Keep responses short unless depth is needed.`
   },
 
-  head: (bucket, tasks) => {
+  head: (bucket, tasks, context) => {
     const descriptions = {
       Finance:  'investments, tax, budgeting, cash flow, and financial decisions',
       Health:   'physical fitness, medical, nutrition, sleep, and mental wellbeing',
@@ -88,7 +88,7 @@ Today is ${(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.
 
 Current ${bucket} tasks:
 ${formatTasksForPrompt(bucketTasks)}
-
+${context ? `\nContext notes for ${bucket}:\n${context}\n` : ''}
 Be direct, specific, and conversational — write in plain prose, no markdown, no bullet points, no bold text, no headers. Help him think through decisions, surface risks, and identify the highest-leverage actions.`
   },
 

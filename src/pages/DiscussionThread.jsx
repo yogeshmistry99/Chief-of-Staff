@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { getProjectTasks, PROJECTS } from '../lib/todoist'
-import { sendMessage, SYSTEM_PROMPTS } from '../lib/claude'
+import { sendMessageStream, SYSTEM_PROMPTS } from '../lib/claude'
 import { getDiscussions, saveDiscussion, newDiscussion } from '../lib/discussions'
 import Markdown from '../components/Markdown'
 import ChatInput from '../components/ChatInput'
@@ -45,13 +45,35 @@ export default function DiscussionThread() {
     if (!discussion?.title?.trim()) return
     const userMsg = { role: 'user', content, attachmentName }
     const withUser = [...(discussion.messages ?? []), userMsg]
-    updateDiscussion({ messages: [...withUser, { role: 'assistant', content: '…', pending: true }] })
+    setDiscussion((prev) => ({ ...prev, messages: [...withUser, { role: 'assistant', content: '', streaming: true }] }))
     try {
       const history = withUser.map(({ role, content }) => ({ role, content }))
-      const reply = await sendMessage(history, SYSTEM_PROMPTS.discussion(bucket, discussion.title, tasks))
-      updateDiscussion({ messages: [...withUser, { role: 'assistant', content: reply }] })
+      let full = ''
+      await sendMessageStream(history, SYSTEM_PROMPTS.discussion(bucket, discussion.title, tasks), (chunk) => {
+        full += chunk
+        setDiscussion((prev) => {
+          if (!prev) return prev
+          const msgs = prev.messages ?? []
+          const last = msgs[msgs.length - 1]
+          if (!last?.streaming) return prev
+          return { ...prev, messages: [...msgs.slice(0, -1), { ...last, content: last.content + chunk }] }
+        })
+      })
+      setDiscussion((prev) => {
+        if (!prev) return prev
+        const msgs = prev.messages ?? []
+        const last = msgs[msgs.length - 1]
+        if (!last?.streaming) return prev
+        const next = { ...prev, messages: [...msgs.slice(0, -1), { role: 'assistant', content: full }], updatedAt: new Date().toISOString() }
+        saveDiscussion(bucket, next)
+        return next
+      })
     } catch (err) {
-      updateDiscussion({ messages: [...withUser, { role: 'assistant', content: `Error: ${err.message}` }] })
+      setDiscussion((prev) => {
+        if (!prev) return prev
+        const msgs = prev.messages ?? []
+        return { ...prev, messages: [...msgs.slice(0, -1), { role: 'assistant', content: `Error: ${err.message}` }] }
+      })
     }
   }
 
@@ -125,9 +147,14 @@ export default function DiscussionThread() {
               msg.role === 'user'
                 ? 'bg-[#6750A4] text-white rounded-br-sm'
                 : 'bg-white border border-[#CAC4D0] text-[#1C1B1F] rounded-bl-sm'
-            } ${msg.pending ? 'opacity-50' : ''}`}>
+            }`}>
               {msg.role === 'assistant' ? (
-                <Markdown text={msg.content} />
+                <>
+                  <Markdown text={msg.content || ' '} />
+                  {msg.streaming && (
+                    <span style={{ animation: 'blink 0.9s step-end infinite', display: 'inline-block', marginLeft: '1px', lineHeight: 1 }}>▌</span>
+                  )}
+                </>
               ) : (
                 <>
                   {msg.attachmentName && <span className="text-xs opacity-70 block mb-0.5">📎 {msg.attachmentName}</span>}
