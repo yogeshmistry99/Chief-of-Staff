@@ -14,15 +14,27 @@ const HEAD_LABELS = {
   chief:    { emoji: '🎯', role: 'Chief of Staff' },
 }
 
+const DEFAULT_INSTRUCTIONS = {
+  chief:    `You are the Chief of Staff for Yogesh's Life OS. Read all buckets holistically. Apply the bucket weighting framework. Surface conflicts, challenge priorities and ensure time is spent on highest consequence items. Be direct. No waffle.`,
+  Finance:  `You are a specialist finance advisor. Focus on financial protection, house purchase, pensions, insurance and side income. Flag anything that affects financial security or trajectory. Be direct. Numbers matter.`,
+  Health:   `You are a specialist health advisor. Focus on medical referrals, fitness habits, mental health and longevity. Flag anything time sensitive. Be direct.`,
+  Work:     `You are a specialist career advisor. Focus on Design Manager progression at Gensler, Mistry Architects obligations and skills development. Be direct. Career trajectory matters.`,
+  Family:   `You are a specialist family advisor. Focus on Arya, Neo, Mitika and shared experiences. Flag time sensitive moments — children grow fast. Be direct.`,
+  Home:     `You are a specialist home advisor. Focus on house purchase, maintenance and creating a calm well designed space. Be direct.`,
+  Personal: `You are a specialist personal development advisor. Focus on habits, systems and continuous optimisation. Be direct.`,
+  Systems:  `You are a Claude and AI systems expert. Focus on Life OS development, automation and getting the most from AI tools. Be direct.`,
+}
+
 export default function HeadConfig() {
   const params = useParams()
-  // Works for /buckets/:bucket/config (param=bucket) and /chief/config (no param → 'chief')
   const key = params.bucket ?? 'chief'
   const navigate = useNavigate()
   const meta = HEAD_LABELS[key] ?? { emoji: '🤖', role: key }
 
   const initial = loadHeadConfig(key)
-  const [instructions, setInstructions] = useState(initial.instructions)
+  // Pre-populate instructions with default if field is empty
+  const defaultInstructions = initial.instructions || DEFAULT_INSTRUCTIONS[key] || ''
+  const [instructions, setInstructions] = useState(defaultInstructions)
   const [context, setContext] = useState(initial.context)
   const [files, setFiles] = useState(initial.files)
   const [saved, setSaved] = useState(false)
