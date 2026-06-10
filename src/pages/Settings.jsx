@@ -68,7 +68,15 @@ function calcCost({ input_tokens = 0, output_tokens = 0 }) {
 
 export default function Settings() {
   const [usage, setUsage] = useState({})
+  const [resetDone, setResetDone] = useState(false)
   useEffect(() => { setUsage(getMonthlyUsage()) }, [])
+
+  function handleReset() {
+    localStorage.clear()
+    setUsage({})
+    setResetDone(true)
+    setTimeout(() => setResetDone(false), 2000)
+  }
 
   const cost = calcCost(usage)
   const monthLabel = (() => {
@@ -119,7 +127,7 @@ export default function Settings() {
       </div>
 
       {/* App info */}
-      <div className="bg-white border border-[#CAC4D0] rounded-2xl px-4 py-3">
+      <div className="bg-white border border-[#CAC4D0] rounded-2xl px-4 py-3 mb-4">
         <h2 className="text-xs font-semibold text-[#49454F] uppercase tracking-wide mb-2">About</h2>
         <div className="flex justify-between text-sm">
           <span className="text-[#49454F]">App name</span>
@@ -134,6 +142,16 @@ export default function Settings() {
           <span className="font-medium text-[#1C1B1F]">PWA · Vite · React</span>
         </div>
       </div>
+
+      {/* Reset */}
+      <button
+        onClick={handleReset}
+        className={`w-full py-3 rounded-full text-sm font-semibold transition-colors ${
+          resetDone ? 'bg-green-500 text-white' : 'bg-[#F3EDF7] text-[#B3261E] hover:bg-[#FCDAD7]'
+        }`}
+      >
+        {resetDone ? '✓ Data cleared' : 'Reset app data'}
+      </button>
     </div>
   )
 }
