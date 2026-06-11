@@ -11,7 +11,7 @@ const PROJECTS = {
 const TOOLS = [
   {
     name: 'create_task',
-    description: 'Create a new task in Todoist for Yogesh. To create a subtask, pass the parent task\'s ID as parent_id.',
+    description: 'Create a new task or subtask in Todoist. Use for new steps, actions, or follow-ups that emerge during conversation. To create a subtask under an existing task, pass parent_id.',
     input_schema: {
       type: 'object',
       properties: {
@@ -19,14 +19,15 @@ const TOOLS = [
         priority:     { type: 'integer', description: '4=P1 (urgent), 3=P2, 2=P3, 1=P4 (someday)', enum: [1,2,3,4] },
         due_string:   { type: 'string', description: 'Due date in natural language, e.g. "today", "tomorrow", "next Monday"' },
         project_name: { type: 'string', description: 'Bucket: Finance, Health, Work, Family, Home, Personal, or Systems', enum: Object.keys(PROJECTS) },
-        parent_id:    { type: 'string', description: 'ID of the parent task to nest this as a subtask. Use the task ID from the task list.' },
+        parent_id:    { type: 'string', description: 'ID of the parent task to nest this as a subtask.' },
+        description:  { type: 'string', description: 'Optional notes, context, or blocker detail to attach to the task.' },
       },
       required: ['content'],
     },
   },
   {
     name: 'complete_task',
-    description: 'Mark an existing Todoist task as complete.',
+    description: 'Mark a task or subtask as complete. Use immediately when Yogesh signals progress or completion — "done", "sorted", "confirmed", "finished" — without waiting to be asked.',
     input_schema: {
       type: 'object',
       properties: {
@@ -37,14 +38,15 @@ const TOOLS = [
   },
   {
     name: 'update_task',
-    description: 'Update an existing Todoist task (change priority, due date, or content).',
+    description: 'Update an existing task — change its title, priority, due date, or add a description note. Use for deferral signals ("not this week", "push back"), blocker notes ("waiting on X"), or reprioritisation.',
     input_schema: {
       type: 'object',
       properties: {
-        task_id:    { type: 'string', description: 'The Todoist task ID to update' },
-        content:    { type: 'string', description: 'New task title (omit to keep existing)' },
-        priority:   { type: 'integer', description: '4=P1, 3=P2, 2=P3, 1=P4', enum: [1,2,3,4] },
-        due_string: { type: 'string', description: 'New due date in natural language, e.g. "next Friday"' },
+        task_id:     { type: 'string', description: 'The Todoist task ID to update' },
+        content:     { type: 'string', description: 'New task title (omit to keep existing)' },
+        priority:    { type: 'integer', description: '4=P1, 3=P2, 2=P3, 1=P4', enum: [1,2,3,4] },
+        due_string:  { type: 'string', description: 'New due date in natural language, e.g. "next Friday", or "no date" to remove' },
+        description: { type: 'string', description: 'Notes to attach — use for blockers, waiting-on context, or decisions made' },
       },
       required: ['task_id'],
     },
@@ -57,10 +59,11 @@ async function executeTool(name, input) {
 
   if (name === 'create_task') {
     const body = { content: input.content }
-    if (input.priority)     body.priority = input.priority
-    if (input.due_string)   body.due_string = input.due_string
-    if (input.project_name) body.project_id = PROJECTS[input.project_name]
-    if (input.parent_id)    body.parent_id = input.parent_id
+    if (input.priority != null) body.priority = input.priority
+    if (input.due_string)       body.due_string = input.due_string
+    if (input.project_name)     body.project_id = PROJECTS[input.project_name]
+    if (input.parent_id)        body.parent_id = input.parent_id
+    if (input.description)      body.description = input.description
     const r = await fetch('https://api.todoist.com/api/v1/tasks', {
       method: 'POST',
       headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
@@ -82,9 +85,10 @@ async function executeTool(name, input) {
 
   if (name === 'update_task') {
     const body = {}
-    if (input.content)    body.content = input.content
-    if (input.priority)   body.priority = input.priority
-    if (input.due_string) body.due_string = input.due_string
+    if (input.content)               body.content = input.content
+    if (input.priority != null)      body.priority = input.priority
+    if (input.due_string != null)    body.due_string = input.due_string
+    if (input.description != null)   body.description = input.description
     const r = await fetch(`https://api.todoist.com/api/v1/tasks/${input.task_id}`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
