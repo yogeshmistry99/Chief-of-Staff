@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { getAllTasks, PROJECTS } from '../lib/todoist'
 import { sendMessageStream, SYSTEM_PROMPTS } from '../lib/claude'
 import { loadHeadConfig } from '../lib/headConfig'
+import { prioritise } from '../lib/priority'
 import { haptic } from '../lib/haptic'
 import Markdown from '../components/Markdown'
 import ChatInput from '../components/ChatInput'
@@ -13,6 +14,7 @@ export default function ChiefPage() {
   const navigate = useNavigate()
   const location = useLocation()
   const [tasks, setTasks] = useState([])
+  const [taskIndex, setTaskIndex] = useState(0)
   const [messages, setMessages] = useState(() => {
     try { return JSON.parse(localStorage.getItem('cos_home_messages') ?? '[]') }
     catch { return [] }
@@ -139,13 +141,57 @@ export default function ChiefPage() {
         <div ref={endRef} />
       </div>
 
-      {/* Input */}
-      <div className="bg-white border-t border-[#CAC4D0] px-4 pt-3 pb-3 flex-shrink-0">
-        <ChatInput
-          placeholder="Message your Chief of Staff…"
-          onSend={handleSend}
-          textareaRef={inputRef}
-        />
+      {/* Task carousel + input */}
+      <div className="bg-white border-t border-[#CAC4D0] flex-shrink-0">
+        {(() => {
+          const { active } = prioritise(tasks)
+          if (!active.length) return null
+          const idx = Math.min(taskIndex, active.length - 1)
+          const t = active[idx]
+          const priority = ['', 'P4', 'P3', 'P2', 'P1'][t.priority] ?? 'P4'
+          const p1Colours = { P1: 'text-red-600 bg-red-50', P2: 'text-orange-500 bg-orange-50', P3: 'text-yellow-600 bg-yellow-50', P4: 'text-[#79747E] bg-[#F3EDF7]' }
+          const due = t.due?.date ? t.due.date.slice(8,10) + '.' + t.due.date.slice(5,7) + '.' + t.due.date.slice(2,4) : null
+          return (
+            <div className="flex items-center gap-2 px-3 py-2 border-b border-[#F3EDF7]">
+              <button
+                onClick={() => { haptic.light(); setTaskIndex((i) => Math.max(0, i - 1)) }}
+                disabled={idx === 0}
+                className="text-[#79747E] disabled:opacity-25 p-0.5 flex-shrink-0"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" height="18" viewBox="0 -960 960 960" width="18" fill="currentColor">
+                  <path d="M560-240 320-480l240-240 56 56-184 184 184 184-56 56Z"/>
+                </svg>
+              </button>
+
+              <div className="flex-1 min-w-0">
+                <p className="text-xs text-[#1C1B1F] leading-snug truncate">{t.content}</p>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${p1Colours[priority]}`}>{priority}</span>
+                  {t._projectName && <span className="text-[10px] text-[#79747E]">{t._projectName}</span>}
+                  {due && <span className="text-[10px] text-[#79747E]">{due}</span>}
+                  <span className="text-[10px] text-[#CAC4D0]">{idx + 1}/{active.length}</span>
+                </div>
+              </div>
+
+              <button
+                onClick={() => { haptic.light(); setTaskIndex((i) => Math.min(active.length - 1, i + 1)) }}
+                disabled={idx === active.length - 1}
+                className="text-[#79747E] disabled:opacity-25 p-0.5 flex-shrink-0"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" height="18" viewBox="0 -960 960 960" width="18" fill="currentColor">
+                  <path d="M400-240 640-480 400-720l-56 56 184 184-184 184 56 56Z"/>
+                </svg>
+              </button>
+            </div>
+          )
+        })()}
+        <div className="px-4 pt-3 pb-3">
+          <ChatInput
+            placeholder="Message your Chief of Staff…"
+            onSend={handleSend}
+            textareaRef={inputRef}
+          />
+        </div>
       </div>
     </div>
   )
