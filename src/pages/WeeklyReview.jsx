@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { pushToSupabase } from '../lib/sync'
 import { useNavigate } from 'react-router-dom'
 import { getAllTasks, PROJECTS } from '../lib/todoist'
 import { scoreTask } from '../lib/priority'
@@ -433,6 +434,7 @@ export default function WeeklyReview() {
     const now = new Date()
     setCompletedAt(now)
     localStorage.setItem('lastWeeklyReview', now.toISOString())
+    pushToSupabase('last_weekly_review', now.toISOString()).catch(() => {})
     advance()
   }
 

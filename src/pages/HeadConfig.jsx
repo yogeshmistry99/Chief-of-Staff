@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { haptic } from '../lib/haptic'
 import { loadHeadConfig, saveHeadConfig } from '../lib/headConfig'
+import { onSyncChange } from '../lib/sync'
 
 const HEAD_LABELS = {
   Finance:  { emoji: '💰', role: 'Finance Head' },
@@ -89,6 +90,17 @@ export default function HeadConfig() {
     if (isFirstRender.current) { isFirstRender.current = false; return }
     triggerSave(instructions, context, files)
   }, [instructions, context, files])
+
+  // Reload when another device saves remotely
+  useEffect(() => {
+    return onSyncChange(`head_config_${key}`, () => {
+      isFirstRender.current = true
+      const updated = loadHeadConfig(key)
+      setInstructions(updated.instructions || DEFAULT_INSTRUCTIONS[key] || '')
+      setContext(updated.context || DEFAULT_CONTEXT[key] || '')
+      setFiles(updated.files)
+    })
+  }, [key])
 
   function handleFileUpload(e) {
     const picked = Array.from(e.target.files)

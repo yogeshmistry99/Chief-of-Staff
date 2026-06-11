@@ -12,6 +12,7 @@ import CalendarEvent from './pages/CalendarEvent'
 import WeeklyReview from './pages/WeeklyReview'
 import ChiefPage from './pages/ChiefPage'
 import HeadConfig from './pages/HeadConfig'
+import SyncProvider from './components/SyncProvider'
 
 const TABS = [
   { path: '/',          Component: Home },
@@ -194,9 +195,11 @@ class ErrorBoundary extends Component {
 export default function App() {
   return (
     <ErrorBoundary>
+      <SyncProvider>
       <BrowserRouter>
         <AppInner />
       </BrowserRouter>
+      </SyncProvider>
     </ErrorBoundary>
   )
 }

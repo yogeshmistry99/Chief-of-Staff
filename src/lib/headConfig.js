@@ -1,3 +1,5 @@
+import { pushToSupabase } from './sync'
+
 export function loadHeadConfig(key) {
   return {
     instructions: localStorage.getItem(`head_instructions_${key}`) ?? '',
@@ -13,4 +15,5 @@ export function saveHeadConfig(key, { instructions, context, files }) {
   localStorage.setItem(`head_instructions_${key}`, instructions)
   localStorage.setItem(`head_context_${key}`, context)
   localStorage.setItem(`head_files_${key}`, JSON.stringify(files))
+  pushToSupabase(`head_config_${key}`, { instructions, context, files }).catch(() => {})
 }

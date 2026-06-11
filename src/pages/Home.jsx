@@ -8,6 +8,7 @@ import EditSheet from '../components/EditSheet'
 import TaskEditSheet from '../components/TaskEditSheet'
 import QuickAdd from '../components/QuickAdd'
 import { getDiscussions, saveDiscussion, newDiscussion, findDiscussionByTask } from '../lib/discussions'
+import { onSyncChange } from '../lib/sync'
 
 async function fetchUpcomingEvents() {
   const now = new Date()
@@ -589,7 +590,7 @@ export default function Home() {
   const [refreshing, setRefreshing]   = useState(false)
   const [error, setError]             = useState(null)
   const [lastRefreshed, setLastRefreshed] = useState(null)
-  const [lastWeeklyReview] = useState(() => {
+  const [lastWeeklyReview, setLastWeeklyReview] = useState(() => {
     try { const s = localStorage.getItem('lastWeeklyReview'); return s ? new Date(s) : null } catch { return null }
   })
   const [events, setEvents]           = useState([])
@@ -612,6 +613,11 @@ export default function Home() {
   }
 
   useEffect(() => { loadTasks() }, [])
+  useEffect(() => {
+    return onSyncChange('last_weekly_review', () => {
+      try { const s = localStorage.getItem('lastWeeklyReview'); setLastWeeklyReview(s ? new Date(s) : null) } catch {}
+    })
+  }, [])
   useEffect(() => {
     fetchUpcomingEvents()
       .then(setEvents)
