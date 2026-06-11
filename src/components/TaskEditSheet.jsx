@@ -419,7 +419,7 @@ export default function TaskEditSheet({ open, onClose, task, allTasks = [], task
         {/* Header */}
         <div className="flex items-center justify-between px-4 pt-1 pb-2 flex-shrink-0">
           <div className="flex items-center gap-2">
-            <h2 className="text-base font-semibold text-[#1C1B1F]">Edit task</h2>
+            <h2 className="text-base font-semibold text-[#6750A4]">Edit task ✦</h2>
             {autoSaved && (
               <span className="text-xs text-green-600 flex items-center gap-1" style={{ animation: 'fade-up 0.2s ease' }}>
                 <svg xmlns="http://www.w3.org/2000/svg" height="12" viewBox="0 -960 960 960" width="12" fill="currentColor"><path d="M382-240 154-468l57-57 171 171 367-367 57 57-424 424Z"/></svg>
