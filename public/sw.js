@@ -1,4 +1,4 @@
-const CACHE_NAME = 'life-os-v4';
+const CACHE_NAME = 'life-os-v5';
 // Vite content-hashed assets — safe to cache forever (filename changes on each build)
 const IMMUTABLE_PATTERN = /^\/assets\//;
 
