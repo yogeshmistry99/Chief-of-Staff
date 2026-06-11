@@ -227,6 +227,7 @@ function TaskRow({ task, onComplete, index = 0, allTasks = [] }) {
   const [editOpen, setEditOpen] = useState(false)
   const [swipeX, setSwipeX] = useState(0)
   const [isSwiping, setIsSwiping] = useState(false)
+  const [swipeTriggered, setSwipeTriggered] = useState(null) // 'left'|'right'|null
   const timerRef = useRef(null)
   const holdRef = useRef(null)
   const isHoldRef = useRef(false)
@@ -299,11 +300,21 @@ function TaskRow({ task, onComplete, index = 0, allTasks = [] }) {
     tr.dx = Math.max(Math.min(dx, 96), -96)
     setSwipeX(tr.dx)
     setIsSwiping(true)
+    // Trigger animation + sound once when crossing threshold
+    if (tr.dx < -70 && swipeTriggered !== 'left') {
+      setSwipeTriggered('left')
+    } else if (tr.dx > 70 && swipeTriggered !== 'right') {
+      setSwipeTriggered('right')
+      haptic.chat()
+    } else if (Math.abs(tr.dx) <= 70 && swipeTriggered) {
+      setSwipeTriggered(null)
+    }
   }
 
   function handleTouchEnd() {
     const tr = swipeRef.current
     swipeRef.current = null
+    setSwipeTriggered(null)
     if (!tr?.horizontal) { setIsSwiping(false); return }
     if (tr.dx < -70) {
       setSwipeX(-96)
@@ -348,14 +359,16 @@ function TaskRow({ task, onComplete, index = 0, allTasks = [] }) {
       {/* Swipe-left reveal (complete) */}
       <div className="absolute right-0 top-0 bottom-0 w-24 bg-[#4CAF50] flex items-center justify-center rounded-r-2xl"
         style={{ opacity: swipeX < -10 ? Math.min((-swipeX - 10) / 50, 1) : 0 }}>
-        <svg xmlns="http://www.w3.org/2000/svg" height="22" viewBox="0 0 24 24" width="22" fill="white">
+        <svg xmlns="http://www.w3.org/2000/svg" height="22" viewBox="0 0 24 24" width="22" fill="white"
+          style={swipeTriggered === 'left' ? { animation: 'swipe-tick-pop 0.4s cubic-bezier(0.34,1.56,0.64,1) both' } : undefined}>
           <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
         </svg>
       </div>
       {/* Swipe-right reveal (discuss) */}
       <div className="absolute left-0 top-0 bottom-0 w-24 bg-[#6750A4] flex items-center justify-center rounded-l-2xl"
         style={{ opacity: swipeX > 10 ? Math.min((swipeX - 10) / 50, 1) : 0 }}>
-        <svg xmlns="http://www.w3.org/2000/svg" height="22" viewBox="0 -960 960 960" width="22" fill="white">
+        <svg xmlns="http://www.w3.org/2000/svg" height="22" viewBox="0 -960 960 960" width="22" fill="white"
+          style={swipeTriggered === 'right' ? { animation: 'swipe-chat-pop 0.4s cubic-bezier(0.34,1.56,0.64,1) both' } : undefined}>
           <path d="M240-400h320v-80H240v80Zm0-120h480v-80H240v80Zm0-120h480v-80H240v80ZM80-80v-720q0-33 23.5-56.5T160-880h640q33 0 56.5 23.5T880-800v480q0 33-23.5 56.5T800-240H240L80-80Z"/>
         </svg>
       </div>

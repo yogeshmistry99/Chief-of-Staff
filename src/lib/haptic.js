@@ -3,6 +3,24 @@ export const haptic = {
   medium:  () => navigator.vibrate?.(25),
   success: () => navigator.vibrate?.([10, 50, 10]),
   error:   () => navigator.vibrate?.([50, 30, 50]),
+  chat: () => {
+    try {
+      navigator.vibrate?.(12)
+      const ctx = new (window.AudioContext || window.webkitAudioContext)()
+      const notes = [[440, 0], [554, 0.1]]
+      notes.forEach(([freq, when]) => {
+        const osc = ctx.createOscillator()
+        const gain = ctx.createGain()
+        osc.connect(gain); gain.connect(ctx.destination)
+        osc.type = 'sine'
+        osc.frequency.value = freq
+        gain.gain.setValueAtTime(0.12, ctx.currentTime + when)
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + when + 0.18)
+        osc.start(ctx.currentTime + when)
+        osc.stop(ctx.currentTime + when + 0.2)
+      })
+    } catch {}
+  },
   fanfare: () => {
     try {
       const ctx = new (window.AudioContext || window.webkitAudioContext)()
