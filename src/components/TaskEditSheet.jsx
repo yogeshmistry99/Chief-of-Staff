@@ -164,6 +164,7 @@ export default function TaskEditSheet({ open, onClose, task, allTasks = [], task
   const [description, setDescription] = useState('')
   const [subtasks, setSubtasks] = useState([])
   const [newSubtask, setNewSubtask] = useState('')
+  const [newSubtaskPriority, setNewSubtaskPriority] = useState(1)
 
   // Inline edit modes
   const [editingContent, setEditingContent] = useState(false)
@@ -208,7 +209,7 @@ export default function TaskEditSheet({ open, onClose, task, allTasks = [], task
     setDescription(task.description ?? '')
     setSubtasks(allTasks.filter((t) => t.parent_id === task.id))
     setEditingContent(false); setEditingDue(false); setEditingDesc(false)
-    setEditingSubtask(null); setNewSubtask('')
+    setEditingSubtask(null); setNewSubtask(''); setNewSubtaskPriority(1)
     clearTimeout(autoSaveRef.current)
   }, [task?.id, open])
 
@@ -346,12 +347,12 @@ export default function TaskEditSheet({ open, onClose, task, allTasks = [], task
     try {
       const res = await fetch('/api/todoist?path=tasks', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: newSubtask.trim(), parent_id: task.id, project_id: task.project_id }),
+        body: JSON.stringify({ content: newSubtask.trim(), parent_id: task.id, project_id: task.project_id, priority: newSubtaskPriority }),
       })
       if (!res.ok) throw new Error()
       const created = await res.json()
       setSubtasks((prev) => [...prev, created])
-      setNewSubtask(''); haptic.success()
+      setNewSubtask(''); setNewSubtaskPriority(1); haptic.success()
     } catch { haptic.error() }
   }
 
@@ -404,6 +405,12 @@ export default function TaskEditSheet({ open, onClose, task, allTasks = [], task
                   <div className="flex-1 flex items-center justify-center gap-2">
                     <div className="w-8 h-1 rounded-full bg-[#CAC4D0]" />
                     <span className="text-[10px] text-[#CAC4D0]">{curIdx + 1}/{tasks.length}</span>
+                    {autoSaved && (
+                      <span className="text-[10px] text-green-600 flex items-center gap-0.5">
+                        <svg xmlns="http://www.w3.org/2000/svg" height="10" viewBox="0 -960 960 960" width="10" fill="currentColor"><path d="M382-240 154-468l57-57 171 171 367-367 57 57-424 424Z"/></svg>
+                        Saved
+                      </span>
+                    )}
                     <div className="w-8 h-1 rounded-full bg-[#CAC4D0]" />
                   </div>
                   <button onPointerDown={(e) => e.stopPropagation()} onClick={() => hasNext && swapTask(curIdx + 1, 'left')}
@@ -411,21 +418,16 @@ export default function TaskEditSheet({ open, onClose, task, allTasks = [], task
                     <svg xmlns="http://www.w3.org/2000/svg" height="18" viewBox="0 -960 960 960" width="18" fill="currentColor"><path d="M400-240 640-480 400-720l-56 56 184 184-184 184 56 56Z"/></svg>
                   </button>
                 </>
-              : <div className="flex-1 flex justify-center"><div className="w-10 h-1.5 rounded-full bg-[#CAC4D0]" /></div>
+              : <div className="flex-1 flex items-center justify-center gap-2">
+                  <div className="w-10 h-1.5 rounded-full bg-[#CAC4D0]" />
+                  {autoSaved && (
+                    <span className="text-[10px] text-green-600 flex items-center gap-0.5">
+                      <svg xmlns="http://www.w3.org/2000/svg" height="10" viewBox="0 -960 960 960" width="10" fill="currentColor"><path d="M382-240 154-468l57-57 171 171 367-367 57 57-424 424Z"/></svg>
+                      Saved
+                    </span>
+                  )}
+                </div>
             }
-          </div>
-        </div>
-
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 pt-1 pb-2 flex-shrink-0">
-          <div className="flex items-center gap-2">
-            <h2 className="text-base font-semibold text-[#1C1B1F]">Edit task</h2>
-            {autoSaved && (
-              <span className="text-xs text-green-600 flex items-center gap-1" style={{ animation: 'fade-up 0.2s ease' }}>
-                <svg xmlns="http://www.w3.org/2000/svg" height="12" viewBox="0 -960 960 960" width="12" fill="currentColor"><path d="M382-240 154-468l57-57 171 171 367-367 57 57-424 424Z"/></svg>
-                Saved
-              </span>
-            )}
           </div>
         </div>
 
@@ -502,6 +504,10 @@ export default function TaskEditSheet({ open, onClose, task, allTasks = [], task
                 onEditSubtask={(sub) => setEditingSubtask({ id: sub.id, content: sub.content })} />
               {/* Add subtask row */}
               <div className="flex items-center gap-2 mt-2 py-1">
+                <div className="flex flex-col items-center gap-0.5 flex-shrink-0">
+                  <PriorityPill value={newSubtaskPriority} onChange={setNewSubtaskPriority} size="sm" />
+                  <span className="text-[9px] text-[#CAC4D0] leading-none">hold</span>
+                </div>
                 <input value={newSubtask} onChange={(e) => setNewSubtask(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter') handleAddSubtask() }}
                   placeholder="Add subtask…"
