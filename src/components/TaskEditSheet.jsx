@@ -364,7 +364,10 @@ export default function TaskEditSheet({ open, onClose, task, allTasks = [], task
   if (!mounted) return null
 
   const sheetTransform = entered ? `translateY(${dragY}px)` : 'translateY(102%)'
-  const sheetTransition = isDragging ? 'none' : 'transform 0.32s cubic-bezier(0.4,0,0.2,1)'
+  // Spring-arch on open, smooth slide on close/drag-dismiss
+  const sheetTransition = isDragging ? 'none'
+    : entered ? 'transform 0.5s cubic-bezier(0.34, 1.42, 0.64, 1)'
+    : 'transform 0.3s cubic-bezier(0.4, 0, 1, 1)'
 
   const curIdx = tasks ? tasks.findIndex((t) => t.id === task?.id) : -1
   const hasNext = tasks && curIdx >= 0 && curIdx < tasks.length - 1
@@ -392,14 +395,13 @@ export default function TaskEditSheet({ open, onClose, task, allTasks = [], task
         className="relative w-full bg-white rounded-t-3xl shadow-2xl flex flex-col max-h-[88vh]"
         style={{ transform: sheetTransform, transition: sheetTransition, willChange: 'transform' }}>
 
-        {/* Drag handle */}
-        <div data-drag-handle className="flex justify-center pt-3 pb-1 flex-shrink-0 cursor-grab touch-none select-none"
+        {/* Drag handle + header — the whole block is the drag zone */}
+        <div className="flex-shrink-0 cursor-grab active:cursor-grabbing touch-none select-none"
           onPointerDown={onHandleDown} onPointerMove={onHandleMove} onPointerUp={onHandleUp} onPointerCancel={onHandleUp}>
-          <div className="w-10 h-1.5 rounded-full bg-[#CAC4D0]" />
-        </div>
-
-        {/* Header row */}
-        <div className="flex items-center justify-between px-4 pb-2 flex-shrink-0">
+          <div className="flex justify-center pt-3 pb-2">
+            <div className="w-10 h-1.5 rounded-full bg-[#CAC4D0]" />
+          </div>
+          <div className="flex items-center justify-between px-4 pb-3">
           <div className="flex items-center gap-2">
             <h2 className="text-base font-semibold text-[#1C1B1F]">Edit task</h2>
             {autoSaved && (
@@ -410,7 +412,7 @@ export default function TaskEditSheet({ open, onClose, task, allTasks = [], task
             )}
           </div>
           {tasks?.length > 1 && (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2" onPointerDown={(e) => e.stopPropagation()}>
               <button onClick={() => hasPrev && swapTask(curIdx - 1, 'right')} disabled={!hasPrev}
                 className="text-[#79747E] disabled:opacity-25 p-1">
                 <svg xmlns="http://www.w3.org/2000/svg" height="18" viewBox="0 -960 960 960" width="18" fill="currentColor"><path d="M560-240 320-480l240-240 56 56-184 184 184 184-56 56Z"/></svg>
@@ -423,10 +425,11 @@ export default function TaskEditSheet({ open, onClose, task, allTasks = [], task
             </div>
           )}
           {!tasks?.length && (
-            <button onClick={dismiss} className="p-1 text-[#79747E]">
+            <button onClick={dismiss} className="p-1 text-[#79747E]" onPointerDown={(e) => e.stopPropagation()}>
               <svg xmlns="http://www.w3.org/2000/svg" height="20" viewBox="0 -960 960 960" width="20" fill="currentColor"><path d="m256-200-56-56 224-224-224-224 56-56 224 224 224-224 56 56-224 224 224 224-56 56-224-224-224 224Z"/></svg>
             </button>
           )}
+          </div>
         </div>
 
         {/* Swipeable content area */}
