@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { haptic } from '../lib/haptic'
 import { loadHeadConfig, saveHeadConfig } from '../lib/headConfig'
@@ -27,13 +27,26 @@ export default function HeadConfig() {
   const [files, setFiles] = useState(initial.files)
   const [saved, setSaved] = useState(false)
   const fileInputRef = useRef(null)
+  const saveTimerRef = useRef(null)
+  const tickTimerRef = useRef(null)
+  // Track whether this is the first render so we don't auto-save on mount
+  const isFirstRender = useRef(true)
 
-  function handleSave() {
-    saveHeadConfig(key, { instructions, context, files })
-    haptic.success()
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2000)
+  function triggerSave(newInstructions, newContext, newFiles) {
+    clearTimeout(saveTimerRef.current)
+    saveTimerRef.current = setTimeout(() => {
+      saveHeadConfig(key, { instructions: newInstructions, context: newContext, files: newFiles })
+      haptic.success()
+      setSaved(true)
+      clearTimeout(tickTimerRef.current)
+      tickTimerRef.current = setTimeout(() => setSaved(false), 2000)
+    }, 800)
   }
+
+  useEffect(() => {
+    if (isFirstRender.current) { isFirstRender.current = false; return }
+    triggerSave(instructions, context, files)
+  }, [instructions, context, files])
 
   function handleFileUpload(e) {
     const picked = Array.from(e.target.files)
@@ -41,7 +54,6 @@ export default function HeadConfig() {
       const reader = new FileReader()
       reader.onload = (ev) => {
         setFiles((prev) => [...prev, { name: file.name, content: ev.target.result, size: file.size }])
-        setSaved(false)
       }
       reader.readAsText(file)
     })
@@ -51,7 +63,6 @@ export default function HeadConfig() {
   function removeFile(i) {
     haptic.light()
     setFiles((prev) => prev.filter((_, j) => j !== i))
-    setSaved(false)
   }
 
   const totalChars = instructions.length + context.length + files.reduce((s, f) => s + f.content.length, 0)
@@ -71,11 +82,20 @@ export default function HeadConfig() {
             <h1 className="text-base font-semibold text-[#1C1B1F]">{meta.role} · Knowledge</h1>
             <p className="text-xs text-[#79747E]">Instructions, context and files injected into every conversation</p>
           </div>
+          <span
+            className="text-xs font-medium text-green-600 flex items-center gap-1 transition-opacity duration-500 flex-shrink-0"
+            style={{ opacity: saved ? 1 : 0 }}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" height="14" viewBox="0 -960 960 960" width="14" fill="currentColor">
+              <path d="M382-240 154-468l57-57 171 171 367-367 57 57-424 424Z"/>
+            </svg>
+            Saved
+          </span>
         </div>
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto px-4 py-5 space-y-6 pb-28">
+      <div className="flex-1 overflow-y-auto px-4 py-5 space-y-6 pb-6">
 
         {/* Instructions */}
         <section>
@@ -156,17 +176,6 @@ export default function HeadConfig() {
         )}
       </div>
 
-      {/* Save bar */}
-      <div className="absolute bottom-0 left-0 right-0 bg-white border-t border-[#CAC4D0] px-4 pt-3 pb-4 safe-bottom">
-        <button
-          onClick={handleSave}
-          className={`w-full py-3 rounded-full text-sm font-semibold transition-colors ${
-            saved ? 'bg-green-500 text-white' : 'bg-[#6750A4] text-white hover:bg-[#5B4397]'
-          }`}
-        >
-          {saved ? '✓ Saved' : 'Save knowledge'}
-        </button>
-      </div>
     </div>
   )
 }
