@@ -264,10 +264,6 @@ function TaskRow({ task, onComplete, index = 0, allTasks = [] }) {
     holdRef.current = setTimeout(() => {
       isHoldRef.current = true
       haptic.medium()
-      setEditContent(localTask.content)
-      setEditPriority(localTask.priority ?? 1)
-      setEditDue(localTask.due?.date ?? '')
-      setEditDesc(localTask.description ?? '')
       setEditOpen(true)
     }, 500)
   }
