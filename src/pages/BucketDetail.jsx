@@ -512,6 +512,9 @@ function TaskItem({ task: initialTask, onComplete, index = 0, allTasks = [], buc
                 {new Date(localTask.due.date + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: '2-digit' })}
               </span>
             )}
+            {localTask._sectionName && (
+              <span className="text-xs text-[#79747E]">{localTask._sectionName}</span>
+            )}
             {localTask.labels?.length > 0 && (
               <span className="text-xs text-[#79747E]">{localTask.labels.join(', ')}</span>
             )}
@@ -616,8 +619,11 @@ export default function BucketDetail() {
       getProjectSections(projectId),
     ])
       .then(([taskData, sectionData]) => {
-        setTasks(taskData.map((t) => ({ ...t, _projectName: bucket })))
-        setSections(Array.isArray(sectionData) ? sectionData : [])
+        const sectionMap = {}
+        const sections = Array.isArray(sectionData) ? sectionData : []
+        sections.forEach((s) => { sectionMap[s.id] = s.name })
+        setTasks(taskData.map((t) => ({ ...t, _projectName: bucket, _sectionName: sectionMap[t.section_id] ?? null })))
+        setSections(sections)
       })
       .catch((e) => setLoadError(e.message ?? 'Could not load tasks'))
       .finally(() => setLoading(false))

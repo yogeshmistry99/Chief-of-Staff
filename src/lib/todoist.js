@@ -23,10 +23,14 @@ async function get(path, params = {}) {
 
 // All tasks across all 7 projects — fetch per-project to avoid pagination gaps
 export async function getAllTasks() {
-  const results = await Promise.all(
-    Object.values(PROJECTS).map((id) => getProjectTasks(id))
-  )
-  return results.flat()
+  const projectIds = Object.values(PROJECTS)
+  const [taskResults, sectionResults] = await Promise.all([
+    Promise.all(projectIds.map((id) => getProjectTasks(id))),
+    Promise.all(projectIds.map((id) => getProjectSections(id))),
+  ])
+  const sectionMap = {}
+  sectionResults.flat().forEach((s) => { sectionMap[s.id] = s.name })
+  return taskResults.flat().map((t) => ({ ...t, _sectionName: sectionMap[t.section_id] ?? null }))
 }
 
 // Tasks for a single project
