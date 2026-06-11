@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { getMonthlyUsage } from '../lib/claude'
+import { pullAndCacheTasks, getLastPullTime, getCachedTasks } from '../lib/taskCache'
 
 const INTEGRATIONS = [
   { name: 'Claude (Anthropic)', description: 'Powers the AI chat assistant.',           icon: '🤖', statusKey: 'anthropic',      color: 'bg-[#EADDFF]' },
@@ -42,6 +43,36 @@ export default function Settings() {
   }, [])
 
   const [refreshDone, setRefreshDone] = useState(false)
+  const [pullState, setPullState] = useState('idle') // idle | pulling | done | error
+  const [lastPull, setLastPull] = useState(() => getLastPullTime())
+  const [cachedCount, setCachedCount] = useState(() => getCachedTasks().length)
+
+  async function handlePullTasks() {
+    setPullState('pulling')
+    try {
+      const { tasks, pulledCount } = await pullAndCacheTasks()
+      setCachedCount(tasks.length)
+      setLastPull(new Date().toISOString())
+      setPullState('done')
+      setTimeout(() => setPullState('idle'), 3000)
+    } catch (e) {
+      setPullState('error')
+      setTimeout(() => setPullState('idle'), 3000)
+    }
+  }
+
+  function formatPullTime(iso) {
+    if (!iso) return null
+    const d = new Date(iso)
+    const now = new Date()
+    const diffMs = now - d
+    const diffMins = Math.floor(diffMs / 60000)
+    if (diffMins < 1) return 'just now'
+    if (diffMins < 60) return `${diffMins}m ago`
+    const diffHours = Math.floor(diffMins / 60)
+    if (diffHours < 24) return `${diffHours}h ago`
+    return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+  }
 
   function handleRefresh() {
     setRefreshDone(true)
@@ -129,6 +160,35 @@ export default function Settings() {
         <div className="flex justify-between text-sm mt-1.5">
           <span className="text-[#49454F]">Platform</span>
           <span className="font-medium text-[#1C1B1F]">PWA · Vite · React</span>
+        </div>
+      </div>
+
+      {/* Todoist task cache */}
+      <div className="bg-white border border-[#CAC4D0] rounded-2xl px-4 py-3 mb-4">
+        <h2 className="text-xs font-semibold text-[#49454F] uppercase tracking-wide mb-3">Todoist Task Cache</h2>
+        <p className="text-xs text-[#79747E] mb-3">
+          Pulls all tasks from Todoist into local storage so they're available offline and to the AI heads. Merges without duplicates.
+        </p>
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <p className="text-sm text-[#1C1B1F]">{cachedCount > 0 ? `${cachedCount} tasks cached` : 'No cache yet'}</p>
+            {lastPull && <p className="text-xs text-[#79747E]">Last pulled {formatPullTime(lastPull)}</p>}
+          </div>
+          <button
+            onClick={handlePullTasks}
+            disabled={pullState === 'pulling'}
+            className={`px-4 py-2 rounded-full text-sm font-semibold transition-colors flex-shrink-0 ${
+              pullState === 'done'    ? 'bg-green-500 text-white' :
+              pullState === 'error'  ? 'bg-red-500 text-white' :
+              pullState === 'pulling'? 'bg-[#F3EDF7] text-[#79747E]' :
+                                       'bg-[#6750A4] text-white hover:bg-[#7965AF]'
+            }`}
+          >
+            {pullState === 'pulling' ? '⏳ Pulling…' :
+             pullState === 'done'    ? '✓ Done' :
+             pullState === 'error'   ? '✗ Failed' :
+                                       'Pull tasks'}
+          </button>
         </div>
       </div>
 
