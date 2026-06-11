@@ -92,7 +92,7 @@ export default function Settings() {
           <span>{(usage.input_tokens ?? 0).toLocaleString()} input tokens</span>
           <span>{(usage.output_tokens ?? 0).toLocaleString()} output tokens</span>
         </div>
-        <p className="text-[10px] text-[#79747E] mt-2">Haiku 4.5 · $0.80/M input · $4.00/M output</p>
+        <p className="text-[10px] text-[#79747E] mt-2">CoS: Sonnet 4.5 · Heads: Haiku 4.5</p>
       </div>
 
       {/* Integrations card */}
