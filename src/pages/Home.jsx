@@ -4,6 +4,7 @@ import { getAllTasks, closeTask, PROJECTS } from '../lib/todoist'
 import { prioritise, scoreTask } from '../lib/priority'
 import { haptic } from '../lib/haptic'
 import ChatInput from '../components/ChatInput'
+import EditSheet from '../components/EditSheet'
 import TaskEditSheet from '../components/TaskEditSheet'
 import QuickAdd from '../components/QuickAdd'
 
