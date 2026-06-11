@@ -7,7 +7,7 @@ import { prioritise } from '../lib/priority'
 import { haptic } from '../lib/haptic'
 import Markdown from '../components/Markdown'
 import ChatInput from '../components/ChatInput'
-import EditSheet from '../components/EditSheet'
+import TaskEditSheet from '../components/TaskEditSheet'
 
 const PROJECT_NAMES = Object.fromEntries(Object.entries(PROJECTS).map(([name, id]) => [id, name]))
 
@@ -170,11 +170,6 @@ function TaskCarousel({ tasks, taskIndex, setTaskIndex, onTaskUpdate }) {
   const { active } = prioritise(tasks)
   const [expanded, setExpanded] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
-  const [editContent, setEditContent] = useState('')
-  const [editPriority, setEditPriority] = useState(1)
-  const [editDue, setEditDue] = useState('')
-  const [editDesc, setEditDesc] = useState('')
-  const [saving, setSaving] = useState(false)
   const holdRef = useRef(null)
   const isHoldRef = useRef(false)
 
@@ -188,20 +183,12 @@ function TaskCarousel({ tasks, taskIndex, setTaskIndex, onTaskUpdate }) {
   const priority = ['', 'P4', 'P3', 'P2', 'P1'][t.priority] ?? 'P4'
   const due = fmtDate(t.due?.date)
 
-  function openEdit() {
-    setEditContent(t.content)
-    setEditPriority(t.priority ?? 1)
-    setEditDue(t.due?.date ?? '')
-    setEditDesc(t.description ?? '')
-    setEditOpen(true)
-  }
-
   function handlePointerDown() {
     isHoldRef.current = false
     holdRef.current = setTimeout(() => {
       isHoldRef.current = true
       haptic.medium()
-      openEdit()
+      setEditOpen(true)
     }, 500)
   }
 
@@ -210,24 +197,6 @@ function TaskCarousel({ tasks, taskIndex, setTaskIndex, onTaskUpdate }) {
   function handleTap() {
     if (isHoldRef.current) { isHoldRef.current = false; return }
     setExpanded((x) => !x)
-  }
-
-  async function handleSave() {
-    setSaving(true)
-    try {
-      const body = { content: editContent, priority: editPriority, description: editDesc }
-      if (editDue) body.due_date = editDue
-      const res = await fetch(`/api/todoist?path=tasks/${t.id}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      })
-      if (!res.ok) throw new Error(`Todoist error: ${res.status}`)
-      haptic.success()
-      onTaskUpdate({ id: t.id, content: editContent, priority: editPriority, description: editDesc, due: editDue ? { date: editDue } : t.due })
-      setEditOpen(false)
-    } catch { haptic.error() }
-    finally { setSaving(false) }
   }
 
   return (
@@ -303,34 +272,13 @@ function TaskCarousel({ tasks, taskIndex, setTaskIndex, onTaskUpdate }) {
         </div>
       </div>
 
-      <EditSheet open={editOpen} onClose={() => setEditOpen(false)} title="Edit task" onSave={handleSave} saving={saving}>
-        <div className="space-y-1">
-          <label className="text-xs font-medium text-[#49454F]">Task</label>
-          <textarea value={editContent} onChange={(e) => setEditContent(e.target.value)} rows={2}
-            className="w-full rounded-xl border border-[#79747E] px-3 py-2 text-sm text-[#1C1B1F] focus:outline-none focus:border-[#6750A4] resize-none" />
-        </div>
-        <div className="space-y-1">
-          <label className="text-xs font-medium text-[#49454F]">Priority</label>
-          <div className="flex gap-2">
-            {[{label:'P1',val:4},{label:'P2',val:3},{label:'P3',val:2},{label:'P4',val:1}].map(({label,val}) => (
-              <button key={val} onClick={() => setEditPriority(val)}
-                className={`flex-1 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
-                  editPriority === val ? 'bg-[#6750A4] text-white border-[#6750A4]' : 'border-[#CAC4D0] text-[#49454F]'
-                }`}>{label}</button>
-            ))}
-          </div>
-        </div>
-        <div className="space-y-1">
-          <label className="text-xs font-medium text-[#49454F]">Due date</label>
-          <input type="date" value={editDue} onChange={(e) => setEditDue(e.target.value)}
-            className="w-full rounded-xl border border-[#79747E] px-3 py-2 text-sm text-[#1C1B1F] focus:outline-none focus:border-[#6750A4]" />
-        </div>
-        <div className="space-y-1">
-          <label className="text-xs font-medium text-[#49454F]">Notes</label>
-          <textarea value={editDesc} onChange={(e) => setEditDesc(e.target.value)} rows={3} placeholder="Add notes"
-            className="w-full rounded-xl border border-[#79747E] px-3 py-2 text-sm text-[#1C1B1F] focus:outline-none focus:border-[#6750A4] resize-none" />
-        </div>
-      </EditSheet>
+      <TaskEditSheet
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        task={t}
+        allTasks={tasks}
+        onSaved={(updated) => onTaskUpdate(updated)}
+      />
     </>
   )
 }

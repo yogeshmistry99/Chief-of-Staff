@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import EditSheet from '../components/EditSheet'
+import TaskEditSheet from '../components/TaskEditSheet'
 import { useParams, useNavigate } from 'react-router-dom'
 import { getProjectTasks, getProjectSections, PROJECTS } from '../lib/todoist'
 import { scoreTask, BUCKET_WEIGHTS } from '../lib/priority'
@@ -231,7 +231,7 @@ function groupBySection(tasks, sections) {
   return result
 }
 
-function TaskCard({ title, tasks, onComplete, indexOffset = 0 }) {
+function TaskCard({ title, tasks, onComplete, indexOffset = 0, allTasks = [] }) {
   return (
     <div className="bg-white border border-[#CAC4D0] rounded-2xl px-4 pt-3 pb-1 shadow-sm mb-3"
       style={{ animation: `fade-up 0.4s cubic-bezier(0.22,1,0.36,1) ${0.05 + indexOffset * 0.06}s both` }}>
@@ -242,13 +242,13 @@ function TaskCard({ title, tasks, onComplete, indexOffset = 0 }) {
         </div>
       )}
       {tasks.map((task, i) => (
-        <TaskItem key={task.id} task={task} onComplete={onComplete} index={indexOffset + i} />
+        <TaskItem key={task.id} task={task} onComplete={onComplete} index={indexOffset + i} allTasks={allTasks} />
       ))}
     </div>
   )
 }
 
-function TasksTab({ tasks, sections, loading, onComplete }) {
+function TasksTab({ tasks, sections, loading, onComplete, allTasks }) {
   const [sort, setSort] = useState('category')
 
   const allScored = tasks.map((t) => ({ ...t, _scored: scoreTask(t) }))
@@ -277,13 +277,13 @@ function TasksTab({ tasks, sections, loading, onComplete }) {
     const groups = groupBySection(active, sections)
     let offset = 0
     content = groups.map((g) => {
-      const el = <TaskCard key={g.id} title={g.name} tasks={g.tasks} onComplete={onComplete} indexOffset={offset} />
+      const el = <TaskCard key={g.id} title={g.name} tasks={g.tasks} onComplete={onComplete} indexOffset={offset} allTasks={allTasks} />
       offset += g.tasks.length
       return el
     })
   } else {
     const sorted = sortTasks(active, sort)
-    content = <TaskCard title={null} tasks={sorted} onComplete={onComplete} />
+    content = <TaskCard title={null} tasks={sorted} onComplete={onComplete} allTasks={allTasks} />
   }
 
   return (
@@ -316,18 +316,13 @@ function TasksTab({ tasks, sections, loading, onComplete }) {
   )
 }
 
-function TaskItem({ task: initialTask, onComplete, index = 0 }) {
+function TaskItem({ task: initialTask, onComplete, index = 0, allTasks = [] }) {
   const [localTask, setLocalTask] = useState(initialTask)
   const [pendingComplete, setPendingComplete] = useState(false)
   const [removing, setRemoving] = useState(false)
   const [completingAnim, setCompletingAnim] = useState(false)
   const [expanded, setExpanded] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
-  const [editContent, setEditContent] = useState(initialTask.content)
-  const [editPriority, setEditPriority] = useState(initialTask.priority ?? 1)
-  const [editDue, setEditDue] = useState(initialTask.due?.date ?? '')
-  const [editDesc, setEditDesc] = useState(initialTask.description ?? '')
-  const [saving, setSaving] = useState(false)
   const [swipeX, setSwipeX] = useState(0)
   const [isSwiping, setIsSwiping] = useState(false)
   const timerRef = useRef(null)
@@ -422,29 +417,6 @@ function TaskItem({ task: initialTask, onComplete, index = 0 }) {
     }
   }
 
-  async function handleSave() {
-    setSaving(true)
-    try {
-      const body = { content: editContent, priority: editPriority, description: editDesc }
-      if (editDue) body.due_date = editDue
-      const res = await fetch(`/api/todoist?path=tasks/${localTask.id}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      })
-      if (!res.ok) throw new Error(`Todoist error: ${res.status}`)
-      haptic.success()
-      setLocalTask((prev) => ({
-        ...prev,
-        content: editContent,
-        priority: editPriority,
-        description: editDesc,
-        due: editDue ? { date: editDue } : prev.due,
-      }))
-      setEditOpen(false)
-    } catch { haptic.error() }
-    finally { setSaving(false) }
-  }
 
   return (
     <>
@@ -570,34 +542,13 @@ function TaskItem({ task: initialTask, onComplete, index = 0 }) {
     </div>
     </div>
 
-    <EditSheet open={editOpen} onClose={() => setEditOpen(false)} title="Edit task" onSave={handleSave} saving={saving}>
-      <div className="space-y-1">
-        <label className="text-xs font-medium text-[#49454F]">Task</label>
-        <textarea value={editContent} onChange={(ev) => setEditContent(ev.target.value)}
-          className="w-full rounded-xl border border-[#79747E] px-3 py-2 text-sm text-[#1C1B1F] focus:outline-none focus:border-[#6750A4] resize-none" rows={2} />
-      </div>
-      <div className="space-y-1">
-        <label className="text-xs font-medium text-[#49454F]">Priority</label>
-        <div className="flex gap-2">
-          {[{label:'P1',val:4},{label:'P2',val:3},{label:'P3',val:2},{label:'P4',val:1}].map(({label,val}) => (
-            <button key={val} onClick={() => setEditPriority(val)}
-              className={`flex-1 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
-                editPriority === val ? 'bg-[#6750A4] text-white border-[#6750A4]' : 'border-[#CAC4D0] text-[#49454F]'
-              }`}>{label}</button>
-          ))}
-        </div>
-      </div>
-      <div className="space-y-1">
-        <label className="text-xs font-medium text-[#49454F]">Due date</label>
-        <input type="date" value={editDue} onChange={(ev) => setEditDue(ev.target.value)}
-          className="w-full rounded-xl border border-[#79747E] px-3 py-2 text-sm text-[#1C1B1F] focus:outline-none focus:border-[#6750A4]" />
-      </div>
-      <div className="space-y-1">
-        <label className="text-xs font-medium text-[#49454F]">Notes</label>
-        <textarea value={editDesc} onChange={(ev) => setEditDesc(ev.target.value)} placeholder="Add notes"
-          className="w-full rounded-xl border border-[#79747E] px-3 py-2 text-sm text-[#1C1B1F] focus:outline-none focus:border-[#6750A4] resize-none" rows={3} />
-      </div>
-    </EditSheet>
+    <TaskEditSheet
+      open={editOpen}
+      onClose={() => setEditOpen(false)}
+      task={localTask}
+      allTasks={allTasks}
+      onSaved={(updated) => setLocalTask((prev) => ({ ...prev, ...updated }))}
+    />
     </>
   )
 }
@@ -693,7 +644,7 @@ export default function BucketDetail() {
         <div className={`absolute inset-0 ${tab === 'tasks' ? '' : 'invisible pointer-events-none'}`}>
           {loadError
             ? <p className="px-4 pt-6 text-sm text-red-500">Could not load tasks — {loadError}</p>
-            : <TasksTab tasks={tasks} sections={sections} loading={loading} onComplete={removeTask} />}
+            : <TasksTab tasks={tasks} sections={sections} loading={loading} onComplete={removeTask} allTasks={tasks} />}
         </div>
         <div className={`absolute inset-0 ${tab === 'head' ? '' : 'invisible pointer-events-none'}`}>
           <HeadTab bucket={bucket} tasks={tasks} messages={headMessages} setMessages={setHeadMessages} />
