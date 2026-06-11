@@ -220,10 +220,7 @@ function groupBySection(tasks, sections) {
   const sectionMap = Object.fromEntries(sections.map((s) => [s.id, s.name]))
   const groups = {}
   const order = []
-  // Preserve section order from the sections array
   sections.forEach((s) => { groups[s.id] = []; order.push(s.id) })
-  // No-section bucket
-  groups['__none__'] = []
   tasks.forEach((t) => {
     const sid = t.section_id ?? '__none__'
     if (!groups[sid]) { groups[sid] = []; order.push(sid) }
