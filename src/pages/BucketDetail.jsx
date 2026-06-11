@@ -157,7 +157,7 @@ function DiscussionsTab({ bucket }) {
             {discussions.map((d) => (
               <div key={d.id} className="relative">
                 <button
-                  onClick={() => navigate(`/buckets/${bucket}/discussions/${d.id}`)}
+                  onClick={() => navigate(`/buckets/${bucket}/discussions/${d.id}`, { state: { from: `/buckets/${bucket}` } })}
                   className="w-full text-left bg-white border border-[#CAC4D0] rounded-2xl p-4 hover:border-[#6750A4] transition-colors pr-10"
                 >
                   <p className="text-sm font-medium text-[#1C1B1F]">{d.title}</p>
@@ -180,7 +180,7 @@ function DiscussionsTab({ bucket }) {
       </div>
       <div className="px-4 pb-4 pt-2 border-t border-[#CAC4D0] bg-white">
         <button
-          onClick={() => navigate(`/buckets/${bucket}/discussions/new`)}
+          onClick={() => navigate(`/buckets/${bucket}/discussions/new`, { state: { from: `/buckets/${bucket}` } })}
           className="w-full py-2.5 rounded-full bg-[#6750A4] text-white text-sm font-medium hover:bg-[#5B4397] transition-colors"
         >
           + New discussion
@@ -426,11 +426,11 @@ function TaskItem({ task: initialTask, onComplete, index = 0, allTasks = [], buc
         haptic.light()
         const existing = findDiscussionByTask(bucket, localTask.id)
         if (existing) {
-          navigate(`/buckets/${bucket}/discussions/${existing.id}`)
+          navigate(`/buckets/${bucket}/discussions/${existing.id}`, { state: { from: `/buckets/${bucket}` } })
         } else {
           const disc = newDiscussion(localTask.content, localTask.id)
           saveDiscussion(bucket, disc)
-          navigate(`/buckets/${bucket}/discussions/${disc.id}`)
+          navigate(`/buckets/${bucket}/discussions/${disc.id}`, { state: { from: `/buckets/${bucket}` } })
         }
       }, 200)
     } else {

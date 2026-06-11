@@ -330,11 +330,11 @@ function TaskRow({ task, onComplete, index = 0, allTasks = [] }) {
         const bucket = localTask._projectName
         const existing = findDiscussionByTask(bucket, localTask.id)
         if (existing) {
-          navigate(`/buckets/${bucket}/discussions/${existing.id}`)
+          navigate(`/buckets/${bucket}/discussions/${existing.id}`, { state: { from: '/' } })
         } else {
           const disc = newDiscussion(localTask.content, localTask.id)
           saveDiscussion(bucket, disc)
-          navigate(`/buckets/${bucket}/discussions/${disc.id}`)
+          navigate(`/buckets/${bucket}/discussions/${disc.id}`, { state: { from: '/' } })
         }
       }, 200)
     } else {

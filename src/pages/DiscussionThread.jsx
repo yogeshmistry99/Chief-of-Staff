@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { getProjectTasks, PROJECTS } from '../lib/todoist'
 import { sendMessageStream, SYSTEM_PROMPTS } from '../lib/claude'
 import { loadHeadConfig } from '../lib/headConfig'
@@ -10,6 +10,8 @@ import ChatInput from '../components/ChatInput'
 export default function DiscussionThread() {
   const { bucket, id } = useParams()
   const navigate = useNavigate()
+  const location = useLocation()
+  const backTo = location.state?.from ?? `/buckets/${bucket}`
   const isNew = id === 'new'
 
   // Load existing discussion or initialise a new one
@@ -83,7 +85,7 @@ export default function DiscussionThread() {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-3">
         <p className="text-sm text-[#49454F]">Discussion not found.</p>
-        <button onClick={() => navigate(`/buckets/${bucket}`)} className="text-xs text-[#6750A4]">← Back</button>
+        <button onClick={() => navigate(backTo)} className="text-xs text-[#6750A4]">← Back</button>
       </div>
     )
   }
@@ -95,7 +97,7 @@ export default function DiscussionThread() {
       {/* Header */}
       <div className="bg-white border-b border-[#CAC4D0] px-4 pt-4 pb-3">
         <div className="flex items-center gap-2">
-          <button onClick={() => navigate(`/buckets/${bucket}`)} className="text-[#6750A4] p-1 -ml-1 flex-shrink-0">
+          <button onClick={() => navigate(backTo)} className="text-[#6750A4] p-1 -ml-1 flex-shrink-0">
             <svg xmlns="http://www.w3.org/2000/svg" height="20" viewBox="0 -960 960 960" width="20" fill="currentColor">
               <path d="M560-240 320-480l240-240 56 56-184 184 184 184-56 56Z" />
             </svg>
