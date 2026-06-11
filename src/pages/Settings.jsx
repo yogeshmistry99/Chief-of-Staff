@@ -41,6 +41,25 @@ export default function Settings() {
     fetch('/api/status').then((r) => r.json()).then(setStatus).catch(() => {})
   }, [])
 
+  const [refreshDone, setRefreshDone] = useState(false)
+
+  function handleRefresh() {
+    setRefreshDone(true)
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then((regs) => {
+        Promise.all(regs.map((r) => r.unregister())).then(() => {
+          caches.keys().then((keys) => {
+            Promise.all(keys.map((k) => caches.delete(k))).then(() => {
+              window.location.reload(true)
+            })
+          })
+        })
+      })
+    } else {
+      window.location.reload(true)
+    }
+  }
+
   function handleReset() {
     localStorage.clear()
     setUsage({})
@@ -112,6 +131,16 @@ export default function Settings() {
           <span className="font-medium text-[#1C1B1F]">PWA · Vite · React</span>
         </div>
       </div>
+
+      {/* Hard refresh */}
+      <button
+        onClick={handleRefresh}
+        className={`w-full py-3 rounded-full text-sm font-semibold transition-colors mb-3 ${
+          refreshDone ? 'bg-green-500 text-white' : 'bg-[#F3EDF7] text-[#6750A4] hover:bg-[#EADDFF]'
+        }`}
+      >
+        {refreshDone ? '✓ Refreshing…' : 'Hard refresh (clear cache)'}
+      </button>
 
       {/* Reset */}
       <button
