@@ -391,28 +391,27 @@ export default function TaskEditSheet({ open, onClose, task, allTasks = [], task
         className="relative w-full bg-white rounded-t-3xl shadow-2xl flex flex-col max-h-[88vh]"
         style={{ transform: sheetTransform, transition: sheetTransition, willChange: 'transform' }}>
 
-        {/* Drag handle — pip row + prev/counter/next, all draggable */}
+        {/* Drag handle — pip row with nav arrows at far ends */}
         <div className="flex-shrink-0 cursor-grab active:cursor-grabbing touch-none select-none"
           onPointerDown={onHandleDown} onPointerMove={onHandleMove} onPointerUp={onHandleUp} onPointerCancel={onHandleUp}>
-          {/* Pip centred with nav arrows flanking */}
-          <div className="flex items-center justify-center gap-4 pt-3 pb-1 px-4">
+          <div className="flex items-center pt-3 pb-1 px-2">
             {tasks?.length > 1
               ? <>
                   <button onPointerDown={(e) => e.stopPropagation()} onClick={() => hasPrev && swapTask(curIdx - 1, 'right')}
-                    disabled={!hasPrev} className="text-[#79747E] disabled:opacity-25 p-1 cursor-pointer">
+                    disabled={!hasPrev} className="text-[#79747E] disabled:opacity-25 p-1 cursor-pointer flex-shrink-0">
                     <svg xmlns="http://www.w3.org/2000/svg" height="18" viewBox="0 -960 960 960" width="18" fill="currentColor"><path d="M560-240 320-480l240-240 56 56-184 184 184 184-56 56Z"/></svg>
                   </button>
-                  <div className="flex items-center gap-2">
+                  <div className="flex-1 flex items-center justify-center gap-2">
                     <div className="w-8 h-1 rounded-full bg-[#CAC4D0]" />
                     <span className="text-[10px] text-[#CAC4D0]">{curIdx + 1}/{tasks.length}</span>
                     <div className="w-8 h-1 rounded-full bg-[#CAC4D0]" />
                   </div>
                   <button onPointerDown={(e) => e.stopPropagation()} onClick={() => hasNext && swapTask(curIdx + 1, 'left')}
-                    disabled={!hasNext} className="text-[#79747E] disabled:opacity-25 p-1 cursor-pointer">
+                    disabled={!hasNext} className="text-[#79747E] disabled:opacity-25 p-1 cursor-pointer flex-shrink-0">
                     <svg xmlns="http://www.w3.org/2000/svg" height="18" viewBox="0 -960 960 960" width="18" fill="currentColor"><path d="M400-240 640-480 400-720l-56 56 184 184-184 184 56 56Z"/></svg>
                   </button>
                 </>
-              : <div className="w-10 h-1.5 rounded-full bg-[#CAC4D0]" />
+              : <div className="flex-1 flex justify-center"><div className="w-10 h-1.5 rounded-full bg-[#CAC4D0]" /></div>
             }
           </div>
         </div>
@@ -436,7 +435,10 @@ export default function TaskEditSheet({ open, onClose, task, allTasks = [], task
 
             {/* Task name */}
             <div className="flex items-start gap-2.5 py-3 border-b border-[#F3EDF7]">
-              <PriorityPill value={priority} onChange={setPriority} />
+              <div className="flex flex-col items-center gap-0.5 flex-shrink-0">
+                <PriorityPill value={priority} onChange={setPriority} />
+                <span className="text-[9px] text-[#CAC4D0] leading-none">hold</span>
+              </div>
               <div className="flex-1 min-w-0">
                 {editingContent
                   ? <textarea autoFocus value={content} onChange={(e) => setContent(e.target.value)}
