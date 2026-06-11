@@ -47,6 +47,33 @@ export default function ChatInput({ placeholder, onSend, disabled, extraAbove, t
     recognitionRef.current?.abort()
   }, [])
 
+  async function handleClipboard() {
+    haptic.light()
+    setAttachOpen(false)
+    try {
+      const items = await navigator.clipboard.read()
+      for (const item of items) {
+        const imageType = item.types.find((t) => t.startsWith('image/'))
+        if (imageType) {
+          const blob = await item.getType(imageType)
+          const file = new File([blob], 'clipboard.' + imageType.split('/')[1], { type: imageType })
+          setLoading(true)
+          try {
+            const data = await fileToBase64(file)
+            setAttachment({ name: file.name, mediaType: file.type, data, preview: `data:${file.type};base64,${data}` })
+          } finally { setLoading(false) }
+          return
+        }
+        if (item.types.includes('text/plain')) {
+          const blob = await item.getType('text/plain')
+          const text = await blob.text()
+          setInput((prev) => prev + text)
+          return
+        }
+      }
+    } catch {}
+  }
+
   async function handleFile(e) {
     const file = e.target.files?.[0]
     if (!file) return
@@ -182,6 +209,16 @@ export default function ChatInput({ placeholder, onSend, disabled, extraAbove, t
               </svg>
             </button>
             <input ref={fileRef} type="file" accept={ACCEPTED_FILE} onChange={handleFile} className="hidden" />
+
+            {/* Clipboard — web only (navigator.clipboard.read available in secure contexts) */}
+            {'clipboard' in navigator && typeof navigator.clipboard.read === 'function' && (
+              <button onClick={handleClipboard} disabled={loading} title="Paste from clipboard"
+                className="w-8 h-8 flex items-center justify-center rounded-full text-[#6750A4] hover:bg-[#EADDFF] disabled:opacity-50 transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" height="17" viewBox="0 -960 960 960" width="17" fill="currentColor">
+                  <path d="M360-240q-33 0-56.5-23.5T280-320v-480q0-33 23.5-56.5T360-880h360q33 0 56.5 23.5T800-800v480q0 33-23.5 56.5T720-240H360Zm0-80h360v-480H360v480ZM200-80q-33 0-56.5-23.5T120-160v-560h80v560h440v80H200Zm160-240v-480 480Z"/>
+                </svg>
+              </button>
+            )}
           </div>
 
           <button
@@ -200,6 +237,19 @@ export default function ChatInput({ placeholder, onSend, disabled, extraAbove, t
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); doSend() } }}
+          onPaste={async (e) => {
+            const items = Array.from(e.clipboardData?.items ?? [])
+            const imgItem = items.find((i) => i.type.startsWith('image/'))
+            if (!imgItem) return
+            e.preventDefault()
+            const file = imgItem.getAsFile()
+            if (!file) return
+            setLoading(true)
+            try {
+              const data = await fileToBase64(file)
+              setAttachment({ name: 'pasted-image.' + file.type.split('/')[1], mediaType: file.type, data, preview: `data:${file.type};base64,${data}` })
+            } finally { setLoading(false) }
+          }}
           placeholder={recording ? 'Listening…' : placeholder}
           rows={1}
           className="flex-1 resize-none rounded-2xl border border-[#79747E] px-3 py-2 text-sm text-[#1C1B1F] placeholder:text-[#B0A8BC] focus:outline-none focus:border-[#6750A4] leading-relaxed"
