@@ -178,14 +178,15 @@ function TaskCarousel({ tasks, taskIndex, setTaskIndex, onTaskUpdate }) {
   const holdRef = useRef(null)
   const isHoldRef = useRef(false)
 
-  if (!active.length) return null
-  const idx = Math.min(taskIndex, active.length - 1)
+  const idx = active.length ? Math.min(taskIndex, active.length - 1) : 0
   const t = active[idx]
-  const priority = ['', 'P4', 'P3', 'P2', 'P1'][t.priority] ?? 'P4'
-  const due = fmtDate(t.due?.date)
 
   // Collapse expanded detail when navigating to a different task
   useEffect(() => { setExpanded(false) }, [idx])
+
+  if (!active.length) return null
+  const priority = ['', 'P4', 'P3', 'P2', 'P1'][t.priority] ?? 'P4'
+  const due = fmtDate(t.due?.date)
 
   function openEdit() {
     setEditContent(t.content)
