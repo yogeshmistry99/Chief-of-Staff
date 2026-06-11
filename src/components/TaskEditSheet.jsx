@@ -443,13 +443,10 @@ export default function TaskEditSheet({ open, onClose, task, allTasks = [], task
                 {editingContent
                   ? <textarea autoFocus value={content} onChange={(e) => setContent(e.target.value)}
                       onBlur={() => setEditingContent(false)} rows={2}
-                      className="w-full text-sm text-[#1C1B1F] resize-none outline-none border-b border-[#6750A4] bg-transparent leading-snug" />
-                  : <p className="text-sm text-[#1C1B1F] leading-snug">{content || 'No title'}</p>
+                      className="w-full text-sm font-bold text-[#1C1B1F] resize-none outline-none border-b border-[#6750A4] bg-transparent leading-snug" />
+                  : <p onClick={() => setEditingContent(true)} className="text-sm font-bold text-[#1C1B1F] leading-snug cursor-text">{content || 'No title'}</p>
                 }
               </div>
-              {!editingContent && (
-                <button onClick={() => setEditingContent(true)} className="text-[#79747E] p-1 flex-shrink-0"><EditIcon /></button>
-              )}
             </div>
 
             {/* Due date */}
@@ -468,22 +465,24 @@ export default function TaskEditSheet({ open, onClose, task, allTasks = [], task
               )}
             </div>
 
-            {/* Notes */}
-            <div className="flex items-start gap-2 py-3 border-b border-[#F3EDF7]">
-              <span className="text-xs text-[#79747E] w-8 flex-shrink-0 mt-0.5">Notes</span>
-              <div className="flex-1 min-w-0">
-                {editingDesc
-                  ? <textarea autoFocus value={description} onChange={(e) => setDescription(e.target.value)}
-                      onBlur={() => setEditingDesc(false)} rows={3} placeholder="Add notes…"
-                      className="w-full text-sm text-[#1C1B1F] resize-none outline-none border-b border-[#6750A4] bg-transparent leading-relaxed" />
-                  : <p className="text-sm text-[#1C1B1F] leading-relaxed whitespace-pre-wrap">
-                      {description || <span className="text-[#CAC4D0]">Add notes…</span>}
-                    </p>
-                }
+            {/* Description */}
+            <div className="py-3 border-b border-[#F3EDF7]">
+              <p className="text-xs font-semibold text-[#49454F] mb-1.5">Description</p>
+              <div className="flex items-start gap-2">
+                <div className="flex-1 min-w-0">
+                  {editingDesc
+                    ? <textarea autoFocus value={description} onChange={(e) => setDescription(e.target.value)}
+                        onBlur={() => setEditingDesc(false)} rows={3} placeholder="Add description…"
+                        className="w-full text-sm text-[#1C1B1F] resize-none outline-none border-b border-[#6750A4] bg-transparent leading-relaxed" />
+                    : <p className="text-sm text-[#1C1B1F] leading-relaxed whitespace-pre-wrap">
+                        {description || <span className="text-[#CAC4D0]">Add description…</span>}
+                      </p>
+                  }
+                </div>
+                {!editingDesc && (
+                  <button onClick={() => setEditingDesc(true)} className="text-[#79747E] p-1 flex-shrink-0"><EditIcon /></button>
+                )}
               </div>
-              {!editingDesc && (
-                <button onClick={() => setEditingDesc(true)} className="text-[#79747E] p-1 flex-shrink-0"><EditIcon /></button>
-              )}
             </div>
 
             {/* Subtasks */}
@@ -501,17 +500,16 @@ export default function TaskEditSheet({ open, onClose, task, allTasks = [], task
               )}
               <SubtaskList subtasks={subtasks} setSubtasks={setSubtasks}
                 onEditSubtask={(sub) => setEditingSubtask({ id: sub.id, content: sub.content })} />
-              <div className="flex items-center gap-2 mt-2">
-                <span className="text-[#CAC4D0]">
-                  <svg xmlns="http://www.w3.org/2000/svg" height="16" viewBox="0 -960 960 960" width="16" fill="currentColor"><path d="M440-440H200v-80h240v-240h80v240h240v80H520v240h-80v-240Z"/></svg>
-                </span>
+              {/* Add subtask row */}
+              <div className="flex items-center gap-2 mt-2 py-1">
                 <input value={newSubtask} onChange={(e) => setNewSubtask(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter') handleAddSubtask() }}
                   placeholder="Add subtask…"
                   className="flex-1 text-sm text-[#1C1B1F] placeholder:text-[#CAC4D0] outline-none bg-transparent" />
-                {newSubtask.trim() && (
-                  <button onClick={handleAddSubtask} className="text-xs font-semibold text-[#6750A4]">Add</button>
-                )}
+                <button onClick={handleAddSubtask} disabled={!newSubtask.trim()}
+                  className="w-7 h-7 rounded-full bg-[#6750A4] disabled:bg-[#CAC4D0] text-white flex items-center justify-center flex-shrink-0 transition-colors">
+                  <svg xmlns="http://www.w3.org/2000/svg" height="16" viewBox="0 -960 960 960" width="16" fill="currentColor"><path d="M440-440H200v-80h240v-240h80v240h240v80H520v240h-80v-240Z"/></svg>
+                </button>
               </div>
             </div>
           </div>
