@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { getAllTasks, closeTask, PROJECTS } from '../lib/todoist'
+import { PROJECTS } from '../lib/todoist'
+import { getCachedTasks, saveToCache } from '../lib/taskCache'
 import { prioritise, scoreTask } from '../lib/priority'
 import { haptic } from '../lib/haptic'
 import ChatInput from '../components/ChatInput'
@@ -201,7 +202,6 @@ function HomeEventRow({ event: initialEvent }) {
   )
 }
 
-const PROJECT_NAMES = Object.fromEntries(Object.entries(PROJECTS).map(([name, id]) => [id, name]))
 
 
 function PriorityBadge({ task }) {
@@ -239,7 +239,7 @@ function TaskRow({ task, onComplete, index = 0, allTasks = [] }) {
   useEffect(() => {
     if (!removing) return
     const t = setTimeout(async () => {
-      try { await closeTask(localTask.id); onComplete(localTask.id) }
+      try { onComplete(localTask.id) }
       catch { haptic.error(); setRemoving(false); setPendingComplete(false) }
     }, 380)
     return () => clearTimeout(t)
@@ -604,12 +604,11 @@ export default function Home() {
 
   function loadTasks(showRefreshing = false) {
     if (showRefreshing) setRefreshing(true)
-    else setLoading(true)
-    getAllTasks()
-      .then((data) => data.map((t) => ({ ...t, _projectName: PROJECT_NAMES[t.project_id] })))
-      .then((data) => { setTasks(data); setLastRefreshed(new Date()) })
-      .catch((e) => setError(e.message))
-      .finally(() => { setLoading(false); setRefreshing(false) })
+    const cached = getCachedTasks()
+    setTasks(cached)
+    setLastRefreshed(new Date())
+    setLoading(false)
+    setRefreshing(false)
   }
 
   useEffect(() => { loadTasks() }, [])
@@ -663,7 +662,13 @@ export default function Home() {
     }
   }, [])
 
-  function removeTask(id) { setTasks((prev) => prev.filter((t) => t.id !== id)) }
+  function removeTask(id) {
+    setTasks((prev) => {
+      const updated = prev.filter((t) => t.id !== id)
+      saveToCache(getCachedTasks().filter((t) => t.id !== id))
+      return updated
+    })
+  }
 
   function handleSend(content, attachmentName) {
     navigate('/chief', { state: { initialMessage: content, attachmentName, from: '/' } })

@@ -1,19 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { getAllTasks, PROJECTS } from '../lib/todoist'
 import { sendMessageStream, SYSTEM_PROMPTS } from '../lib/claude'
 import { loadHeadConfig } from '../lib/headConfig'
+import { getCachedTasks, saveToCache } from '../lib/taskCache'
 import { haptic } from '../lib/haptic'
 import Markdown from '../components/Markdown'
 import ChatInput from '../components/ChatInput'
 import TaskEditSheet from '../components/TaskEditSheet'
 
-const PROJECT_NAMES = Object.fromEntries(Object.entries(PROJECTS).map(([name, id]) => [id, name]))
-
 export default function ChiefPage() {
   const navigate = useNavigate()
   const location = useLocation()
-  const [tasks, setTasks] = useState([])
+  const [tasks, setTasks] = useState(() => getCachedTasks())
   const [messages, setMessages] = useState(() => {
     try { return JSON.parse(localStorage.getItem('cos_home_messages') ?? '[]') }
     catch { return [] }
@@ -21,13 +19,6 @@ export default function ChiefPage() {
   const endRef = useRef(null)
   const inputRef = useRef(null)
   const autoSentRef = useRef(false)
-
-  useEffect(() => {
-    getAllTasks()
-      .then((data) => data.map((t) => ({ ...t, _projectName: PROJECT_NAMES[t.project_id] })))
-      .then(setTasks)
-      .catch(() => {})
-  }, [])
 
   // Auto-send message passed from Home via navigation state
   useEffect(() => {
@@ -61,6 +52,9 @@ export default function ChiefPage() {
           if (!last?.streaming) return prev
           return [...prev.slice(0, -1), { ...last, content: last.content + chunk }]
         })
+      }, tasks, (updatedTasks) => {
+        setTasks(updatedTasks)
+        saveToCache(updatedTasks)
       })
       setMessages((prev) => {
         const last = prev[prev.length - 1]

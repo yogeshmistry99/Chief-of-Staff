@@ -19,12 +19,13 @@ export function getMonthlyUsage() {
 }
 
 // Streams a response chunk-by-chunk, calling onChunk(text) for each piece.
+// onTasksUpdated(tasks) is called if the server mutated the task list.
 // Returns the full text when done.
-export async function sendMessageStream(messages, system, onChunk) {
+export async function sendMessageStream(messages, system, onChunk, tasks = null, onTasksUpdated = null) {
   const res = await fetch('/api/claude?stream=1', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messages, system }),
+    body: JSON.stringify({ messages, system, tasks }),
   })
   if (!res.ok) throw new Error(`Claude API error: ${res.status}`)
 
@@ -52,6 +53,7 @@ export async function sendMessageStream(messages, system, onChunk) {
         }
         if (evt.text) { full += evt.text; onChunk(evt.text) }
         if (evt.usage) accumulateUsage(evt.usage)
+        if (evt.tasks_updated && onTasksUpdated) onTasksUpdated(evt.tasks_updated)
       } catch (e) {
         if (e.message !== 'Unexpected end of JSON input') throw e
       }
@@ -60,15 +62,15 @@ export async function sendMessageStream(messages, system, onChunk) {
   return full
 }
 
-export async function sendMessage(messages, system) {
+export async function sendMessage(messages, system, tasks = null) {
   const res = await fetch('/api/claude', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messages, system }),
+    body: JSON.stringify({ messages, system, tasks }),
   })
   const data = await res.json()
   if (!res.ok) throw new Error(data.error ?? `Claude API error: ${res.status}`)
-  return data.content
+  return { content: data.content, tasks: data.tasks ?? null }
 }
 
 function formatTasksForPrompt(tasks) {

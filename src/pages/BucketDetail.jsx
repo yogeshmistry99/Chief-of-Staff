@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import TaskEditSheet from '../components/TaskEditSheet'
 import { useParams, useNavigate } from 'react-router-dom'
-import { getProjectTasks, getProjectSections, PROJECTS } from '../lib/todoist'
+import { getProjectSections, PROJECTS } from '../lib/todoist'
+import { getCachedTasks, saveToCache } from '../lib/taskCache'
 import { scoreTask, BUCKET_WEIGHTS } from '../lib/priority'
 import { sendMessageStream, SYSTEM_PROMPTS } from '../lib/claude'
 import { loadHeadConfig } from '../lib/headConfig'
@@ -31,7 +32,7 @@ const BUCKET_META = {
 }
 
 // HeadTab receives messages/setMessages from parent so state survives tab switches
-function HeadTab({ bucket, tasks, messages, setMessages }) {
+function HeadTab({ bucket, tasks, setTasks, messages, setMessages }) {
   const navigate = useNavigate()
   const endRef = useRef(null)
 
@@ -54,6 +55,9 @@ function HeadTab({ bucket, tasks, messages, setMessages }) {
           return [...prev.slice(0, -1), { ...last, content: last.content + chunk }]
         })
         endRef.current?.scrollIntoView({ behavior: 'smooth' })
+      }, tasks, (updatedTasks) => {
+        setTasks(updatedTasks)
+        saveToCache(updatedTasks)
       })
       // Mark streaming done
       setMessages((prev) => {
@@ -338,8 +342,6 @@ function TaskItem({ task: initialTask, onComplete, index = 0, allTasks = [], buc
     if (!removing) return
     const t = setTimeout(async () => {
       try {
-        const { closeTask } = await import('../lib/todoist')
-        await closeTask(localTask.id)
         onComplete(localTask.id)
       } catch { haptic.error(); setRemoving(false); setPendingComplete(false) }
     }, 380)
@@ -614,19 +616,17 @@ export default function BucketDetail() {
 
   useEffect(() => {
     if (!projectId) return
-    Promise.all([
-      getProjectTasks(projectId),
-      getProjectSections(projectId),
-    ])
-      .then(([taskData, sectionData]) => {
-        const sectionMap = {}
+    // Load from cache immediately
+    const cached = getCachedTasks().filter((t) => t._projectName === bucket)
+    if (cached.length) { setTasks(cached); setLoading(false) }
+    // Still fetch sections from Todoist for display grouping
+    getProjectSections(projectId)
+      .then((sectionData) => {
         const sections = Array.isArray(sectionData) ? sectionData : []
-        sections.forEach((s) => { sectionMap[s.id] = s.name })
-        setTasks(taskData.map((t) => ({ ...t, _projectName: bucket, _sectionName: sectionMap[t.section_id] ?? null })))
         setSections(sections)
+        if (!cached.length) setLoading(false)
       })
-      .catch((e) => setLoadError(e.message ?? 'Could not load tasks'))
-      .finally(() => setLoading(false))
+      .catch((e) => { setLoadError(e.message ?? 'Could not load tasks'); setLoading(false) })
   }, [projectId])
 
   if (!projectId) {
@@ -638,7 +638,15 @@ export default function BucketDetail() {
     )
   }
 
-  function removeTask(id) { setTasks((prev) => prev.filter((t) => t.id !== id)) }
+  function removeTask(id) {
+    setTasks((prev) => {
+      const updated = prev.filter((t) => t.id !== id)
+      // Update global cache: remove from full cache too
+      const allCached = getCachedTasks().filter((t) => t.id !== id)
+      saveToCache(allCached)
+      return updated
+    })
+  }
 
   const open = tasks.filter((t) => !t.is_completed)
   const overdue = open.filter((t) => scoreTask(t).isOverdue).length
@@ -688,7 +696,7 @@ export default function BucketDetail() {
             : <TasksTab tasks={tasks} sections={sections} loading={loading} onComplete={removeTask} allTasks={tasks} bucket={bucket} />}
         </div>
         <div className={`absolute inset-0 ${tab === 'head' ? '' : 'invisible pointer-events-none'}`}>
-          <HeadTab bucket={bucket} tasks={tasks} messages={headMessages} setMessages={setHeadMessages} />
+          <HeadTab bucket={bucket} tasks={tasks} setTasks={setTasks} messages={headMessages} setMessages={setHeadMessages} />
         </div>
         <div className={`absolute inset-0 ${tab === 'discussions' ? '' : 'invisible pointer-events-none'}`}>
           <DiscussionsTab bucket={bucket} />

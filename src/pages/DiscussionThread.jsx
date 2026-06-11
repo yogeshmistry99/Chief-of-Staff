@@ -1,8 +1,8 @@
 import { useState, useRef, useEffect } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
-import { getProjectTasks, PROJECTS } from '../lib/todoist'
 import { sendMessageStream, SYSTEM_PROMPTS } from '../lib/claude'
 import { loadHeadConfig } from '../lib/headConfig'
+import { getCachedTasks, saveToCache } from '../lib/taskCache'
 import { getDiscussions, saveDiscussion, newDiscussion } from '../lib/discussions'
 import Markdown from '../components/Markdown'
 import ChatInput from '../components/ChatInput'
@@ -21,17 +21,9 @@ export default function DiscussionThread() {
   })
 
   const [editingTitle, setEditingTitle] = useState(isNew)
-  const [tasks, setTasks] = useState([])
+  const [tasks, setTasks] = useState(() => getCachedTasks())
   const inputRef = useRef(null)
   const endRef = useRef(null)
-
-  useEffect(() => {
-    const projectId = PROJECTS[bucket]
-    if (!projectId) return
-    getProjectTasks(projectId)
-      .then((data) => setTasks(data.map((t) => ({ ...t, _projectName: bucket }))))
-      .catch(() => {})
-  }, [bucket])
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [discussion?.messages])
   useEffect(() => { if (isNew) inputRef.current?.focus() }, [isNew])
@@ -62,6 +54,9 @@ export default function DiscussionThread() {
           if (!last?.streaming) return prev
           return { ...prev, messages: [...msgs.slice(0, -1), { ...last, content: last.content + chunk }] }
         })
+      }, tasks, (updatedTasks) => {
+        setTasks(updatedTasks)
+        saveToCache(updatedTasks)
       })
       setDiscussion((prev) => {
         if (!prev) return prev
