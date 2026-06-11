@@ -278,7 +278,7 @@ function TasksTab({ tasks, sections, loading, onComplete, allTasks, bucket = '' 
 
   let content
   if (sort === 'category') {
-    const groups = groupBySection(active, sections)
+    const groups = groupBySection(allScored, sections)
     let offset = 0
     content = groups.map((g) => {
       const el = <TaskCard key={g.id} title={g.name} tasks={g.tasks} onComplete={onComplete} indexOffset={offset} allTasks={allTasks} bucket={bucket} />
