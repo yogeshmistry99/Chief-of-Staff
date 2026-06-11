@@ -124,7 +124,7 @@ export default function Settings() {
         </div>
         <div className="flex justify-between text-sm mt-1.5">
           <span className="text-[#49454F]">Version</span>
-          <span className="font-medium text-[#1C1B1F]">0.1.0</span>
+          <span className="font-medium text-[#1C1B1F]">0.1.7</span>
         </div>
         <div className="flex justify-between text-sm mt-1.5">
           <span className="text-[#49454F]">Platform</span>

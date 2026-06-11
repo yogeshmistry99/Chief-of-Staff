@@ -3,13 +3,10 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.jsx'
 
+// Unregister any existing service workers so stale caches never block updates
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch(() => {})
-  })
-  // Reload the page when a new SW takes control so stale JS is never used
-  navigator.serviceWorker.addEventListener('controllerchange', () => {
-    window.location.reload()
+  navigator.serviceWorker.getRegistrations().then((regs) => {
+    regs.forEach((r) => r.unregister())
   })
 }
 
