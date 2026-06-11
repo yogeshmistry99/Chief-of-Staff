@@ -8,7 +8,7 @@ import { loadHeadConfig } from '../lib/headConfig'
 import { haptic } from '../lib/haptic'
 import Markdown from '../components/Markdown'
 import ChatInput from '../components/ChatInput'
-import { getDiscussions, deleteDiscussion } from '../lib/discussions'
+import { getDiscussions, deleteDiscussion, saveDiscussion, newDiscussion, findDiscussionByTask } from '../lib/discussions'
 
 const BUCKET_DESCRIPTIONS = {
   Finance:  'Investments, tax, budgets, and financial decisions.',
@@ -231,7 +231,7 @@ function groupBySection(tasks, sections) {
   return result
 }
 
-function TaskCard({ title, tasks, onComplete, indexOffset = 0, allTasks = [] }) {
+function TaskCard({ title, tasks, onComplete, indexOffset = 0, allTasks = [], bucket = '' }) {
   return (
     <div className="bg-white border border-[#CAC4D0] rounded-2xl px-4 pt-3 pb-1 shadow-sm mb-3"
       style={{ animation: `fade-up 0.4s cubic-bezier(0.22,1,0.36,1) ${0.05 + indexOffset * 0.06}s both` }}>
@@ -242,13 +242,13 @@ function TaskCard({ title, tasks, onComplete, indexOffset = 0, allTasks = [] }) 
         </div>
       )}
       {tasks.map((task, i) => (
-        <TaskItem key={task.id} task={task} onComplete={onComplete} index={indexOffset + i} allTasks={allTasks} />
+        <TaskItem key={task.id} task={task} onComplete={onComplete} index={indexOffset + i} allTasks={allTasks} bucket={bucket} />
       ))}
     </div>
   )
 }
 
-function TasksTab({ tasks, sections, loading, onComplete, allTasks }) {
+function TasksTab({ tasks, sections, loading, onComplete, allTasks, bucket = '' }) {
   const [sort, setSort] = useState('category')
 
   const allScored = tasks.map((t) => ({ ...t, _scored: scoreTask(t) }))
@@ -277,13 +277,13 @@ function TasksTab({ tasks, sections, loading, onComplete, allTasks }) {
     const groups = groupBySection(active, sections)
     let offset = 0
     content = groups.map((g) => {
-      const el = <TaskCard key={g.id} title={g.name} tasks={g.tasks} onComplete={onComplete} indexOffset={offset} allTasks={allTasks} />
+      const el = <TaskCard key={g.id} title={g.name} tasks={g.tasks} onComplete={onComplete} indexOffset={offset} allTasks={allTasks} bucket={bucket} />
       offset += g.tasks.length
       return el
     })
   } else {
     const sorted = sortTasks(active, sort)
-    content = <TaskCard title={null} tasks={sorted} onComplete={onComplete} allTasks={allTasks} />
+    content = <TaskCard title={null} tasks={sorted} onComplete={onComplete} allTasks={allTasks} bucket={bucket} />
   }
 
   return (
@@ -316,7 +316,8 @@ function TasksTab({ tasks, sections, loading, onComplete, allTasks }) {
   )
 }
 
-function TaskItem({ task: initialTask, onComplete, index = 0, allTasks = [] }) {
+function TaskItem({ task: initialTask, onComplete, index = 0, allTasks = [], bucket = '' }) {
+  const navigate = useNavigate()
   const [localTask, setLocalTask] = useState(initialTask)
   const [pendingComplete, setPendingComplete] = useState(false)
   const [removing, setRemoving] = useState(false)
@@ -390,11 +391,11 @@ function TaskItem({ task: initialTask, onComplete, index = 0, allTasks = [] }) {
     if (!tr.decided) {
       if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return
       tr.decided = true
-      tr.horizontal = Math.abs(dx) > Math.abs(dy) * 1.2 && dx < 0
+      tr.horizontal = Math.abs(dx) > Math.abs(dy) * 1.2
     }
     if (!tr.horizontal) return
     clearTimeout(holdRef.current)
-    tr.dx = Math.max(dx, -96)
+    tr.dx = Math.max(Math.min(dx, 96), -96)
     setSwipeX(tr.dx)
     setIsSwiping(true)
   }
@@ -407,6 +408,20 @@ function TaskItem({ task: initialTask, onComplete, index = 0, allTasks = [] }) {
       setTimeout(() => {
         setSwipeX(0); setIsSwiping(false)
         handleComplete({ stopPropagation: () => {} })
+      }, 200)
+    } else if (tr.dx > 70 && bucket) {
+      setSwipeX(96)
+      setTimeout(() => {
+        setSwipeX(0); setIsSwiping(false)
+        haptic.light()
+        const existing = findDiscussionByTask(bucket, localTask.id)
+        if (existing) {
+          navigate(`/buckets/${bucket}/discussions/${existing.id}`)
+        } else {
+          const disc = newDiscussion(localTask.content, localTask.id)
+          saveDiscussion(bucket, disc)
+          navigate(`/buckets/${bucket}/discussions/${disc.id}`)
+        }
       }, 200)
     } else {
       setSwipeX(0); setIsSwiping(false)
@@ -426,11 +441,18 @@ function TaskItem({ task: initialTask, onComplete, index = 0, allTasks = [] }) {
     <div style={{ overflow: 'hidden' }}>
     <div className="border-b border-[#F3EDF7] last:border-0 relative overflow-hidden"
       style={{ opacity: pendingComplete ? 0.45 : 1, transition: 'opacity 0.15s ease' }}>
-      {/* Swipe reveal */}
+      {/* Swipe-left reveal (complete) */}
       <div className="absolute right-0 top-0 bottom-0 w-24 bg-[#4CAF50] flex items-center justify-center"
         style={{ opacity: swipeX < -10 ? Math.min((-swipeX - 10) / 50, 1) : 0 }}>
         <svg xmlns="http://www.w3.org/2000/svg" height="22" viewBox="0 0 24 24" width="22" fill="white">
           <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+        </svg>
+      </div>
+      {/* Swipe-right reveal (discuss) */}
+      <div className="absolute left-0 top-0 bottom-0 w-24 bg-[#6750A4] flex items-center justify-center"
+        style={{ opacity: swipeX > 10 ? Math.min((swipeX - 10) / 50, 1) : 0 }}>
+        <svg xmlns="http://www.w3.org/2000/svg" height="22" viewBox="0 -960 960 960" width="22" fill="white">
+          <path d="M240-400h320v-80H240v80Zm0-120h480v-80H240v80Zm0-120h480v-80H240v80ZM80-80v-720q0-33 23.5-56.5T160-880h640q33 0 56.5 23.5T880-800v480q0 33-23.5 56.5T800-240H240L80-80Z"/>
         </svg>
       </div>
       <div
@@ -640,7 +662,7 @@ export default function BucketDetail() {
         <div className={`absolute inset-0 ${tab === 'tasks' ? '' : 'invisible pointer-events-none'}`}>
           {loadError
             ? <p className="px-4 pt-6 text-sm text-red-500">Could not load tasks — {loadError}</p>
-            : <TasksTab tasks={tasks} sections={sections} loading={loading} onComplete={removeTask} allTasks={tasks} />}
+            : <TasksTab tasks={tasks} sections={sections} loading={loading} onComplete={removeTask} allTasks={tasks} bucket={bucket} />}
         </div>
         <div className={`absolute inset-0 ${tab === 'head' ? '' : 'invisible pointer-events-none'}`}>
           <HeadTab bucket={bucket} tasks={tasks} messages={headMessages} setMessages={setHeadMessages} />

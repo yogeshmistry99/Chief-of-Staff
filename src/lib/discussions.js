@@ -16,12 +16,17 @@ export function deleteDiscussion(bucket, id) {
   localStorage.setItem(KEY(bucket), JSON.stringify(all))
 }
 
-export function newDiscussion(title) {
+export function newDiscussion(title, taskId = null) {
   return {
     id: crypto.randomUUID(),
     title,
+    ...(taskId ? { taskId } : {}),
     messages: [],
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   }
+}
+
+export function findDiscussionByTask(bucket, taskId) {
+  return getDiscussions(bucket).find((d) => d.taskId === taskId) ?? null
 }
