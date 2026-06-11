@@ -7,7 +7,7 @@ import { prioritise } from '../lib/priority'
 import { haptic } from '../lib/haptic'
 import Markdown from '../components/Markdown'
 import ChatInput from '../components/ChatInput'
-import TaskEditSheet from '../components/TaskEditSheet'
+import TaskEditSheet, { PriorityPill } from '../components/TaskEditSheet'
 
 const PROJECT_NAMES = Object.fromEntries(Object.entries(PROJECTS).map(([name, id]) => [id, name]))
 
@@ -33,11 +33,11 @@ export default function ChiefPage() {
 
   // Auto-send message passed from Home via navigation state
   useEffect(() => {
-    const { initialMessage, attachmentName, from } = location.state ?? {}
+    const { initialMessage, attachmentName } = location.state ?? {}
     if (initialMessage && !autoSentRef.current) {
       autoSentRef.current = true
-      // Clear transient fields but preserve 'from' for back navigation
-      window.history.replaceState({ from }, '')
+      // Clear state so back/forward doesn't re-trigger
+      window.history.replaceState({}, '')
       handleSend(initialMessage, attachmentName)
     }
   }, [])
@@ -82,7 +82,7 @@ export default function ChiefPage() {
       {/* Header */}
       <div className="bg-white border-b border-[#CAC4D0] px-4 pt-5 pb-3 flex-shrink-0">
         <div className="flex items-center gap-3">
-          <button onClick={() => navigate(location.state?.from ?? '/')} className="text-[#6750A4] p-1 -ml-1 flex-shrink-0">
+          <button onClick={() => navigate('/')} className="text-[#6750A4] p-1 -ml-1 flex-shrink-0">
             <svg xmlns="http://www.w3.org/2000/svg" height="20" viewBox="0 -960 960 960" width="20" fill="currentColor">
               <path d="M560-240 320-480l240-240 56 56-184 184 184 184-56 56Z"/>
             </svg>
@@ -159,8 +159,6 @@ export default function ChiefPage() {
   )
 }
 
-const PRIORITY_COLOURS = { P1: 'text-red-600 bg-red-50', P2: 'text-orange-500 bg-orange-50', P3: 'text-yellow-600 bg-yellow-50', P4: 'text-[#79747E] bg-[#F3EDF7]' }
-
 function fmtDate(iso) {
   if (!iso) return null
   return iso.slice(8, 10) + '.' + iso.slice(5, 7) + '.' + iso.slice(2, 4)
@@ -168,50 +166,55 @@ function fmtDate(iso) {
 
 function TaskCarousel({ tasks, taskIndex, setTaskIndex, onTaskUpdate }) {
   const { active } = prioritise(tasks)
-  const [expanded, setExpanded] = useState(false)
+  // 0 = collapsed pill, 1 = description expanded, 2 = edit sheet open
+  const [swipeLevel, setSwipeLevel] = useState(0)
   const [editOpen, setEditOpen] = useState(false)
-  const holdRef = useRef(null)
-  const isHoldRef = useRef(false)
+  const touchRef = useRef(null)
 
   const idx = active.length ? Math.min(taskIndex, active.length - 1) : 0
   const t = active[idx]
 
-  // Collapse expanded detail when navigating to a different task
-  useEffect(() => { setExpanded(false) }, [idx])
+  useEffect(() => { setSwipeLevel(0) }, [idx])
+
+  // Swipe gesture: up → expand/edit, down → collapse
+  function onTouchStart(e) {
+    touchRef.current = { y: e.touches[0].clientY, x: e.touches[0].clientX, moved: false }
+  }
+
+  function onTouchEnd(e) {
+    if (!touchRef.current) return
+    const dy = touchRef.current.y - e.changedTouches[0].clientY
+    const dx = Math.abs(e.changedTouches[0].clientX - touchRef.current.x)
+    if (Math.abs(dy) < 20 || dx > Math.abs(dy) * 0.8) return // not a clear vertical swipe
+    if (dy > 0) {
+      // swipe up
+      if (swipeLevel === 0) { haptic.light(); setSwipeLevel(1) }
+      else if (swipeLevel === 1) { haptic.medium(); setSwipeLevel(2); setEditOpen(true) }
+    } else {
+      // swipe down
+      if (swipeLevel > 0) { haptic.light(); setSwipeLevel(0); setEditOpen(false) }
+    }
+    touchRef.current = null
+  }
 
   if (!active.length) return null
-  const priority = ['', 'P4', 'P3', 'P2', 'P1'][t.priority] ?? 'P4'
-  const due = fmtDate(t.due?.date)
-
-  function handlePointerDown() {
-    isHoldRef.current = false
-    holdRef.current = setTimeout(() => {
-      isHoldRef.current = true
-      haptic.medium()
-      setEditOpen(true)
-    }, 500)
-  }
-
-  function handlePointerUp() { clearTimeout(holdRef.current) }
-
-  function handleTap() {
-    if (isHoldRef.current) { isHoldRef.current = false; return }
-    setExpanded((x) => !x)
-  }
 
   return (
     <>
-      <div className="border-b border-[#F3EDF7]">
-        {/* Collapsed row */}
-        <div
-          className="flex items-center gap-2 px-3 py-2 select-none cursor-pointer"
-          onPointerDown={handlePointerDown}
-          onPointerUp={handlePointerUp}
-          onPointerLeave={handlePointerUp}
-          onClick={handleTap}
-        >
+      <div
+        className="rounded-t-3xl border border-[#E7E0EC] border-b-0 bg-white shadow-sm select-none"
+        onTouchStart={onTouchStart}
+        onTouchEnd={onTouchEnd}
+      >
+        {/* Drag pip */}
+        <div className="flex justify-center pt-2 pb-1">
+          <div className="w-8 h-1 rounded-full bg-[#CAC4D0]" />
+        </div>
+
+        {/* Main row */}
+        <div className="flex items-center gap-2 px-3 pb-2">
           <button
-            onClick={(e) => { e.stopPropagation(); haptic.light(); setExpanded(false); setTaskIndex((i) => Math.max(0, i - 1)) }}
+            onClick={(e) => { e.stopPropagation(); haptic.light(); setSwipeLevel(0); setTaskIndex((i) => Math.max(0, i - 1)) }}
             disabled={idx === 0}
             className="text-[#79747E] disabled:opacity-25 p-0.5 flex-shrink-0"
           >
@@ -223,59 +226,54 @@ function TaskCarousel({ tasks, taskIndex, setTaskIndex, onTaskUpdate }) {
           <div className="flex-1 min-w-0">
             <p className="text-xs text-[#1C1B1F] leading-snug truncate">{t.content}</p>
             <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-              <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${PRIORITY_COLOURS[priority]}`}>{priority}</span>
+              <PriorityPill
+                value={t.priority}
+                size="sm"
+                onChange={(newPrio) => {
+                  const updated = { ...t, priority: newPrio }
+                  onTaskUpdate(updated)
+                  fetch(`/api/todoist?path=tasks/${t.id}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ priority: newPrio }),
+                  }).catch(() => {})
+                }}
+              />
               {t._projectName && <span className="text-[10px] text-[#79747E]">{t._projectName}</span>}
-              {due && <span className="text-[10px] text-[#79747E]">{due}</span>}
+              {t.due?.date && <span className="text-[10px] text-[#79747E]">{fmtDate(t.due.date)}</span>}
               <span className="text-[10px] text-[#CAC4D0]">{idx + 1}/{active.length}</span>
             </div>
           </div>
 
-          <div className="flex items-center gap-1 flex-shrink-0">
-            <svg xmlns="http://www.w3.org/2000/svg" height="16" viewBox="0 -960 960 960" width="16" fill="#CAC4D0"
-              className={`transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}>
-              <path d="M480-345 240-585l56-56 184 184 184-184 56 56-240 240Z"/>
+          <button
+            onClick={(e) => { e.stopPropagation(); haptic.light(); setSwipeLevel(0); setTaskIndex((i) => Math.min(active.length - 1, i + 1)) }}
+            disabled={idx === active.length - 1}
+            className="text-[#79747E] disabled:opacity-25 p-0.5 flex-shrink-0"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" height="18" viewBox="0 -960 960 960" width="18" fill="currentColor">
+              <path d="M400-240 640-480 400-720l-56 56 184 184-184 184 56 56Z"/>
             </svg>
-            <button
-              onClick={(e) => { e.stopPropagation(); haptic.light(); setExpanded(false); setTaskIndex((i) => Math.min(active.length - 1, i + 1)) }}
-              disabled={idx === active.length - 1}
-              className="text-[#79747E] disabled:opacity-25 p-0.5"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" height="18" viewBox="0 -960 960 960" width="18" fill="currentColor">
-                <path d="M400-240 640-480 400-720l-56 56 184 184-184 184 56 56Z"/>
-              </svg>
-            </button>
-          </div>
+          </button>
         </div>
 
-        {/* Expanded detail */}
-        <div style={{ maxHeight: expanded ? '200px' : '0', overflow: 'hidden', transition: 'max-height 0.25s cubic-bezier(0.4,0,0.2,1)' }}>
-          <div className="px-3 pb-3 space-y-1.5">
-            {t.description && <p className="text-xs text-[#49454F] leading-relaxed">{t.description}</p>}
-            <div className="flex flex-wrap gap-x-3 gap-y-0.5">
-              {t.due?.date && <span className="text-xs text-[#79747E]">Due {fmtDate(t.due.date)}</span>}
-              {t.due?.datetime && (
-                <span className="text-xs text-[#79747E]">
-                  at {new Date(t.due.datetime).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
-                </span>
-              )}
-              {t.labels?.length > 0 && <span className="text-xs text-[#79747E]">{t.labels.join(', ')}</span>}
-            </div>
-            {t.url && (
-              <a href={t.url} target="_blank" rel="noopener noreferrer"
-                onClick={(e) => e.stopPropagation()}
-                className="text-xs text-[#6750A4] font-medium block">
-                Open in Todoist ↗
-              </a>
-            )}
-            <p className="text-[10px] text-[#CAC4D0]">Hold to edit</p>
+        {/* Description (swipe level 1+) */}
+        <div style={{ maxHeight: swipeLevel >= 1 ? '120px' : '0', overflow: 'hidden', transition: 'max-height 0.25s cubic-bezier(0.4,0,0.2,1)' }}>
+          <div className="px-3 pb-3 space-y-1">
+            {t.description
+              ? <p className="text-xs text-[#49454F] leading-relaxed">{t.description}</p>
+              : <p className="text-xs text-[#CAC4D0] italic">No description</p>
+            }
+            <p className="text-[10px] text-[#CAC4D0]">Swipe up again to edit</p>
           </div>
         </div>
       </div>
 
       <TaskEditSheet
         open={editOpen}
-        onClose={() => setEditOpen(false)}
+        onClose={() => { setEditOpen(false); setSwipeLevel(0) }}
         task={t}
+        tasks={active}
+        onNavigate={(newIdx) => setTaskIndex(newIdx)}
         allTasks={tasks}
         onSaved={(updated) => onTaskUpdate(updated)}
       />

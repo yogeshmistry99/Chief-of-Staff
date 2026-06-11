@@ -64,3 +64,19 @@ body {
   80%  { transform: scale(1.08); }
   100% { transform: scale(1); }
 }
+
+/* Task-swap animations (curved downward arc) */
+@keyframes task-exit-left {
+  to { transform: translateX(-110%) translateY(56px) rotate(-7deg); opacity: 0; }
+}
+@keyframes task-exit-right {
+  to { transform: translateX(110%) translateY(56px) rotate(7deg); opacity: 0; }
+}
+@keyframes task-enter-from-right {
+  from { transform: translateX(110%) translateY(56px) rotate(7deg); opacity: 0; }
+  to   { transform: translateX(0) translateY(0) rotate(0deg); opacity: 1; }
+}
+@keyframes task-enter-from-left {
+  from { transform: translateX(-110%) translateY(56px) rotate(-7deg); opacity: 0; }
+  to   { transform: translateX(0) translateY(0) rotate(0deg); opacity: 1; }
+}
