@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom'
-import { useEffect, useRef, useState } from 'react'
+import { Component, useEffect, useRef, useState } from 'react'
 import { haptic } from './lib/haptic'
 import BottomNav from './components/BottomNav'
 import Home from './pages/Home'
@@ -170,10 +170,33 @@ function AppInner() {
   )
 }
 
+class ErrorBoundary extends Component {
+  constructor(props) { super(props); this.state = { error: null } }
+  static getDerivedStateFromError(e) { return { error: e } }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="flex flex-col items-center justify-center h-full px-6 text-center gap-4">
+          <p className="text-2xl">⚠️</p>
+          <p className="text-sm font-semibold text-[#1C1B1F]">Something went wrong</p>
+          <p className="text-xs text-[#79747E] break-all">{this.state.error.message}</p>
+          <button onClick={() => window.location.reload()}
+            className="text-xs font-semibold px-4 py-2 rounded-full bg-[#6750A4] text-white">
+            Reload
+          </button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
+
 export default function App() {
   return (
-    <BrowserRouter>
-      <AppInner />
-    </BrowserRouter>
+    <ErrorBoundary>
+      <BrowserRouter>
+        <AppInner />
+      </BrowserRouter>
+    </ErrorBoundary>
   )
 }
