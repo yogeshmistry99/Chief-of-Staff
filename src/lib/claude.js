@@ -62,11 +62,11 @@ export async function sendMessageStream(messages, system, onChunk, tasks = null,
   return full
 }
 
-export async function sendMessage(messages, system, tasks = null) {
+export async function sendMessage(messages, system, tasks = null, options = {}) {
   const res = await fetch('/api/claude', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messages, system, tasks }),
+    body: JSON.stringify({ messages, system, tasks, model: options.model }),
   })
   const data = await res.json()
   if (!res.ok) throw new Error(data.error ?? `Claude API error: ${res.status}`)
@@ -152,6 +152,73 @@ Current ${bucket} tasks for context:
 ${formatTasksForPrompt(bucketTasks)}
 
 Stay focused on this topic. Write in plain conversational prose — no markdown, no bullet points, no bold text, no headers. Help him reach a clear decision or set of actions. When a decision is reached, summarise it clearly in plain sentences.` }
+    return [...buildKnowledgeSystemBlocks(cfg), base]
+  },
+}
+
+function refreshTaskList(tasks) {
+  if (!tasks?.length) return 'No tasks loaded.'
+  return tasks.map((t) => {
+    const p = ['', 'P4', 'P3', 'P2', 'P1'][t.priority] ?? 'P4'
+    const due = t.due?.date ? ` | due ${t.due.date.slice(0, 10)}` : ''
+    const bucket = t._projectName ? ` | ${t._projectName}` : ''
+    const section = t._sectionName ? ` | ${t._sectionName}` : ''
+    return `[id:${t.id} | ${p}${due}${bucket}${section}] ${t.content}`
+  }).join('\n')
+}
+
+const REFRESH_JSON_FORMAT = `Return ONLY a JSON object — no markdown, no explanation, no code block. Exactly this shape:
+{
+  "summary": "2-3 sentence summary of what was reprioritised, flagged, and suggested",
+  "priorityUpdates": [{ "taskId": "id", "priority": 4 }],
+  "notifications": [
+    {
+      "id": "unique-short-id",
+      "taskId": "existing-task-id-or-null",
+      "type": "flag|suggestion|recommendation",
+      "description": "clear description of the issue or suggested change",
+      "suggestedTask": { "content": "task title", "priority": 2, "_projectName": "Bucket", "parent_id": "parent-id-or-null" }
+    }
+  ]
+}
+suggestedTask is only included for suggestions that create a new task or subtask. For all other notifications, omit suggestedTask.
+Priority: 4=P1 urgent, 3=P2, 2=P3, 1=P4 someday.`
+
+export const REFRESH_PROMPTS = {
+  head: (bucket, tasks, cfg) => {
+    const bucketTasks = tasks.filter((t) => t._projectName === bucket)
+    const today = todayISO()
+    const base = { type: 'text', text: `You are the ${bucket} Head for Yogesh Mistry. Today is ${today}.
+
+Review all tasks in this bucket through your specialist lens. Apply the weighting framework: consequence, irreversibility, compounding value. Cross reference against goals and constraints in your knowledge.
+
+Then:
+(1) Reprioritise tasks — include updates in priorityUpdates.
+(2) Flag anything urgent, overdue, neglected or conflicting with bucket goals.
+(3) Suggest new tasks, subtasks or changes that would better serve the goals.
+
+Current ${bucket} tasks:
+${refreshTaskList(bucketTasks)}
+
+${REFRESH_JSON_FORMAT}` }
+    return [...buildKnowledgeSystemBlocks(cfg), base]
+  },
+
+  cos: (tasks, cfg) => {
+    const today = todayISO()
+    const base = { type: 'text', text: `You are the Chief of Staff for Yogesh Mistry. Today is ${today}.
+
+Review all tasks across all 7 buckets through the bucket weighting framework. Cross reference against life goals and constraints.
+
+Then:
+(1) Reprioritise the top 10 highest-consequence items — include updates in priorityUpdates.
+(2) Surface cross-bucket conflicts or dependencies.
+(3) Suggest new tasks, subtasks or changes that move highest-consequence items forward.
+
+All tasks:
+${refreshTaskList(tasks)}
+
+${REFRESH_JSON_FORMAT}` }
     return [...buildKnowledgeSystemBlocks(cfg), base]
   },
 }

@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { sendMessageStream, SYSTEM_PROMPTS } from '../lib/claude'
+import { sendMessageStream, sendMessage, SYSTEM_PROMPTS, REFRESH_PROMPTS } from '../lib/claude'
 import { loadHeadConfig } from '../lib/headConfig'
 import { getCachedTasks, saveToCache } from '../lib/taskCache'
+import { getNotifications, getNotificationsForTask, saveNotifications, clearNotificationsForSource, dismissNotification, acceptNotification } from '../lib/notifications'
+import NotificationCard, { notifDotClass } from '../components/NotificationCard'
 import { haptic } from '../lib/haptic'
 import Markdown from '../components/Markdown'
 import ChatInput from '../components/ChatInput'
@@ -16,9 +18,53 @@ export default function ChiefPage() {
     try { return JSON.parse(localStorage.getItem('cos_home_messages') ?? '[]') }
     catch { return [] }
   })
+  const [refreshing, setRefreshing] = useState(false)
   const endRef = useRef(null)
   const inputRef = useRef(null)
   const autoSentRef = useRef(false)
+
+  async function handleRefresh() {
+    setRefreshing(true)
+    clearNotificationsForSource('chief')
+    try {
+      const cfg = loadHeadConfig('chief')
+      const allTasks = getCachedTasks()
+      const system = REFRESH_PROMPTS.cos(allTasks, cfg)
+      const { content } = await sendMessage(
+        [{ role: 'user', content: 'Run the priority refresh now.' }],
+        system,
+        null,
+        { model: 'claude-sonnet-4-6' }
+      )
+      const clean = content.trim().replace(/^```json\s*/i, '').replace(/```\s*$/, '').trim()
+      const result = JSON.parse(clean)
+
+      if (result.priorityUpdates?.length) {
+        const updated = getCachedTasks().map((t) => {
+          const upd = result.priorityUpdates.find((u) => u.taskId === t.id)
+          return upd ? { ...t, priority: upd.priority } : t
+        })
+        saveToCache(updated)
+        setTasks(updated)
+      }
+
+      if (result.notifications?.length) {
+        const existing = getNotifications().filter((n) => n.source !== 'chief')
+        saveNotifications([
+          ...existing,
+          ...result.notifications.map((n) => ({ ...n, source: 'chief', status: 'pending' })),
+        ])
+      }
+
+      if (result.summary) {
+        setMessages((prev) => [...prev, { role: 'assistant', content: result.summary }])
+      }
+    } catch (e) {
+      setMessages((prev) => [...prev, { role: 'assistant', content: `Refresh failed: ${e.message}` }])
+    } finally {
+      setRefreshing(false)
+    }
+  }
 
   // Auto-send message passed from Home via navigation state
   useEffect(() => {
@@ -83,6 +129,17 @@ export default function ChiefPage() {
             <h1 className="text-base font-semibold text-[#1C1B1F]">🎯 Chief of Staff</h1>
             <p className="text-xs text-[#79747E]">Full conversation · shared with home</p>
           </div>
+          <button
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="flex items-center gap-1 text-xs font-medium text-[#6750A4] py-1.5 px-3 rounded-full bg-[#F3EDF7] hover:bg-[#EADDFF] transition-colors disabled:opacity-50"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" height="12" viewBox="0 -960 960 960" width="12" fill="currentColor"
+              style={refreshing ? { animation: 'spin 1s linear infinite' } : undefined}>
+              <path d="M480-160q-134 0-227-93t-93-227q0-134 93-227t227-93q69 0 132 28.5T720-690v-110h80v280H520v-80h168q-32-56-87.5-88T480-720q-100 0-170 70t-70 170q0 100 70 170t170 70q77 0 139-44t87-116h84q-28 106-114 173t-196 67Z"/>
+            </svg>
+            {refreshing ? 'Refreshing…' : 'Refresh'}
+          </button>
           <button
             onClick={() => navigate('/chief/config')}
             className="flex items-center gap-1 text-xs font-medium text-[#6750A4] py-1.5 px-3 rounded-full bg-[#F3EDF7] hover:bg-[#EADDFF] transition-colors"

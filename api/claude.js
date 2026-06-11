@@ -89,7 +89,7 @@ export default async function handler(req, res) {
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not configured' })
 
-  const { messages, system, tasks: initialTasks } = req.body ?? {}
+  const { messages, system, tasks: initialTasks, model: requestedModel } = req.body ?? {}
   if (!messages?.length) return res.status(400).json({ error: 'messages required' })
   // Mutable local copy of tasks — tools mutate this array
   const tasks = Array.isArray(initialTasks) ? initialTasks.map((t) => ({ ...t })) : []
@@ -232,7 +232,7 @@ export default async function handler(req, res) {
           'content-type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'claude-haiku-4-5-20251001',
+          model: requestedModel ?? 'claude-haiku-4-5-20251001',
           max_tokens: 4096,
           ...(system ? { system } : {}),
           messages: currentMessages,

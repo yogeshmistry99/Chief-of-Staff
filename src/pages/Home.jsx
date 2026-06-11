@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { PROJECTS } from '../lib/todoist'
 import { getCachedTasks, saveToCache } from '../lib/taskCache'
+import { getNotificationsForTask, dismissNotification, acceptNotification } from '../lib/notifications'
+import NotificationCard, { notifDotClass } from '../components/NotificationCard'
 import { prioritise, scoreTask } from '../lib/priority'
 import { haptic } from '../lib/haptic'
 import ChatInput from '../components/ChatInput'
@@ -228,12 +230,17 @@ function TaskRow({ task, onComplete, index = 0, allTasks = [] }) {
   const [editOpen, setEditOpen] = useState(false)
   const [swipeX, setSwipeX] = useState(0)
   const [isSwiping, setIsSwiping] = useState(false)
-  const [swipeTriggered, setSwipeTriggered] = useState(null) // 'left'|'right'|null
+  const [swipeTriggered, setSwipeTriggered] = useState(null)
+  const [activeNotif, setActiveNotif] = useState(null)
+  const [notifs, setNotifs] = useState(() => getNotificationsForTask(localTask.id))
   const timerRef = useRef(null)
   const holdRef = useRef(null)
   const isHoldRef = useRef(false)
   const swipeRef = useRef(null)
   const { bucket, isOverdue } = scoreTask(localTask)
+
+  const topNotif = notifs[0] ?? null
+  function refreshNotifs() { setNotifs(getNotificationsForTask(localTask.id)) }
 
   // When removing state triggers, wait for collapse animation then call API + remove
   useEffect(() => {
@@ -422,6 +429,12 @@ function TaskRow({ task, onComplete, index = 0, allTasks = [] }) {
           </div>
         </div>
 
+        {topNotif && !pendingComplete && (
+          <button
+            onClick={(e) => { e.stopPropagation(); setActiveNotif(topNotif) }}
+            className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ring-2 ring-white ${notifDotClass(topNotif.type)}`}
+          />
+        )}
         {pendingComplete ? (
           <button
             onClick={handleUndo}
@@ -498,6 +511,18 @@ function TaskRow({ task, onComplete, index = 0, allTasks = [] }) {
       allTasks={allTasks}
       onSaved={(updated) => setLocalTask((prev) => ({ ...prev, ...updated }))}
     />
+    {activeNotif && (
+      <NotificationCard
+        notification={activeNotif}
+        onClose={() => setActiveNotif(null)}
+        onAccept={() => { acceptNotification(activeNotif.id); setActiveNotif(null); refreshNotifs() }}
+        onDecline={() => { dismissNotification(activeNotif.id); setActiveNotif(null); refreshNotifs() }}
+        onRespond={() => {
+          setActiveNotif(null)
+          navigate('/chief', { state: { initialMessage: `Re: ${activeNotif.description}`, from: '/' } })
+        }}
+      />
+    )}
     </>
   )
 }

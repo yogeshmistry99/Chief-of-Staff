@@ -4,8 +4,10 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { getProjectSections, PROJECTS } from '../lib/todoist'
 import { getCachedTasks, saveToCache } from '../lib/taskCache'
 import { scoreTask, BUCKET_WEIGHTS } from '../lib/priority'
-import { sendMessageStream, SYSTEM_PROMPTS } from '../lib/claude'
+import { sendMessageStream, sendMessage, SYSTEM_PROMPTS, REFRESH_PROMPTS } from '../lib/claude'
 import { loadHeadConfig } from '../lib/headConfig'
+import { getNotifications, getNotificationsForTask, saveNotifications, clearNotificationsForSource, dismissNotification, acceptNotification } from '../lib/notifications'
+import NotificationCard, { notifDotClass } from '../components/NotificationCard'
 import { haptic } from '../lib/haptic'
 import Markdown from '../components/Markdown'
 import ChatInput from '../components/ChatInput'
@@ -232,7 +234,7 @@ function groupBySection(tasks, sections) {
   return result
 }
 
-function TaskCard({ title, tasks, onComplete, indexOffset = 0, allTasks = [], bucket = '' }) {
+function TaskCard({ title, tasks, onComplete, indexOffset = 0, allTasks = [], bucket = '', onRespond }) {
   return (
     <div className="bg-white border border-[#CAC4D0] rounded-2xl px-4 pt-3 pb-1 shadow-sm mb-3"
       style={{ animation: `fade-up 0.4s cubic-bezier(0.22,1,0.36,1) ${0.05 + indexOffset * 0.06}s both` }}>
@@ -243,13 +245,13 @@ function TaskCard({ title, tasks, onComplete, indexOffset = 0, allTasks = [], bu
         </div>
       )}
       {tasks.map((task, i) => (
-        <TaskItem key={task.id} task={task} onComplete={onComplete} index={indexOffset + i} allTasks={allTasks} bucket={bucket} />
+        <TaskItem key={task.id} task={task} onComplete={onComplete} index={indexOffset + i} allTasks={allTasks} bucket={bucket} onRespond={onRespond} />
       ))}
     </div>
   )
 }
 
-function TasksTab({ tasks, sections, loading, onComplete, allTasks, bucket = '' }) {
+function TasksTab({ tasks, sections, loading, onComplete, allTasks, bucket = '', onRefresh, refreshing, onRespond }) {
   const [sort, setSort] = useState('category')
 
   const allScored = tasks.map((t) => ({ ...t, _scored: scoreTask(t) }))
@@ -278,19 +280,19 @@ function TasksTab({ tasks, sections, loading, onComplete, allTasks, bucket = '' 
     const groups = groupBySection(allScored, sections)
     let offset = 0
     content = groups.map((g) => {
-      const el = <TaskCard key={g.id} title={g.name} tasks={g.tasks} onComplete={onComplete} indexOffset={offset} allTasks={allTasks} bucket={bucket} />
+      const el = <TaskCard key={g.id} title={g.name} tasks={g.tasks} onComplete={onComplete} indexOffset={offset} allTasks={allTasks} bucket={bucket} onRespond={onRespond} />
       offset += g.tasks.length
       return el
     })
   } else {
     const sorted = sortTasks(active, sort)
-    content = <TaskCard title={null} tasks={sorted} onComplete={onComplete} allTasks={allTasks} bucket={bucket} />
+    content = <TaskCard title={null} tasks={sorted} onComplete={onComplete} allTasks={allTasks} bucket={bucket} onRespond={onRespond} />
   }
 
   return (
     <div className="overflow-y-auto h-full">
-      {/* Sort controls */}
-      <div className="flex gap-2 px-4 pt-3 pb-2">
+      {/* Sort controls + Refresh */}
+      <div className="flex items-center gap-2 px-4 pt-3 pb-2">
         {SORT_OPTIONS.map(({ id, label }) => (
           <button key={id} onClick={() => setSort(id)}
             className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors ${
@@ -301,11 +303,25 @@ function TasksTab({ tasks, sections, loading, onComplete, allTasks, bucket = '' 
             {label}
           </button>
         ))}
+        <div className="flex-1" />
+        <button
+          onClick={onRefresh}
+          disabled={refreshing}
+          className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold transition-colors ${
+            refreshing ? 'bg-[#F3EDF7] text-[#79747E]' : 'bg-[#F3EDF7] text-[#6750A4] hover:bg-[#EADDFF]'
+          }`}
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" height="13" viewBox="0 -960 960 960" width="13" fill="currentColor"
+            style={refreshing ? { animation: 'spin 1s linear infinite' } : undefined}>
+            <path d="M480-160q-134 0-227-93t-93-227q0-134 93-227t227-93q69 0 132 28.5T720-690v-110h80v280H520v-80h168q-32-56-87.5-88T480-720q-100 0-170 70t-70 170q0 100 70 170t170 70q77 0 139-44t87-116h84q-28 106-114 173t-196 67Z"/>
+          </svg>
+          {refreshing ? 'Refreshing…' : 'Refresh'}
+        </button>
       </div>
 
       <div className="px-4 pb-4">
         {content}
-        {someday.length > 0 && (
+        {someday.length > 0 && sort !== 'category' && (
           <div className="bg-[#F3EDF7] rounded-xl px-4 py-2.5 mt-1">
             <p className="text-xs text-[#49454F]">
               <span className="font-semibold text-[#6750A4]">{someday.length} someday</span> — no date, P4.
@@ -317,7 +333,7 @@ function TasksTab({ tasks, sections, loading, onComplete, allTasks, bucket = '' 
   )
 }
 
-function TaskItem({ task: initialTask, onComplete, index = 0, allTasks = [], bucket = '' }) {
+function TaskItem({ task: initialTask, onComplete, index = 0, allTasks = [], bucket = '', onRespond }) {
   const navigate = useNavigate()
   const [localTask, setLocalTask] = useState(initialTask)
   const [pendingComplete, setPendingComplete] = useState(false)
@@ -328,10 +344,16 @@ function TaskItem({ task: initialTask, onComplete, index = 0, allTasks = [], buc
   const [swipeX, setSwipeX] = useState(0)
   const [isSwiping, setIsSwiping] = useState(false)
   const [swipeTriggered, setSwipeTriggered] = useState(null)
+  const [activeNotif, setActiveNotif] = useState(null)
+  const [notifs, setNotifs] = useState(() => getNotificationsForTask(localTask.id))
   const timerRef = useRef(null)
   const holdRef = useRef(null)
   const isHoldRef = useRef(false)
   const swipeRef = useRef(null)
+
+  const topNotif = notifs[0] ?? null
+
+  function refreshNotifs() { setNotifs(getNotificationsForTask(localTask.id)) }
 
   const { isOverdue, isToday, days } = scoreTask(localTask)
 
@@ -525,6 +547,12 @@ function TaskItem({ task: initialTask, onComplete, index = 0, allTasks = [], buc
           </div>
         </div>
 
+        {topNotif && !pendingComplete && (
+          <button
+            onClick={(e) => { e.stopPropagation(); setActiveNotif(topNotif) }}
+            className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ring-2 ring-white ${notifDotClass(topNotif.type)}`}
+          />
+        )}
         {pendingComplete ? (
           <button onClick={handleUndo}
             className="text-xs font-semibold px-2.5 py-1 rounded-full bg-[#6750A4] text-white flex-shrink-0">
@@ -586,6 +614,15 @@ function TaskItem({ task: initialTask, onComplete, index = 0, allTasks = [], buc
       allTasks={allTasks}
       onSaved={(updated) => setLocalTask((prev) => ({ ...prev, ...updated }))}
     />
+    {activeNotif && (
+      <NotificationCard
+        notification={activeNotif}
+        onClose={() => setActiveNotif(null)}
+        onAccept={() => { acceptNotification(activeNotif.id); setActiveNotif(null); refreshNotifs() }}
+        onDecline={() => { dismissNotification(activeNotif.id); setActiveNotif(null); refreshNotifs() }}
+        onRespond={() => { setActiveNotif(null); onRespond?.(activeNotif) }}
+      />
+    )}
     </>
   )
 }
@@ -598,6 +635,7 @@ export default function BucketDetail() {
   const [sections, setSections] = useState([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(null)
+  const [refreshing, setRefreshing] = useState(false)
   // Head chat — persisted to localStorage so history survives navigation and sessions
   const storageKey = `cos_head_${bucket}`
   const [headMessages, setHeadMessages] = useState(() => {
@@ -638,11 +676,68 @@ export default function BucketDetail() {
   function removeTask(id) {
     setTasks((prev) => {
       const updated = prev.filter((t) => t.id !== id)
-      // Update global cache: remove from full cache too
       const allCached = getCachedTasks().filter((t) => t.id !== id)
       saveToCache(allCached)
       return updated
     })
+  }
+
+  function handleRespond(notif) {
+    setTab('head')
+    setHeadMessages((prev) => [...prev, {
+      role: 'user',
+      content: `Re: notification — ${notif.description}`,
+    }])
+  }
+
+  async function handleRefresh() {
+    setRefreshing(true)
+    clearNotificationsForSource(bucket)
+    try {
+      const cfg = loadHeadConfig(bucket)
+      const allTasks = getCachedTasks()
+      const system = REFRESH_PROMPTS.head(bucket, allTasks, cfg)
+      const { content } = await sendMessage(
+        [{ role: 'user', content: 'Run the priority refresh now.' }],
+        system,
+        null
+      )
+      const clean = content.trim().replace(/^```json\s*/i, '').replace(/```\s*$/, '').trim()
+      const result = JSON.parse(clean)
+
+      // Apply priority updates to cache
+      if (result.priorityUpdates?.length) {
+        const updated = getCachedTasks().map((t) => {
+          const upd = result.priorityUpdates.find((u) => u.taskId === t.id)
+          return upd ? { ...t, priority: upd.priority } : t
+        })
+        saveToCache(updated)
+        setTasks(updated.filter((t) => t._projectName === bucket))
+      }
+
+      // Save notifications
+      if (result.notifications?.length) {
+        const existing = getNotifications().filter((n) => n.source !== bucket)
+        saveNotifications([
+          ...existing,
+          ...result.notifications.map((n) => ({ ...n, source: bucket, status: 'pending' })),
+        ])
+      }
+
+      // Post summary to head chat
+      if (result.summary) {
+        setTab('head')
+        setHeadMessages((prev) => [
+          ...prev,
+          { role: 'assistant', content: result.summary },
+        ])
+      }
+    } catch (e) {
+      setHeadMessages((prev) => [...prev, { role: 'assistant', content: `Refresh failed: ${e.message}` }])
+      setTab('head')
+    } finally {
+      setRefreshing(false)
+    }
   }
 
   const open = tasks.filter((t) => !t.is_completed)
@@ -690,7 +785,7 @@ export default function BucketDetail() {
         <div className={`absolute inset-0 ${tab === 'tasks' ? '' : 'invisible pointer-events-none'}`}>
           {loadError
             ? <p className="px-4 pt-6 text-sm text-red-500">Could not load tasks — {loadError}</p>
-            : <TasksTab tasks={tasks} sections={sections} loading={loading} onComplete={removeTask} allTasks={tasks} bucket={bucket} />}
+            : <TasksTab tasks={tasks} sections={sections} loading={loading} onComplete={removeTask} allTasks={tasks} bucket={bucket} onRefresh={handleRefresh} refreshing={refreshing} onRespond={handleRespond} />}
         </div>
         <div className={`absolute inset-0 ${tab === 'head' ? '' : 'invisible pointer-events-none'}`}>
           <HeadTab bucket={bucket} tasks={tasks} setTasks={setTasks} messages={headMessages} setMessages={setHeadMessages} />
