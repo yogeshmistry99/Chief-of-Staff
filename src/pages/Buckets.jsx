@@ -70,21 +70,6 @@ export default function Buckets() {
         </div>
       )}
 
-      {/* Chief of Staff tile */}
-      <button
-        onClick={() => navigate('/chief', { state: { from: '/buckets' } })}
-        className="bg-[#EADDFF] text-[#21005D] rounded-2xl p-4 text-left active:scale-[0.98] transition-transform shadow-sm mb-3 w-full flex items-center gap-3"
-      >
-        <span className="text-3xl flex-shrink-0">🎯</span>
-        <div className="flex-1 min-w-0">
-          <p className="font-semibold text-base">Chief of Staff</p>
-          <p className="text-xs opacity-60">Strategy, priorities, cross-bucket decisions</p>
-        </div>
-        <svg xmlns="http://www.w3.org/2000/svg" height="18" viewBox="0 -960 960 960" width="18" fill="currentColor" className="opacity-40 flex-shrink-0">
-          <path d="M400-240 160-480l240-240 56 56-184 184 184 184-56 56Zm264 0L424-480l240-240 56 56-184 184 184 184-56 56Z"/>
-        </svg>
-      </button>
-
       {/* Search results */}
       {searchResults !== null ? (
         <div>
