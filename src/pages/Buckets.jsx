@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { getAllTasks, PROJECTS } from '../lib/todoist'
-import { scoreTask } from '../lib/priority'
-import { BUCKET_WEIGHTS } from '../lib/priority'
+import { PROJECTS } from '../lib/todoist'
+import { scoreTask, BUCKET_WEIGHTS } from '../lib/priority'
+import { getCachedTasks } from '../lib/taskCache'
 
 const BUCKET_META = {
   Finance:  { emoji: '💰', color: 'bg-[#C8F5E1]', text: 'text-[#002115]' },
@@ -14,28 +14,17 @@ const BUCKET_META = {
   Systems:  { emoji: '⚙️', color: 'bg-[#EADDFF]', text: 'text-[#21005D]' },
 }
 
-const PROJECT_NAMES = Object.fromEntries(Object.entries(PROJECTS).map(([name, id]) => [id, name]))
 
 export default function Buckets() {
   const navigate = useNavigate()
-  const [tasks, setTasks] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
+  const [tasks] = useState(() => getCachedTasks())
   const [search, setSearch] = useState('')
 
-  useEffect(() => {
-    getAllTasks()
-      .then((data) => data.map((t) => ({ ...t, _projectName: PROJECT_NAMES[t.project_id] })))
-      .then(setTasks)
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false))
-  }, [])
-
-  const buckets = Object.entries(PROJECTS).map(([name, projectId]) => {
-    const bt = tasks.filter((t) => t.project_id === projectId)
+  const buckets = Object.entries(PROJECTS).map(([name]) => {
+    const bt = tasks.filter((t) => t._projectName === name)
     const p1Count = bt.filter((t) => t.priority === 4).length
     const overdueCount = bt.filter((t) => scoreTask(t).isOverdue).length
-    return { name, projectId, count: bt.length, p1Count, overdueCount, ...BUCKET_META[name] }
+    return { name, count: bt.length, p1Count, overdueCount, ...BUCKET_META[name] }
   }).sort((a, b) => (BUCKET_WEIGHTS[b.name] ?? 0) - (BUCKET_WEIGHTS[a.name] ?? 0))
 
   const query = search.trim().toLowerCase()
@@ -72,9 +61,9 @@ export default function Buckets() {
         )}
       </div>
 
-      {error && (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-3 mb-4">
-          <p className="text-xs text-red-600">Could not load tasks — check TODOIST_API_KEY in Vercel.</p>
+      {tasks.length === 0 && (
+        <div className="bg-[#FFF0C8] border border-[#F3EDF7] rounded-xl p-3 mb-4">
+          <p className="text-xs text-[#49454F]">No tasks cached yet — go to Settings and tap <strong>Pull tasks</strong>.</p>
         </div>
       )}
 
@@ -137,9 +126,9 @@ export default function Buckets() {
               <span className="text-3xl mb-3 block">{emoji}</span>
               <p className="font-semibold text-base">{name}</p>
               <p className="text-xs opacity-60 mt-0.5">
-                {loading ? '…' : `${count} task${count !== 1 ? 's' : ''}`}
+                {`${count} task${count !== 1 ? 's' : ''}`}
               </p>
-              {!loading && (p1Count > 0 || overdueCount > 0) && (
+              {(p1Count > 0 || overdueCount > 0) && (
                 <div className="flex items-center gap-1.5 mt-2 flex-wrap">
                   {p1Count > 0 && (
                     <span className="text-[10px] font-bold bg-black/10 px-1.5 py-0.5 rounded-full">{p1Count} P1</span>
