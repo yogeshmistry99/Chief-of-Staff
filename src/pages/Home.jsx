@@ -918,6 +918,10 @@ export default function Home() {
         </div>
       </div>
 
+      </div>{/* end priorities tab scroll */}
+        <div className="bg-white border-t border-[#CAC4D0] px-4 pt-3 pb-3 safe-bottom flex-shrink-0">
+          <ChatInput placeholder="Message your Chief of Staff…" onSend={handleSend} />
+        </div>
       </div>{/* end priorities tab */}
       <QuickAdd open={quickAddOpen} onClose={() => setQuickAddOpen(false)} />
     </div>
