@@ -779,7 +779,7 @@ export default function BucketDetail() {
                     tab === id ? 'border-current opacity-100' : 'border-transparent opacity-50'
                   }`}>
                   {label}
-                  {bucketNotifCount > 0 && (id === 'tasks' || id === 'head') && (
+                  {bucketNotifCount > 0 && id === 'tasks' && (
                     <span className="absolute top-1 ml-0.5 min-w-[14px] h-3.5 bg-red-500 text-white text-[8px] font-bold rounded-full inline-flex items-center justify-center px-0.5">
                       {bucketNotifCount}
                     </span>

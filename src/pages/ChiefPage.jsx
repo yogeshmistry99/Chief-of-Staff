@@ -118,7 +118,7 @@ export default function ChiefPage() {
   const cfg = loadHeadConfig('chief')
   const hasKnowledge = !!(cfg.instructions || cfg.context || cfg.files?.length)
   const chiefNotifCount = getNotifications().filter((n) => n.source === 'chief' && n.status === 'pending').length
-  const prioritisedTasks = prioritise(tasks)
+  const { active: prioritisedTasks } = prioritise(tasks)
 
   return (
     <div className="flex flex-col h-full">

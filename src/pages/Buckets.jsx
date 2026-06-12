@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { PROJECTS } from '../lib/todoist'
 import { scoreTask, BUCKET_WEIGHTS } from '../lib/priority'
 import { getCachedTasks } from '../lib/taskCache'
+import { getNotifications } from '../lib/notifications'
 
 const BUCKET_META = {
   Finance:  { emoji: '💰', color: 'bg-[#C8F5E1]', text: 'text-[#002115]' },
@@ -20,11 +21,13 @@ export default function Buckets() {
   const [tasks] = useState(() => getCachedTasks())
   const [search, setSearch] = useState('')
 
+  const allNotifs = getNotifications().filter((n) => n.status === 'pending')
   const buckets = Object.entries(PROJECTS).map(([name]) => {
     const bt = tasks.filter((t) => t._projectName === name)
     const p1Count = bt.filter((t) => t.priority === 4).length
     const overdueCount = bt.filter((t) => scoreTask(t).isOverdue).length
-    return { name, count: bt.length, p1Count, overdueCount, ...BUCKET_META[name] }
+    const notifCount = allNotifs.filter((n) => n.source === name).length
+    return { name, count: bt.length, p1Count, overdueCount, notifCount, ...BUCKET_META[name] }
   }).sort((a, b) => (BUCKET_WEIGHTS[b.name] ?? 0) - (BUCKET_WEIGHTS[a.name] ?? 0))
 
   const query = search.trim().toLowerCase()
@@ -117,12 +120,17 @@ export default function Buckets() {
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-3">
-          {buckets.map(({ name, emoji, color, text, count, p1Count, overdueCount }) => (
+          {buckets.map(({ name, emoji, color, text, count, p1Count, overdueCount, notifCount }) => (
             <button
               key={name}
               onClick={() => navigate(`/buckets/${name}`)}
-              className={`${color} ${text} rounded-2xl p-4 text-left active:scale-95 transition-transform shadow-sm`}
+              className={`relative ${color} ${text} rounded-2xl p-4 text-left active:scale-95 transition-transform shadow-sm`}
             >
+              {notifCount > 0 && (
+                <span className="absolute top-2.5 right-2.5 min-w-[18px] h-[18px] bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center px-1">
+                  {notifCount}
+                </span>
+              )}
               <span className="text-3xl mb-3 block">{emoji}</span>
               <p className="font-semibold text-base">{name}</p>
               <p className="text-xs opacity-60 mt-0.5">
