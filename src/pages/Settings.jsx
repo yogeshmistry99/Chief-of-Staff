@@ -78,18 +78,18 @@ export default function Settings() {
 
   function handleRefresh() {
     setRefreshDone(true)
+    const doReload = () => {
+      // Append cache-bust param so browser bypasses HTTP cache on reload
+      window.location.href = '/?v=' + Date.now()
+    }
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.getRegistrations().then((regs) => {
-        Promise.all(regs.map((r) => r.unregister())).then(() => {
-          caches.keys().then((keys) => {
-            Promise.all(keys.map((k) => caches.delete(k))).then(() => {
-              window.location.reload(true)
-            })
-          })
-        })
-      })
+      navigator.serviceWorker.getRegistrations().then((regs) =>
+        Promise.all(regs.map((r) => r.unregister()))
+      ).then(() =>
+        caches.keys().then((keys) => Promise.all(keys.map((k) => caches.delete(k))))
+      ).then(doReload).catch(doReload)
     } else {
-      window.location.reload(true)
+      doReload()
     }
   }
 
