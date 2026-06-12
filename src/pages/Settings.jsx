@@ -1,49 +1,65 @@
 import { useState, useEffect } from 'react'
 import { getMonthlyUsage } from '../lib/claude'
 import { pullAndCacheTasks, getLastPullTime, getCachedTasks } from '../lib/taskCache'
-
-const INTEGRATIONS = [
-  { name: 'Claude (Anthropic)', description: 'Powers the AI chat assistant.',           icon: '🤖', statusKey: 'anthropic',      color: 'bg-[#EADDFF]' },
-  { name: 'Todoist',            description: 'Syncs your tasks and buckets.',            icon: '✅', statusKey: 'todoist',        color: 'bg-[#FFD8E4]' },
-  { name: 'Google Calendar',    description: 'Shows upcoming events on the Home screen.', icon: '📅', statusKey: 'googleCalendar', color: 'bg-[#D3E4FF]' },
-]
-
-function ConnectionRow({ name, description, icon, color, connected }) {
-  return (
-    <div className="flex items-center gap-4 py-4 border-b border-[#F3EDF7] last:border-0">
-      <div className={`w-10 h-10 rounded-xl ${color} flex items-center justify-center text-xl flex-shrink-0`}>
-        {icon}
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold text-[#1C1B1F]">{name}</p>
-        <p className="text-xs text-[#49454F] truncate">{description}</p>
-      </div>
-      <span className={`text-xs font-medium px-2 py-1 rounded-full flex-shrink-0 ${
-        connected === null ? 'bg-[#F3EDF7] text-[#49454F]' :
-        connected ? 'bg-[#C8F5E1] text-[#002115]' : 'bg-[#F3EDF7] text-[#49454F]'
-      }`}>
-        {connected === null ? '…' : connected ? 'Connected' : 'Not connected'}
-      </span>
-    </div>
-  )
-}
+import { supabase } from '../lib/supabase'
 
 // Haiku 4.5 pricing: $0.80/MTok input, $4.00/MTok output
 function calcCost({ input_tokens = 0, output_tokens = 0 }) {
   return (input_tokens / 1_000_000) * 0.80 + (output_tokens / 1_000_000) * 4.00
 }
 
+function StatusPill({ connected }) {
+  if (connected === null) return <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#F3EDF7] text-[#79747E]">…</span>
+  return connected
+    ? <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#C8F5E1] text-[#00513A]">Connected</span>
+    : <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#F3EDF7] text-[#79747E]">Not connected</span>
+}
+
+function IntegrationCard({ icon, name, description, connected, detail, url }) {
+  return (
+    <a href={url} target="_blank" rel="noopener noreferrer"
+      className={`flex items-start gap-3 p-4 rounded-2xl border transition-colors active:scale-[0.98] ${
+        connected ? 'bg-white border-[#CAC4D0]' : 'bg-[#FAFAFA] border-[#E7E0EC] opacity-75'
+      }`}
+    >
+      <div className="w-10 h-10 rounded-xl bg-[#F3EDF7] flex items-center justify-center text-xl flex-shrink-0">
+        {icon}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center justify-between gap-2 mb-0.5">
+          <p className="text-sm font-semibold text-[#1C1B1F] leading-tight">{name}</p>
+          <StatusPill connected={connected} />
+        </div>
+        <p className="text-xs text-[#49454F] leading-snug mb-1">{description}</p>
+        {detail && <p className="text-[11px] text-[#79747E]">{detail}</p>}
+      </div>
+    </a>
+  )
+}
+
 export default function Settings() {
   const [usage, setUsage] = useState({})
   const [resetDone, setResetDone] = useState(false)
   const [status, setStatus] = useState({})
+  const [supabaseOk, setSupabaseOk] = useState(null)
+  const [lastSync, setLastSync] = useState(null)
+
   useEffect(() => { setUsage(getMonthlyUsage()) }, [])
   useEffect(() => {
     fetch('/api/status').then((r) => r.json()).then(setStatus).catch(() => {})
   }, [])
+  useEffect(() => {
+    if (!supabase) { setSupabaseOk(false); return }
+    supabase.from('sync_store').select('updated_at').limit(1)
+      .then(({ error, data }) => {
+        setSupabaseOk(!error)
+        if (!error && data?.[0]?.updated_at) setLastSync(data[0].updated_at)
+      })
+      .catch(() => setSupabaseOk(false))
+  }, [])
 
   const [refreshDone, setRefreshDone] = useState(false)
-  const [pullState, setPullState] = useState('idle') // idle | confirm | pulling | done | error
+  const [pullState, setPullState] = useState('idle')
   const [lastPull, setLastPull] = useState(() => getLastPullTime())
   const [cachedCount, setCachedCount] = useState(() => getCachedTasks().length)
 
@@ -63,12 +79,11 @@ export default function Settings() {
     }
   }
 
-  function formatPullTime(iso) {
+  function formatTime(iso) {
     if (!iso) return null
     const d = new Date(iso)
     const now = new Date()
-    const diffMs = now - d
-    const diffMins = Math.floor(diffMs / 60000)
+    const diffMins = Math.floor((now - d) / 60000)
     if (diffMins < 1) return 'just now'
     if (diffMins < 60) return `${diffMins}m ago`
     const diffHours = Math.floor(diffMins / 60)
@@ -78,16 +93,12 @@ export default function Settings() {
 
   function handleRefresh() {
     setRefreshDone(true)
-    const doReload = () => {
-      // Append cache-bust param so browser bypasses HTTP cache on reload
-      window.location.href = '/?v=' + Date.now()
-    }
+    const doReload = () => { window.location.href = '/?v=' + Date.now() }
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.getRegistrations().then((regs) =>
-        Promise.all(regs.map((r) => r.unregister()))
-      ).then(() =>
-        caches.keys().then((keys) => Promise.all(keys.map((k) => caches.delete(k))))
-      ).then(doReload).catch(doReload)
+      navigator.serviceWorker.getRegistrations()
+        .then((regs) => Promise.all(regs.map((r) => r.unregister())))
+        .then(() => caches.keys().then((keys) => Promise.all(keys.map((k) => caches.delete(k)))))
+        .then(doReload).catch(doReload)
     } else {
       doReload()
     }
@@ -101,10 +112,58 @@ export default function Settings() {
   }
 
   const cost = calcCost(usage)
-  const monthLabel = (() => {
-    const d = new Date()
-    return d.toLocaleString('default', { month: 'long', year: 'numeric' })
-  })()
+  const monthLabel = new Date().toLocaleString('default', { month: 'long', year: 'numeric' })
+
+  const integrations = [
+    {
+      icon: '🤖',
+      name: 'Claude (Anthropic)',
+      description: 'Powers all AI intelligence — Chief of Staff, all 7 heads, priority reasoning and chat.',
+      connected: 'anthropic' in status ? status.anthropic : null,
+      detail: `CoS: claude-sonnet-4-6 · Heads: claude-haiku-4-5 · Spend this month: $${cost.toFixed(4)}`,
+      url: 'https://console.anthropic.com',
+    },
+    {
+      icon: '📅',
+      name: 'Google Calendar',
+      description: 'Pulls upcoming events to the home screen and calendar view.',
+      connected: 'googleCalendar' in status ? status.googleCalendar : null,
+      detail: status.googleCalendar ? 'Calendar connected' : null,
+      url: 'https://calendar.google.com',
+    },
+    {
+      icon: '✅',
+      name: 'Todoist',
+      description: 'Task sync — all 7 buckets mirror your Todoist projects.',
+      connected: 'todoist' in status ? status.todoist : null,
+      detail: lastPull ? `Last synced ${formatTime(lastPull)} · ${cachedCount} tasks cached` : null,
+      url: 'https://todoist.com',
+    },
+    {
+      icon: '🗄️',
+      name: 'Supabase',
+      description: 'Persistent database — stores tasks, knowledge and settings across all devices.',
+      connected: supabaseOk,
+      detail: lastSync ? `Last sync ${formatTime(lastSync)}` : null,
+      url: 'https://supabase.com',
+    },
+    {
+      icon: '🔺',
+      name: 'Vercel',
+      description: 'Hosts and deploys the app — every GitHub commit triggers a new deployment.',
+      connected: true,
+      detail: window.location.hostname,
+      url: 'https://vercel.com',
+    },
+    {
+      icon: '🐙',
+      name: 'GitHub',
+      description: 'Version control — every build session commits and pushes here.',
+      connected: true,
+      detail: 'yogeshmistry99/Chief-of-Staff',
+      url: 'https://github.com/yogeshmistry99/Chief-of-Staff',
+    },
+  ]
 
   return (
     <div className="px-4 pt-6 pb-4 max-w-lg mx-auto">
@@ -125,17 +184,15 @@ export default function Settings() {
           <span>{(usage.input_tokens ?? 0).toLocaleString()} input tokens</span>
           <span>{(usage.output_tokens ?? 0).toLocaleString()} output tokens</span>
         </div>
-        <p className="text-[10px] text-[#79747E] mt-2">CoS: Sonnet 4.5 · Heads: Haiku 4.5</p>
       </div>
 
-      {/* Integrations card */}
-      <div className="bg-white border border-[#CAC4D0] rounded-2xl px-4 mb-4">
-        <h2 className="text-xs font-semibold text-[#49454F] uppercase tracking-wide pt-4 pb-2">
-          Integrations
-        </h2>
-        {INTEGRATIONS.map((item) => (
-          <ConnectionRow key={item.name} {...item} connected={item.statusKey in status ? status[item.statusKey] : null} />
-        ))}
+      {/* Integrations */}
+      <div className="mb-4">
+        <h2 className="text-sm font-semibold text-[#1C1B1F] mb-0.5">How this app is built</h2>
+        <p className="text-xs text-[#79747E] mb-3">Life OS connects these services to work. Tap any card to manage that integration.</p>
+        <div className="space-y-2">
+          {integrations.map((item) => <IntegrationCard key={item.name} {...item} />)}
+        </div>
       </div>
 
       {/* Setup instructions */}
@@ -174,7 +231,7 @@ export default function Settings() {
         <div className="flex items-center justify-between mb-3">
           <div>
             <p className="text-sm text-[#1C1B1F]">{cachedCount > 0 ? `${cachedCount} tasks cached` : 'No cache yet'}</p>
-            {lastPull && <p className="text-xs text-[#79747E]">Last pulled {formatPullTime(lastPull)}</p>}
+            {lastPull && <p className="text-xs text-[#79747E]">Last pulled {formatTime(lastPull)}</p>}
           </div>
           {pullState === 'confirm' ? (
             <div className="flex items-center gap-2">
@@ -215,7 +272,7 @@ export default function Settings() {
       >
         {refreshDone ? '✓ Refreshing…' : 'Hard refresh (clear cache)'}
       </button>
-      <p className="text-center text-[10px] text-[#CAC4D0] mb-3">build 1950f3f</p>
+      <p className="text-center text-[10px] text-[#CAC4D0] mb-3">build d877411-new</p>
 
       {/* Reset */}
       <button
@@ -229,3 +286,4 @@ export default function Settings() {
     </div>
   )
 }
+
