@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { getAllTasks, PROJECTS } from '../lib/todoist'
 import { haptic } from '../lib/haptic'
 import EditSheet from '../components/EditSheet'
+import { onCalendarChange } from '../lib/claude'
 
 const PROJECT_NAMES = Object.fromEntries(Object.entries(PROJECTS).map(([name, id]) => [id, name]))
 
@@ -246,6 +247,7 @@ export default function Calendar() {
   }, [monthOffset])
 
   useEffect(() => { loadEvents() }, [loadEvents])
+  useEffect(() => onCalendarChange(loadEvents), [loadEvents])
 
   // Index tasks by due date
   const tasksByDate = {}

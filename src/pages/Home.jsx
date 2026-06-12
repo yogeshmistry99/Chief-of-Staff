@@ -12,7 +12,7 @@ import TaskEditSheet from '../components/TaskEditSheet'
 import QuickAdd from '../components/QuickAdd'
 import { getDiscussions, saveDiscussion, newDiscussion, findDiscussionByTask } from '../lib/discussions'
 import { onSyncChange } from '../lib/sync'
-import { sendMessageStream, SYSTEM_PROMPTS } from '../lib/claude'
+import { sendMessageStream, SYSTEM_PROMPTS, onCalendarChange } from '../lib/claude'
 import { loadHeadConfig } from '../lib/headConfig'
 import Markdown from '../components/Markdown'
 
@@ -651,10 +651,9 @@ export default function Home() {
     })
   }, [])
   useEffect(() => {
-    fetchUpcomingEvents()
-      .then(setEvents)
-      .catch(() => {})
-      .finally(() => setEventsLoading(false))
+    const load = () => fetchUpcomingEvents().then(setEvents).catch(() => {}).finally(() => setEventsLoading(false))
+    load()
+    return onCalendarChange(load)
   }, [])
 
   // Pull-to-refresh

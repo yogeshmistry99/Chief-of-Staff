@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { getMonthlyUsage } from '../lib/claude'
 import { pullAndCacheTasks, getLastPullTime, getCachedTasks } from '../lib/taskCache'
 import { supabase } from '../lib/supabase'
+import { listBackups, createBackup, restoreBackup, fmtBackupDate, fmtLabel } from '../lib/backups'
 
 // Haiku 4.5 pricing: $0.80/MTok input, $4.00/MTok output
 function calcCost({ input_tokens = 0, output_tokens = 0 }) {
@@ -43,6 +44,10 @@ export default function Settings() {
   const [status, setStatus] = useState({})
   const [supabaseOk, setSupabaseOk] = useState(null)
   const [lastSync, setLastSync] = useState(null)
+  const [backups, setBackups] = useState([])
+  const [backupState, setBackupState] = useState('idle') // idle | saving | done | error
+  const [restoreTarget, setRestoreTarget] = useState(null) // backup obj to confirm
+  const [restoreState, setRestoreState] = useState('idle') // idle | restoring | done | error
 
   useEffect(() => { setUsage(getMonthlyUsage()) }, [])
   useEffect(() => {
@@ -50,12 +55,13 @@ export default function Settings() {
   }, [])
   useEffect(() => {
     if (!supabase) { setSupabaseOk(false); return }
-    supabase.from('sync_store').select('updated_at').limit(1)
+    supabase.from('app_data').select('updated_at').limit(1)
       .then(({ error, data }) => {
         setSupabaseOk(!error)
         if (!error && data?.[0]?.updated_at) setLastSync(data[0].updated_at)
       })
       .catch(() => setSupabaseOk(false))
+    listBackups().then(setBackups).catch(() => {})
   }, [])
 
   const [refreshDone, setRefreshDone] = useState(false)
@@ -101,6 +107,42 @@ export default function Settings() {
         .then(doReload).catch(doReload)
     } else {
       doReload()
+    }
+  }
+
+  async function handleBackupNow() {
+    setBackupState('saving')
+    try {
+      await createBackup(`Manual backup — ${fmtLabel(new Date())}`)
+      const updated = await listBackups()
+      setBackups(updated)
+      setBackupState('done')
+      setTimeout(() => setBackupState('idle'), 3000)
+    } catch {
+      setBackupState('error')
+      setTimeout(() => setBackupState('idle'), 3000)
+    }
+  }
+
+  async function handleRestore(backup) {
+    setRestoreTarget(backup)
+  }
+
+  async function confirmRestore() {
+    if (!restoreTarget) return
+    setRestoreState('restoring')
+    try {
+      await restoreBackup(restoreTarget.id)
+      const updated = await listBackups()
+      setBackups(updated)
+      setCachedCount(getCachedTasks().length)
+      setRestoreState('done')
+      setRestoreTarget(null)
+      setTimeout(() => setRestoreState('idle'), 3000)
+    } catch {
+      setRestoreState('error')
+      setRestoreTarget(null)
+      setTimeout(() => setRestoreState('idle'), 3000)
     }
   }
 
@@ -261,6 +303,73 @@ export default function Settings() {
             </button>
           )}
         </div>
+      </div>
+
+      {/* Backups */}
+      <div className="bg-white border border-[#CAC4D0] rounded-2xl px-4 py-3 mb-4">
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="text-xs font-semibold text-[#49454F] uppercase tracking-wide">Backups</h2>
+          <button
+            onClick={handleBackupNow}
+            disabled={backupState === 'saving' || !supabase}
+            className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
+              backupState === 'done'  ? 'bg-green-500 text-white' :
+              backupState === 'error' ? 'bg-red-500 text-white' :
+              backupState === 'saving'? 'bg-[#F3EDF7] text-[#79747E]' :
+                                        'bg-[#6750A4] text-white hover:bg-[#7965AF]'
+            }`}
+          >
+            {backupState === 'saving' ? 'Saving…' : backupState === 'done' ? '✓ Saved' : backupState === 'error' ? '✗ Failed' : 'Back up now'}
+          </button>
+        </div>
+        <p className="text-xs text-[#79747E] mb-3">Weekly snapshots every Sunday at 8am. Last 12 kept.</p>
+
+        {restoreState === 'done' && (
+          <p className="text-xs text-green-600 font-medium mb-2">✓ Tasks restored successfully.</p>
+        )}
+        {restoreState === 'error' && (
+          <p className="text-xs text-red-500 mb-2">Restore failed. Try again.</p>
+        )}
+
+        {/* Restore confirmation dialog */}
+        {restoreTarget && (
+          <div className="bg-[#FFF8E1] border border-[#FFE082] rounded-xl p-3 mb-3">
+            <p className="text-xs font-semibold text-[#5D4037] mb-1">Restore from this snapshot?</p>
+            <p className="text-xs text-[#795548] mb-2">
+              This will replace your current tasks with the snapshot from <strong>{fmtBackupDate(restoreTarget.created_at)}</strong> ({restoreTarget.task_count} tasks).
+              Your current tasks will be saved as a recovery point first.
+            </p>
+            <div className="flex gap-2">
+              <button onClick={() => setRestoreTarget(null)} className="flex-1 py-1.5 rounded-full text-xs font-semibold bg-white border border-[#CAC4D0] text-[#49454F]">Cancel</button>
+              <button onClick={confirmRestore} disabled={restoreState === 'restoring'} className="flex-1 py-1.5 rounded-full text-xs font-semibold bg-[#6750A4] text-white">
+                {restoreState === 'restoring' ? 'Restoring…' : 'Continue'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {!supabase ? (
+          <p className="text-xs text-[#79747E] py-2">Connect Supabase to enable backups.</p>
+        ) : backups.length === 0 ? (
+          <p className="text-xs text-[#79747E] py-2">No backups yet. Tap "Back up now" to create one.</p>
+        ) : (
+          <div className="space-y-0 divide-y divide-[#F3EDF7]">
+            {backups.map((b) => (
+              <div key={b.id} className="flex items-center justify-between py-2.5 gap-2">
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-medium text-[#1C1B1F] truncate">{b.label}</p>
+                  <p className="text-[11px] text-[#79747E]">{fmtBackupDate(b.created_at)} · {b.task_count} tasks</p>
+                </div>
+                <button
+                  onClick={() => handleRestore(b)}
+                  className="px-3 py-1 rounded-full text-xs font-semibold bg-[#F3EDF7] text-[#6750A4] hover:bg-[#EADDFF] flex-shrink-0"
+                >
+                  Restore
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Hard refresh */}

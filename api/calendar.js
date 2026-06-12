@@ -1,6 +1,6 @@
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*')
-  res.setHeader('Access-Control-Allow-Methods', 'GET, PATCH, OPTIONS')
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
   if (req.method === 'OPTIONS') return res.status(200).end()
 
@@ -29,27 +29,49 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: err.message })
   }
 
-  // Update event (PATCH)
-  if (req.method === 'PATCH') {
-    const { eventId, calendarId: calId = 'primary', ...updates } = req.body ?? {}
-    if (!eventId) return res.status(400).json({ error: 'eventId required' })
-    const patchUrl = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events/${encodeURIComponent(eventId)}`
+  const calendarId = req.body?.calendarId ?? req.query?.calendarId ?? 'primary'
+  const calEnc = encodeURIComponent(calendarId)
+  const BASE_CAL = `https://www.googleapis.com/calendar/v3/calendars/${calEnc}/events`
+  const authHeader = { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' }
+
+  // Create event (POST)
+  if (req.method === 'POST') {
+    const { calendarId: _c, ...body } = req.body ?? {}
     try {
-      const patchRes = await fetch(patchUrl, {
-        method: 'PATCH',
-        headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify(updates),
-      })
-      const data = await patchRes.json()
-      return res.status(patchRes.status).json(data)
-    } catch (err) {
-      return res.status(500).json({ error: err.message })
-    }
+      const r = await fetch(BASE_CAL, { method: 'POST', headers: authHeader, body: JSON.stringify(body) })
+      const data = await r.json()
+      return res.status(r.status).json(data)
+    } catch (err) { return res.status(500).json({ error: err.message }) }
   }
 
-  // Fetch events
-  const { start, end, calendarId = 'primary' } = req.query
-  const url = new URL(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`)
+  // Update event (PATCH)
+  if (req.method === 'PATCH') {
+    const { eventId, calendarId: _c, ...updates } = req.body ?? {}
+    if (!eventId) return res.status(400).json({ error: 'eventId required' })
+    try {
+      const r = await fetch(`${BASE_CAL}/${encodeURIComponent(eventId)}`, {
+        method: 'PATCH', headers: authHeader, body: JSON.stringify(updates),
+      })
+      const data = await r.json()
+      return res.status(r.status).json(data)
+    } catch (err) { return res.status(500).json({ error: err.message }) }
+  }
+
+  // Delete event (DELETE)
+  if (req.method === 'DELETE') {
+    const { eventId, calendarId: _c } = req.body ?? {}
+    if (!eventId) return res.status(400).json({ error: 'eventId required' })
+    try {
+      const r = await fetch(`${BASE_CAL}/${encodeURIComponent(eventId)}`, {
+        method: 'DELETE', headers: authHeader,
+      })
+      return res.status(r.status).json(r.status === 204 ? { success: true } : await r.json())
+    } catch (err) { return res.status(500).json({ error: err.message }) }
+  }
+
+  // Fetch events (GET)
+  const { start, end } = req.query
+  const url = new URL(BASE_CAL)
   if (start) url.searchParams.set('timeMin', start)
   if (end) url.searchParams.set('timeMax', end)
   url.searchParams.set('singleEvents', 'true')

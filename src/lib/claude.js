@@ -1,3 +1,13 @@
+// ─── Calendar change bus ──────────────────────────────────────────────────────
+// Components subscribe to know when a calendar tool mutated Google Calendar.
+
+const _calListeners = new Set()
+export function onCalendarChange(fn) {
+  _calListeners.add(fn)
+  return () => _calListeners.delete(fn)
+}
+function notifyCalendarChange() { _calListeners.forEach((fn) => fn()) }
+
 function usageKey() {
   const d = new Date()
   return `usage_${d.getFullYear()}_${String(d.getMonth() + 1).padStart(2, '0')}`
@@ -54,6 +64,7 @@ export async function sendMessageStream(messages, system, onChunk, tasks = null,
         if (evt.text) { full += evt.text; onChunk(evt.text) }
         if (evt.usage) accumulateUsage(evt.usage)
         if (evt.tasks_updated && onTasksUpdated) onTasksUpdated(evt.tasks_updated)
+        if (evt.calendar_changed) notifyCalendarChange()
       } catch (e) {
         if (e.message !== 'Unexpected end of JSON input') throw e
       }

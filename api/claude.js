@@ -1,5 +1,31 @@
 const BUCKETS = ['Finance', 'Health', 'Work', 'Family', 'Home', 'Personal', 'Systems']
 
+// ─── Calendar helpers ─────────────────────────────────────────────────────────
+
+async function calendarRequest(method, body, query = {}) {
+  const base = process.env.VERCEL_URL
+    ? `https://${process.env.VERCEL_URL}`
+    : 'http://localhost:3000'
+  const url = new URL('/api/calendar', base)
+  Object.entries(query).forEach(([k, v]) => url.searchParams.set(k, v))
+  const res = await fetch(url.toString(), {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    ...(method !== 'GET' ? { body: JSON.stringify(body) } : {}),
+  })
+  const text = await res.text()
+  try { return { ok: res.ok, status: res.status, data: text ? JSON.parse(text) : {} } }
+  catch { return { ok: false, status: res.status, data: { error: text } } }
+}
+
+function toGCalDateTime(dateStr, timeStr) {
+  // Accept "2026-06-15" + "14:00" → RFC3339
+  if (!timeStr) return { date: dateStr }
+  return { dateTime: `${dateStr}T${timeStr}:00`, timeZone: 'Europe/London' }
+}
+
+// ─── Tools ────────────────────────────────────────────────────────────────────
+
 const TOOLS = [
   {
     name: 'create_task',
@@ -41,10 +67,66 @@ const TOOLS = [
       required: ['task_id'],
     },
   },
+  {
+    name: 'read_calendar',
+    description: 'Fetch events from Google Calendar for a date range. Use this proactively whenever the user mentions scheduling, availability, or calendar.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        start_date: { type: 'string', description: 'Start date ISO format YYYY-MM-DD' },
+        end_date:   { type: 'string', description: 'End date ISO format YYYY-MM-DD' },
+      },
+      required: ['start_date', 'end_date'],
+    },
+  },
+  {
+    name: 'create_calendar_event',
+    description: 'Create a new event in Google Calendar. Confirm with the user before calling unless they explicitly asked you to create it.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        title:       { type: 'string', description: 'Event title' },
+        date:        { type: 'string', description: 'Date YYYY-MM-DD' },
+        start_time:  { type: 'string', description: 'Start time HH:MM (24h)' },
+        end_time:    { type: 'string', description: 'End time HH:MM (24h)' },
+        location:    { type: 'string', description: 'Location or video link' },
+        description: { type: 'string', description: 'Event description or notes' },
+      },
+      required: ['title', 'date'],
+    },
+  },
+  {
+    name: 'update_calendar_event',
+    description: 'Update an existing calendar event by ID. Get the event ID from read_calendar first.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        event_id:    { type: 'string', description: 'Google Calendar event ID' },
+        title:       { type: 'string', description: 'New title' },
+        date:        { type: 'string', description: 'New date YYYY-MM-DD' },
+        start_time:  { type: 'string', description: 'New start time HH:MM (24h)' },
+        end_time:    { type: 'string', description: 'New end time HH:MM (24h)' },
+        location:    { type: 'string', description: 'New location' },
+        description: { type: 'string', description: 'New description' },
+      },
+      required: ['event_id'],
+    },
+  },
+  {
+    name: 'delete_calendar_event',
+    description: 'Delete or cancel a calendar event by ID. Confirm with the user before calling.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        event_id: { type: 'string', description: 'Google Calendar event ID to delete' },
+      },
+      required: ['event_id'],
+    },
+  },
 ]
 
-// Mutates the tasks array in place and returns a result summary
-function executeTool(name, input, tasks) {
+// Mutates the tasks array in place and returns a result summary. Calendar tools are async.
+async function executeTool(name, input, tasks) {
   if (name === 'create_task') {
     const newTask = {
       id: `local_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
@@ -74,6 +156,57 @@ function executeTool(name, input, tasks) {
     if (input.priority)   task.priority = input.priority
     if (input.due_string) task.due = { date: input.due_string }
     return { success: true, message: 'Task updated.' }
+  }
+
+  if (name === 'read_calendar') {
+    const start = new Date(input.start_date).toISOString()
+    const end   = new Date(input.end_date + 'T23:59:59').toISOString()
+    const { ok, data } = await calendarRequest('GET', null, { start, end })
+    if (!ok) return { error: data.error ?? 'Calendar fetch failed' }
+    const events = (Array.isArray(data) ? data : []).map((e) => ({
+      id: e.id,
+      title: e.summary ?? '(No title)',
+      date: e.start?.date ?? e.start?.dateTime?.slice(0, 10),
+      start_time: e.start?.dateTime ? new Date(e.start.dateTime).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : 'All day',
+      end_time:   e.end?.dateTime   ? new Date(e.end.dateTime).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })   : null,
+      location: e.location ?? null,
+      description: e.description ?? null,
+    }))
+    return { events, count: events.length }
+  }
+
+  if (name === 'create_calendar_event') {
+    const body = {
+      summary:     input.title,
+      location:    input.location,
+      description: input.description,
+      start: toGCalDateTime(input.date, input.start_time),
+      end:   toGCalDateTime(input.date, input.end_time ?? input.start_time),
+    }
+    const { ok, data } = await calendarRequest('POST', body)
+    if (!ok) return { error: data.error ?? 'Failed to create event' }
+    return { success: true, event_id: data.id, message: `Event created: "${input.title}"`, calendar_changed: true }
+  }
+
+  if (name === 'update_calendar_event') {
+    const updates = {}
+    if (input.title)       updates.summary     = input.title
+    if (input.location)    updates.location    = input.location
+    if (input.description) updates.description = input.description
+    if (input.date || input.start_time) {
+      const date = input.date ?? new Date().toISOString().slice(0, 10)
+      updates.start = toGCalDateTime(date, input.start_time)
+      updates.end   = toGCalDateTime(date, input.end_time ?? input.start_time)
+    }
+    const { ok, data } = await calendarRequest('PATCH', { eventId: input.event_id, ...updates })
+    if (!ok) return { error: data.error ?? 'Failed to update event' }
+    return { success: true, message: `Event updated.`, calendar_changed: true }
+  }
+
+  if (name === 'delete_calendar_event') {
+    const { ok, data } = await calendarRequest('DELETE', { eventId: input.event_id })
+    if (!ok) return { error: data.error ?? 'Failed to delete event' }
+    return { success: true, message: 'Event deleted.', calendar_changed: true }
   }
 
   return { error: `Unknown tool: ${name}` }
@@ -189,11 +322,15 @@ export default async function handler(req, res) {
           )
           const toolUseBlocks = assistantContent.filter((b) => b.type === 'tool_use')
 
-          // Execute all tools (synchronously against shared tasks array)
-          const toolResults = toolUseBlocks.map((block) => {
-            const result = executeTool(block.name, block.input, tasks)
+          // Execute all tools
+          let calendarChanged = false
+          const toolResults = await Promise.all(toolUseBlocks.map(async (block) => {
+            const result = await executeTool(block.name, block.input, tasks)
+            if (result.calendar_changed) calendarChanged = true
             return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(result) }
-          })
+          }))
+
+          if (calendarChanged) res.write(`data: ${JSON.stringify({ calendar_changed: true })}\n\n`)
 
           currentMessages = [
             ...currentMessages,
@@ -250,11 +387,10 @@ export default async function handler(req, res) {
         break
       }
 
-      // Execute all tools (synchronously against shared tasks array)
-      const toolResults = toolUseBlocks.map((block) => {
-        const result = executeTool(block.name, block.input, tasks)
+      const toolResults = await Promise.all(toolUseBlocks.map(async (block) => {
+        const result = await executeTool(block.name, block.input, tasks)
         return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(result) }
-      })
+      }))
 
       currentMessages = [
         ...currentMessages,
