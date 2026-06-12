@@ -733,7 +733,8 @@ export default function BucketDetail() {
         ])
       }
     } catch (e) {
-      setHeadMessages((prev) => [...prev, { role: 'assistant', content: `Refresh failed: ${e.message}` }])
+      const msg = e instanceof Error ? e.message : JSON.stringify(e)
+      setHeadMessages((prev) => [...prev, { role: 'assistant', content: `Refresh failed: ${msg}` }])
       setTab('head')
     } finally {
       setRefreshing(false)

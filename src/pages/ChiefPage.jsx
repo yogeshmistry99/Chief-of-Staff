@@ -60,7 +60,8 @@ export default function ChiefPage() {
         setMessages((prev) => [...prev, { role: 'assistant', content: result.summary }])
       }
     } catch (e) {
-      setMessages((prev) => [...prev, { role: 'assistant', content: `Refresh failed: ${e.message}` }])
+      const msg = e instanceof Error ? e.message : JSON.stringify(e)
+      setMessages((prev) => [...prev, { role: 'assistant', content: `Refresh failed: ${msg}` }])
     } finally {
       setRefreshing(false)
     }

@@ -69,8 +69,11 @@ export async function sendMessage(messages, system, tasks = null, options = {}) 
     body: JSON.stringify({ messages, system, tasks, model: options.model }),
   })
   const data = await res.json()
-  if (!res.ok) throw new Error(data.error ?? `Claude API error: ${res.status}`)
-  return { content: data.content, tasks: data.tasks ?? null }
+  if (!res.ok) {
+    const errMsg = typeof data.error === 'string' ? data.error : JSON.stringify(data.error ?? data)
+    throw new Error(`Claude API ${res.status}: ${errMsg}`)
+  }
+  return { content: data.content ?? '', tasks: data.tasks ?? null }
 }
 
 function formatTasksForPrompt(tasks) {
