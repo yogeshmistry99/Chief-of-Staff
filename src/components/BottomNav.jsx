@@ -1,5 +1,10 @@
 import { NavLink } from 'react-router-dom'
 import { haptic } from '../lib/haptic'
+import { getNotifications } from '../lib/notifications'
+
+function usePendingCount() {
+  try { return getNotifications().filter((n) => n.status === 'pending').length } catch { return 0 }
+}
 
 const tabs = [
   {
@@ -41,6 +46,8 @@ const tabs = [
 ]
 
 export default function BottomNav() {
+  const pendingCount = usePendingCount()
+
   return (
     <nav className="safe-bottom bg-white border-t border-[#CAC4D0] flex">
       {tabs.map(({ to, label, icon }) => (
@@ -57,8 +64,13 @@ export default function BottomNav() {
         >
           {({ isActive }) => (
             <>
-              <span className={`flex items-center justify-center w-16 h-8 rounded-full transition-colors ${isActive ? 'bg-[#EADDFF]' : ''}`}>
+              <span className={`relative flex items-center justify-center w-16 h-8 rounded-full transition-colors ${isActive ? 'bg-[#EADDFF]' : ''}`}>
                 {icon()}
+                {label === 'Buckets' && pendingCount > 0 && (
+                  <span className="absolute -top-0.5 right-2 min-w-[16px] h-4 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center px-0.5">
+                    {pendingCount > 99 ? '99+' : pendingCount}
+                  </span>
+                )}
               </span>
               <span className="font-medium">{label}</span>
             </>

@@ -669,20 +669,30 @@ export default function BucketDetail() {
           </div>
         </div>
         {/* Tabs */}
-        <div className="flex gap-0">
-          {[
-            { id: 'tasks', label: 'Tasks' },
-            { id: 'head', label: 'Head' },
-            { id: 'discussions', label: 'Discuss' },
-          ].map(({ id, label }) => (
-            <button key={id} onClick={() => { haptic.light(); setTab(id) }}
-              className={`flex-1 py-2 text-sm font-medium border-b-2 transition-colors ${
-                tab === id ? 'border-current opacity-100' : 'border-transparent opacity-50'
-              }`}>
-              {label}
-            </button>
-          ))}
-        </div>
+        {(() => {
+          const bucketNotifCount = getNotifications().filter((n) => n.source === bucket && n.status === 'pending').length
+          return (
+            <div className="flex gap-0">
+              {[
+                { id: 'tasks', label: 'Tasks' },
+                { id: 'head', label: 'Head' },
+                { id: 'discussions', label: 'Discuss' },
+              ].map(({ id, label }) => (
+                <button key={id} onClick={() => { haptic.light(); setTab(id) }}
+                  className={`relative flex-1 py-2 text-sm font-medium border-b-2 transition-colors ${
+                    tab === id ? 'border-current opacity-100' : 'border-transparent opacity-50'
+                  }`}>
+                  {label}
+                  {bucketNotifCount > 0 && (id === 'tasks' || id === 'head') && (
+                    <span className="absolute top-1 ml-0.5 min-w-[14px] h-3.5 bg-red-500 text-white text-[8px] font-bold rounded-full inline-flex items-center justify-center px-0.5">
+                      {bucketNotifCount}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          )
+        })()}
       </div>
 
       {/* Tab content — all three stay mounted; only active one is visible */}
