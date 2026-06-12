@@ -12,6 +12,9 @@ import TaskEditSheet from '../components/TaskEditSheet'
 import QuickAdd from '../components/QuickAdd'
 import { getDiscussions, saveDiscussion, newDiscussion, findDiscussionByTask } from '../lib/discussions'
 import { onSyncChange } from '../lib/sync'
+import { sendMessageStream, SYSTEM_PROMPTS } from '../lib/claude'
+import { loadHeadConfig } from '../lib/headConfig'
+import Markdown from '../components/Markdown'
 
 async function fetchUpcomingEvents() {
   const now = new Date()
@@ -610,6 +613,7 @@ export default function Home() {
   const hour = new Date().getHours()
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
 
+  const [tab, setTab]                 = useState('priorities')
   const [tasks, setTasks]             = useState([])
   const [loading, setLoading]         = useState(true)
   const [refreshing, setRefreshing]   = useState(false)
@@ -621,8 +625,12 @@ export default function Home() {
   const [events, setEvents]           = useState([])
   const [eventsLoading, setEventsLoading] = useState(true)
   const [quickAddOpen, setQuickAddOpen] = useState(false)
+  const [messages, setMessages]       = useState(() => {
+    try { return JSON.parse(localStorage.getItem('cos_home_messages') ?? '[]') } catch { return [] }
+  })
   const inputRef = useRef(null)
   const scrollRef = useRef(null)
+  const chatEndRef = useRef(null)
   const pullRef = useRef({ startY: 0, pulling: false, dist: 0 })
   const [pullDistance, setPullDistance] = useState(0)
   const inputHoldRef = useRef(null)
@@ -695,8 +703,33 @@ export default function Home() {
     })
   }
 
-  function handleSend(content, attachmentName) {
-    navigate('/chief', { state: { initialMessage: content, attachmentName, from: '/' } })
+  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
+  useEffect(() => {
+    const toSave = messages.filter((m) => !m.streaming)
+    localStorage.setItem('cos_home_messages', JSON.stringify(toSave))
+  }, [messages])
+
+  async function handleSend(content, attachmentName) {
+    const userMsg = { role: 'user', content, attachmentName }
+    setMessages((prev) => [...prev, userMsg, { role: 'assistant', content: '', streaming: true }])
+    const cfg = loadHeadConfig('chief')
+    try {
+      const history = [...messages, userMsg].filter((m) => !m.streaming).map(({ role, content }) => ({ role, content }))
+      await sendMessageStream(history, SYSTEM_PROMPTS.cos(tasks, cfg), (chunk) => {
+        setMessages((prev) => {
+          const last = prev[prev.length - 1]
+          if (!last?.streaming) return prev
+          return [...prev.slice(0, -1), { ...last, content: last.content + chunk }]
+        })
+      }, tasks, (updatedTasks) => { setTasks(updatedTasks); saveToCache(updatedTasks) })
+      setMessages((prev) => {
+        const last = prev[prev.length - 1]
+        if (!last?.streaming) return prev
+        return [...prev.slice(0, -1), { ...last, streaming: false }]
+      })
+    } catch (err) {
+      setMessages((prev) => [...prev.slice(0, -1), { role: 'assistant', content: `Error: ${err.message}` }])
+    }
   }
 
   const { active, someday } = prioritise(tasks)
@@ -713,6 +746,56 @@ export default function Home() {
 
   return (
     <div className="flex flex-col h-full">
+      {/* Tab bar */}
+      <div className="bg-white border-b border-[#CAC4D0] flex-shrink-0 px-4">
+        <div className="flex gap-0">
+          {[{ id: 'priorities', label: 'Priorities' }, { id: 'chief', label: 'Chief of Staff' }].map(({ id, label }) => (
+            <button key={id} onClick={() => { haptic.light(); setTab(id) }}
+              className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${tab === id ? 'border-[#6750A4] text-[#6750A4]' : 'border-transparent text-[#49454F] opacity-60'}`}>
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Chief of Staff chat tab */}
+      <div className={`flex-1 overflow-hidden flex-col ${tab === 'chief' ? 'flex' : 'hidden'}`}>
+        <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
+          {messages.length === 0 && (
+            <div className="text-center py-12">
+              <p className="text-3xl mb-3">🎯</p>
+              <p className="text-sm text-[#49454F]">Your Chief of Staff is ready.</p>
+              <p className="text-xs text-[#79747E] mt-1">Ask about priorities, decisions, or anything across all seven buckets.</p>
+            </div>
+          )}
+          {messages.map((msg, i) => (
+            <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+              <div className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm leading-relaxed ${
+                msg.role === 'user' ? 'bg-[#6750A4] text-white rounded-br-sm' : 'bg-white border border-[#CAC4D0] text-[#1C1B1F] rounded-bl-sm'
+              }`}>
+                {msg.role === 'assistant' ? (
+                  <>
+                    <Markdown text={msg.content || ' '} />
+                    {msg.streaming && <span style={{ animation: 'blink 0.9s step-end infinite', display: 'inline-block', marginLeft: '1px', lineHeight: 1 }}>▌</span>}
+                  </>
+                ) : (
+                  <>
+                    {msg.attachmentName && <span className="text-xs opacity-70 block mb-0.5">📎 {msg.attachmentName}</span>}
+                    {typeof msg.content === 'string' ? msg.content : msg.content.find?.((b) => b.type === 'text')?.text ?? ''}
+                  </>
+                )}
+              </div>
+            </div>
+          ))}
+          <div ref={chatEndRef} />
+        </div>
+        <div className="bg-white border-t border-[#CAC4D0] px-4 pt-3 pb-3 safe-bottom">
+          <ChatInput placeholder="Message your Chief of Staff…" onSend={handleSend} />
+        </div>
+      </div>
+
+      {/* Priorities tab */}
+      <div className={`flex-1 overflow-hidden flex-col ${tab === 'priorities' ? 'flex' : 'hidden'}`}>
       {/* Pull-to-refresh indicator */}
       {pullDistance > 0 && (
         <div className="flex justify-center py-1" style={{ height: pullDistance, transition: 'height 0.1s', overflow: 'hidden' }}>
@@ -835,25 +918,7 @@ export default function Home() {
         </div>
       </div>
 
-      {/* CoS input bar */}
-      <div
-        className="bg-white border-t border-[#CAC4D0] px-4 pt-2.5 pb-2 safe-bottom max-w-lg mx-auto w-full"
-        onPointerDown={() => {
-          inputHoldRef.current = setTimeout(() => {
-            haptic.medium()
-            setQuickAddOpen(true)
-            inputHoldRef.current = null
-          }, 550)
-        }}
-        onPointerUp={() => clearTimeout(inputHoldRef.current)}
-        onPointerLeave={() => clearTimeout(inputHoldRef.current)}
-      >
-        <ChatInput
-          placeholder="Message your Chief of Staff…"
-          onSend={handleSend}
-          textareaRef={inputRef}
-        />
-      </div>
+      </div>{/* end priorities tab */}
       <QuickAdd open={quickAddOpen} onClose={() => setQuickAddOpen(false)} />
     </div>
   )
