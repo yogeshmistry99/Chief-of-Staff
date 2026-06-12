@@ -43,14 +43,16 @@ export default function Settings() {
   }, [])
 
   const [refreshDone, setRefreshDone] = useState(false)
-  const [pullState, setPullState] = useState('idle') // idle | pulling | done | error
+  const [pullState, setPullState] = useState('idle') // idle | confirm | pulling | done | error
   const [lastPull, setLastPull] = useState(() => getLastPullTime())
   const [cachedCount, setCachedCount] = useState(() => getCachedTasks().length)
 
   async function handlePullTasks() {
+    if (pullState === 'idle') { setPullState('confirm'); return }
+    if (pullState !== 'confirm') return
     setPullState('pulling')
     try {
-      const { tasks, pulledCount } = await pullAndCacheTasks()
+      const { tasks } = await pullAndCacheTasks()
       setCachedCount(tasks.length)
       setLastPull(new Date().toISOString())
       setPullState('done')
@@ -174,21 +176,33 @@ export default function Settings() {
             <p className="text-sm text-[#1C1B1F]">{cachedCount > 0 ? `${cachedCount} tasks cached` : 'No cache yet'}</p>
             {lastPull && <p className="text-xs text-[#79747E]">Last pulled {formatPullTime(lastPull)}</p>}
           </div>
-          <button
-            onClick={handlePullTasks}
-            disabled={pullState === 'pulling'}
-            className={`px-4 py-2 rounded-full text-sm font-semibold transition-colors flex-shrink-0 ${
-              pullState === 'done'    ? 'bg-green-500 text-white' :
-              pullState === 'error'  ? 'bg-red-500 text-white' :
-              pullState === 'pulling'? 'bg-[#F3EDF7] text-[#79747E]' :
-                                       'bg-[#6750A4] text-white hover:bg-[#7965AF]'
-            }`}
-          >
-            {pullState === 'pulling' ? '⏳ Pulling…' :
-             pullState === 'done'    ? '✓ Done' :
-             pullState === 'error'   ? '✗ Failed' :
-                                       'Pull tasks'}
-          </button>
+          {pullState === 'confirm' ? (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-[#49454F]">Overwrite cache?</span>
+              <button onClick={() => setPullState('idle')} className="px-3 py-1.5 rounded-full text-sm font-semibold bg-[#F3EDF7] text-[#49454F]">
+                Cancel
+              </button>
+              <button onClick={handlePullTasks} className="px-3 py-1.5 rounded-full text-sm font-semibold bg-[#6750A4] text-white hover:bg-[#7965AF]">
+                Yes, pull
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={handlePullTasks}
+              disabled={pullState === 'pulling'}
+              className={`px-4 py-2 rounded-full text-sm font-semibold transition-colors flex-shrink-0 ${
+                pullState === 'done'    ? 'bg-green-500 text-white' :
+                pullState === 'error'  ? 'bg-red-500 text-white' :
+                pullState === 'pulling'? 'bg-[#F3EDF7] text-[#79747E]' :
+                                         'bg-[#6750A4] text-white hover:bg-[#7965AF]'
+              }`}
+            >
+              {pullState === 'pulling' ? '⏳ Pulling…' :
+               pullState === 'done'    ? '✓ Done' :
+               pullState === 'error'   ? '✗ Failed' :
+                                         'Pull tasks'}
+            </button>
+          )}
         </div>
       </div>
 
