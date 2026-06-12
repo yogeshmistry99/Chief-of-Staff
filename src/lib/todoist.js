@@ -17,8 +17,10 @@ async function get(path, params = {}) {
   const res = await fetch(url.toString())
   if (!res.ok) throw new Error(`Todoist API error: ${res.status}`)
   const data = await res.json()
-  // v1 API wraps results in { results: [...] }
-  return Array.isArray(data) ? data : (data.results ?? data)
+  // v1 API wraps results: { tasks:[...] }, { sections:[...] }, or { results:[...] }
+  if (Array.isArray(data)) return data
+  const arr = data.tasks ?? data.sections ?? data.results
+  return Array.isArray(arr) ? arr : data
 }
 
 // All tasks across all 7 projects — fetch per-project to avoid pagination gaps
