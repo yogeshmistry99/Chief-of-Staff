@@ -1,44 +1,14 @@
 import { useState, useEffect } from 'react'
 import { getMonthlyUsage } from '../lib/claude'
+import { pullAndCacheTasks, getLastPullTime, getCachedTasks } from '../lib/taskCache'
 
 const INTEGRATIONS = [
-  {
-    name: 'Claude (Anthropic)',
-    description: 'Powers the AI chat assistant.',
-    icon: '🤖',
-    envKey: 'VITE_ANTHROPIC_API_KEY',
-    status: 'Not connected',
-    color: 'bg-[#EADDFF]',
-  },
-  {
-    name: 'Todoist',
-    description: 'Syncs your tasks and buckets.',
-    icon: '✅',
-    envKey: 'VITE_TODOIST_API_KEY',
-    status: 'Not connected',
-    color: 'bg-[#FFD8E4]',
-  },
-  {
-    name: 'Google Calendar',
-    description: 'Shows upcoming events on the Home screen.',
-    icon: '📅',
-    envKey: 'VITE_GOOGLE_CLIENT_ID',
-    status: 'Not connected',
-    color: 'bg-[#D3E4FF]',
-  },
-  {
-    name: 'Supabase',
-    description: 'Persists your preferences and chat history.',
-    icon: '🗄️',
-    envKey: 'VITE_SUPABASE_URL',
-    status: 'Not connected',
-    color: 'bg-[#C8F5E1]',
-  },
+  { name: 'Claude (Anthropic)', description: 'Powers the AI chat assistant.',           icon: '🤖', statusKey: 'anthropic',      color: 'bg-[#EADDFF]' },
+  { name: 'Todoist',            description: 'Syncs your tasks and buckets.',            icon: '✅', statusKey: 'todoist',        color: 'bg-[#FFD8E4]' },
+  { name: 'Google Calendar',    description: 'Shows upcoming events on the Home screen.', icon: '📅', statusKey: 'googleCalendar', color: 'bg-[#D3E4FF]' },
 ]
 
-function ConnectionRow({ name, description, icon, status, color }) {
-  const connected = import.meta.env[`VITE_${name.toUpperCase().replace(/[^A-Z]/g, '_')}`]
-
+function ConnectionRow({ name, description, icon, color, connected }) {
   return (
     <div className="flex items-center gap-4 py-4 border-b border-[#F3EDF7] last:border-0">
       <div className={`w-10 h-10 rounded-xl ${color} flex items-center justify-center text-xl flex-shrink-0`}>
@@ -48,14 +18,11 @@ function ConnectionRow({ name, description, icon, status, color }) {
         <p className="text-sm font-semibold text-[#1C1B1F]">{name}</p>
         <p className="text-xs text-[#49454F] truncate">{description}</p>
       </div>
-      <span
-        className={`text-xs font-medium px-2 py-1 rounded-full flex-shrink-0 ${
-          connected
-            ? 'bg-[#C8F5E1] text-[#002115]'
-            : 'bg-[#F3EDF7] text-[#49454F]'
-        }`}
-      >
-        {connected ? 'Connected' : status}
+      <span className={`text-xs font-medium px-2 py-1 rounded-full flex-shrink-0 ${
+        connected === null ? 'bg-[#F3EDF7] text-[#49454F]' :
+        connected ? 'bg-[#C8F5E1] text-[#002115]' : 'bg-[#F3EDF7] text-[#49454F]'
+      }`}>
+        {connected === null ? '…' : connected ? 'Connected' : 'Not connected'}
       </span>
     </div>
   )
@@ -68,7 +35,68 @@ function calcCost({ input_tokens = 0, output_tokens = 0 }) {
 
 export default function Settings() {
   const [usage, setUsage] = useState({})
+  const [resetDone, setResetDone] = useState(false)
+  const [status, setStatus] = useState({})
   useEffect(() => { setUsage(getMonthlyUsage()) }, [])
+  useEffect(() => {
+    fetch('/api/status').then((r) => r.json()).then(setStatus).catch(() => {})
+  }, [])
+
+  const [refreshDone, setRefreshDone] = useState(false)
+  const [pullState, setPullState] = useState('idle') // idle | pulling | done | error
+  const [lastPull, setLastPull] = useState(() => getLastPullTime())
+  const [cachedCount, setCachedCount] = useState(() => getCachedTasks().length)
+
+  async function handlePullTasks() {
+    setPullState('pulling')
+    try {
+      const { tasks, pulledCount } = await pullAndCacheTasks()
+      setCachedCount(tasks.length)
+      setLastPull(new Date().toISOString())
+      setPullState('done')
+      setTimeout(() => setPullState('idle'), 3000)
+    } catch (e) {
+      setPullState('error')
+      setTimeout(() => setPullState('idle'), 3000)
+    }
+  }
+
+  function formatPullTime(iso) {
+    if (!iso) return null
+    const d = new Date(iso)
+    const now = new Date()
+    const diffMs = now - d
+    const diffMins = Math.floor(diffMs / 60000)
+    if (diffMins < 1) return 'just now'
+    if (diffMins < 60) return `${diffMins}m ago`
+    const diffHours = Math.floor(diffMins / 60)
+    if (diffHours < 24) return `${diffHours}h ago`
+    return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+  }
+
+  function handleRefresh() {
+    setRefreshDone(true)
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then((regs) => {
+        Promise.all(regs.map((r) => r.unregister())).then(() => {
+          caches.keys().then((keys) => {
+            Promise.all(keys.map((k) => caches.delete(k))).then(() => {
+              window.location.reload(true)
+            })
+          })
+        })
+      })
+    } else {
+      window.location.reload(true)
+    }
+  }
+
+  function handleReset() {
+    localStorage.clear()
+    setUsage({})
+    setResetDone(true)
+    setTimeout(() => setResetDone(false), 2000)
+  }
 
   const cost = calcCost(usage)
   const monthLabel = (() => {
@@ -95,7 +123,7 @@ export default function Settings() {
           <span>{(usage.input_tokens ?? 0).toLocaleString()} input tokens</span>
           <span>{(usage.output_tokens ?? 0).toLocaleString()} output tokens</span>
         </div>
-        <p className="text-[10px] text-[#79747E] mt-2">Haiku 4.5 · $0.80/M input · $4.00/M output</p>
+        <p className="text-[10px] text-[#79747E] mt-2">CoS: Sonnet 4.5 · Heads: Haiku 4.5</p>
       </div>
 
       {/* Integrations card */}
@@ -104,7 +132,7 @@ export default function Settings() {
           Integrations
         </h2>
         {INTEGRATIONS.map((item) => (
-          <ConnectionRow key={item.name} {...item} />
+          <ConnectionRow key={item.name} {...item} connected={item.statusKey in status ? status[item.statusKey] : null} />
         ))}
       </div>
 
@@ -119,7 +147,7 @@ export default function Settings() {
       </div>
 
       {/* App info */}
-      <div className="bg-white border border-[#CAC4D0] rounded-2xl px-4 py-3">
+      <div className="bg-white border border-[#CAC4D0] rounded-2xl px-4 py-3 mb-4">
         <h2 className="text-xs font-semibold text-[#49454F] uppercase tracking-wide mb-2">About</h2>
         <div className="flex justify-between text-sm">
           <span className="text-[#49454F]">App name</span>
@@ -127,13 +155,62 @@ export default function Settings() {
         </div>
         <div className="flex justify-between text-sm mt-1.5">
           <span className="text-[#49454F]">Version</span>
-          <span className="font-medium text-[#1C1B1F]">0.1.0</span>
+          <span className="font-medium text-[#1C1B1F]">0.1.7</span>
         </div>
         <div className="flex justify-between text-sm mt-1.5">
           <span className="text-[#49454F]">Platform</span>
           <span className="font-medium text-[#1C1B1F]">PWA · Vite · React</span>
         </div>
       </div>
+
+      {/* Todoist task cache */}
+      <div className="bg-white border border-[#CAC4D0] rounded-2xl px-4 py-3 mb-4">
+        <h2 className="text-xs font-semibold text-[#49454F] uppercase tracking-wide mb-3">Todoist Task Cache</h2>
+        <p className="text-xs text-[#79747E] mb-3">
+          Pulls all tasks from Todoist into local storage so they're available offline and to the AI heads. Merges without duplicates.
+        </p>
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <p className="text-sm text-[#1C1B1F]">{cachedCount > 0 ? `${cachedCount} tasks cached` : 'No cache yet'}</p>
+            {lastPull && <p className="text-xs text-[#79747E]">Last pulled {formatPullTime(lastPull)}</p>}
+          </div>
+          <button
+            onClick={handlePullTasks}
+            disabled={pullState === 'pulling'}
+            className={`px-4 py-2 rounded-full text-sm font-semibold transition-colors flex-shrink-0 ${
+              pullState === 'done'    ? 'bg-green-500 text-white' :
+              pullState === 'error'  ? 'bg-red-500 text-white' :
+              pullState === 'pulling'? 'bg-[#F3EDF7] text-[#79747E]' :
+                                       'bg-[#6750A4] text-white hover:bg-[#7965AF]'
+            }`}
+          >
+            {pullState === 'pulling' ? '⏳ Pulling…' :
+             pullState === 'done'    ? '✓ Done' :
+             pullState === 'error'   ? '✗ Failed' :
+                                       'Pull tasks'}
+          </button>
+        </div>
+      </div>
+
+      {/* Hard refresh */}
+      <button
+        onClick={handleRefresh}
+        className={`w-full py-3 rounded-full text-sm font-semibold transition-colors mb-3 ${
+          refreshDone ? 'bg-green-500 text-white' : 'bg-[#F3EDF7] text-[#6750A4] hover:bg-[#EADDFF]'
+        }`}
+      >
+        {refreshDone ? '✓ Refreshing…' : 'Hard refresh (clear cache)'}
+      </button>
+
+      {/* Reset */}
+      <button
+        onClick={handleReset}
+        className={`w-full py-3 rounded-full text-sm font-semibold transition-colors ${
+          resetDone ? 'bg-green-500 text-white' : 'bg-[#F3EDF7] text-[#B3261E] hover:bg-[#FCDAD7]'
+        }`}
+      >
+        {resetDone ? '✓ Data cleared' : 'Reset app data'}
+      </button>
     </div>
   )
 }

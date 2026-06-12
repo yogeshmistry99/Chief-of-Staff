@@ -1,14 +1,17 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import EditSheet from '../components/EditSheet'
+import TaskEditSheet from '../components/TaskEditSheet'
 import { useParams, useNavigate } from 'react-router-dom'
-import { getProjectTasks, getProjectSections, PROJECTS } from '../lib/todoist'
+import { getProjectSections, PROJECTS } from '../lib/todoist'
+import { getCachedTasks, saveToCache } from '../lib/taskCache'
 import { scoreTask, BUCKET_WEIGHTS } from '../lib/priority'
-import { sendMessageStream, SYSTEM_PROMPTS } from '../lib/claude'
+import { sendMessageStream, sendMessage, SYSTEM_PROMPTS, REFRESH_PROMPTS } from '../lib/claude'
 import { loadHeadConfig } from '../lib/headConfig'
+import { getNotifications, getNotificationsForTask, saveNotifications, clearNotificationsForSource, dismissNotification, acceptNotification } from '../lib/notifications'
+import NotificationCard, { notifDotClass } from '../components/NotificationCard'
 import { haptic } from '../lib/haptic'
 import Markdown from '../components/Markdown'
 import ChatInput from '../components/ChatInput'
-import { getDiscussions, deleteDiscussion } from '../lib/discussions'
+import { getDiscussions, deleteDiscussion, saveDiscussion, newDiscussion, findDiscussionByTask } from '../lib/discussions'
 
 const BUCKET_DESCRIPTIONS = {
   Finance:  'Investments, tax, budgets, and financial decisions.',
@@ -31,7 +34,7 @@ const BUCKET_META = {
 }
 
 // HeadTab receives messages/setMessages from parent so state survives tab switches
-function HeadTab({ bucket, tasks, messages, setMessages }) {
+function HeadTab({ bucket, tasks, setTasks, messages, setMessages }) {
   const navigate = useNavigate()
   const endRef = useRef(null)
 
@@ -54,6 +57,9 @@ function HeadTab({ bucket, tasks, messages, setMessages }) {
           return [...prev.slice(0, -1), { ...last, content: last.content + chunk }]
         })
         endRef.current?.scrollIntoView({ behavior: 'smooth' })
+      }, tasks, (updatedTasks) => {
+        setTasks(updatedTasks)
+        saveToCache(updatedTasks)
       })
       // Mark streaming done
       setMessages((prev) => {
@@ -157,12 +163,12 @@ function DiscussionsTab({ bucket }) {
             {discussions.map((d) => (
               <div key={d.id} className="relative">
                 <button
-                  onClick={() => navigate(`/buckets/${bucket}/discussions/${d.id}`)}
+                  onClick={() => navigate(`/buckets/${bucket}/discussions/${d.id}`, { state: { from: `/buckets/${bucket}` } })}
                   className="w-full text-left bg-white border border-[#CAC4D0] rounded-2xl p-4 hover:border-[#6750A4] transition-colors pr-10"
                 >
                   <p className="text-sm font-medium text-[#1C1B1F]">{d.title}</p>
                   <p className="text-xs text-[#79747E] mt-0.5">
-                    {d.messages.length} message{d.messages.length !== 1 ? 's' : ''} · {new Date(d.updatedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                    {d.messages.length} message{d.messages.length !== 1 ? 's' : ''} · {new Date(d.updatedAt).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: '2-digit' })}
                   </p>
                 </button>
                 <button
@@ -180,7 +186,7 @@ function DiscussionsTab({ bucket }) {
       </div>
       <div className="px-4 pb-4 pt-2 border-t border-[#CAC4D0] bg-white">
         <button
-          onClick={() => navigate(`/buckets/${bucket}/discussions/new`)}
+          onClick={() => navigate(`/buckets/${bucket}/discussions/new`, { state: { from: `/buckets/${bucket}` } })}
           className="w-full py-2.5 rounded-full bg-[#6750A4] text-white text-sm font-medium hover:bg-[#5B4397] transition-colors"
         >
           + New discussion
@@ -216,10 +222,7 @@ function groupBySection(tasks, sections) {
   const sectionMap = Object.fromEntries(sections.map((s) => [s.id, s.name]))
   const groups = {}
   const order = []
-  // Preserve section order from the sections array
   sections.forEach((s) => { groups[s.id] = []; order.push(s.id) })
-  // No-section bucket
-  groups['__none__'] = []
   tasks.forEach((t) => {
     const sid = t.section_id ?? '__none__'
     if (!groups[sid]) { groups[sid] = []; order.push(sid) }
@@ -231,7 +234,7 @@ function groupBySection(tasks, sections) {
   return result
 }
 
-function TaskCard({ title, tasks, onComplete, indexOffset = 0 }) {
+function TaskCard({ title, tasks, onComplete, indexOffset = 0, allTasks = [], bucket = '', onRespond }) {
   return (
     <div className="bg-white border border-[#CAC4D0] rounded-2xl px-4 pt-3 pb-1 shadow-sm mb-3"
       style={{ animation: `fade-up 0.4s cubic-bezier(0.22,1,0.36,1) ${0.05 + indexOffset * 0.06}s both` }}>
@@ -242,13 +245,13 @@ function TaskCard({ title, tasks, onComplete, indexOffset = 0 }) {
         </div>
       )}
       {tasks.map((task, i) => (
-        <TaskItem key={task.id} task={task} onComplete={onComplete} index={indexOffset + i} />
+        <TaskItem key={task.id} task={task} onComplete={onComplete} index={indexOffset + i} allTasks={allTasks} bucket={bucket} onRespond={onRespond} />
       ))}
     </div>
   )
 }
 
-function TasksTab({ tasks, sections, loading, onComplete }) {
+function TasksTab({ tasks, sections, loading, onComplete, allTasks, bucket = '', onRefresh, refreshing, onRespond }) {
   const [sort, setSort] = useState('category')
 
   const allScored = tasks.map((t) => ({ ...t, _scored: scoreTask(t) }))
@@ -274,22 +277,22 @@ function TasksTab({ tasks, sections, loading, onComplete }) {
 
   let content
   if (sort === 'category') {
-    const groups = groupBySection(active, sections)
+    const groups = groupBySection(allScored, sections)
     let offset = 0
     content = groups.map((g) => {
-      const el = <TaskCard key={g.id} title={g.name} tasks={g.tasks} onComplete={onComplete} indexOffset={offset} />
+      const el = <TaskCard key={g.id} title={g.name} tasks={g.tasks} onComplete={onComplete} indexOffset={offset} allTasks={allTasks} bucket={bucket} onRespond={onRespond} />
       offset += g.tasks.length
       return el
     })
   } else {
     const sorted = sortTasks(active, sort)
-    content = <TaskCard title={null} tasks={sorted} onComplete={onComplete} />
+    content = <TaskCard title={null} tasks={sorted} onComplete={onComplete} allTasks={allTasks} bucket={bucket} onRespond={onRespond} />
   }
 
   return (
     <div className="overflow-y-auto h-full">
-      {/* Sort controls */}
-      <div className="flex gap-2 px-4 pt-3 pb-2">
+      {/* Sort controls + Refresh */}
+      <div className="flex items-center gap-2 px-4 pt-3 pb-2">
         {SORT_OPTIONS.map(({ id, label }) => (
           <button key={id} onClick={() => setSort(id)}
             className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors ${
@@ -300,11 +303,25 @@ function TasksTab({ tasks, sections, loading, onComplete }) {
             {label}
           </button>
         ))}
+        <div className="flex-1" />
+        <button
+          onClick={onRefresh}
+          disabled={refreshing}
+          className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold transition-colors ${
+            refreshing ? 'bg-[#F3EDF7] text-[#79747E]' : 'bg-[#F3EDF7] text-[#6750A4] hover:bg-[#EADDFF]'
+          }`}
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" height="13" viewBox="0 -960 960 960" width="13" fill="currentColor"
+            style={refreshing ? { animation: 'spin 1s linear infinite' } : undefined}>
+            <path d="M480-160q-134 0-227-93t-93-227q0-134 93-227t227-93q69 0 132 28.5T720-690v-110h80v280H520v-80h168q-32-56-87.5-88T480-720q-100 0-170 70t-70 170q0 100 70 170t170 70q77 0 139-44t87-116h84q-28 106-114 173t-196 67Z"/>
+          </svg>
+          {refreshing ? 'Refreshing…' : 'Refresh'}
+        </button>
       </div>
 
       <div className="px-4 pb-4">
         {content}
-        {someday.length > 0 && (
+        {someday.length > 0 && sort !== 'category' && (
           <div className="bg-[#F3EDF7] rounded-xl px-4 py-2.5 mt-1">
             <p className="text-xs text-[#49454F]">
               <span className="font-semibold text-[#6750A4]">{someday.length} someday</span> — no date, P4.
@@ -316,24 +333,27 @@ function TasksTab({ tasks, sections, loading, onComplete }) {
   )
 }
 
-function TaskItem({ task: initialTask, onComplete, index = 0 }) {
+function TaskItem({ task: initialTask, onComplete, index = 0, allTasks = [], bucket = '', onRespond }) {
+  const navigate = useNavigate()
   const [localTask, setLocalTask] = useState(initialTask)
   const [pendingComplete, setPendingComplete] = useState(false)
   const [removing, setRemoving] = useState(false)
   const [completingAnim, setCompletingAnim] = useState(false)
   const [expanded, setExpanded] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
-  const [editContent, setEditContent] = useState(initialTask.content)
-  const [editPriority, setEditPriority] = useState(initialTask.priority ?? 1)
-  const [editDue, setEditDue] = useState(initialTask.due?.date ?? '')
-  const [editDesc, setEditDesc] = useState(initialTask.description ?? '')
-  const [saving, setSaving] = useState(false)
   const [swipeX, setSwipeX] = useState(0)
   const [isSwiping, setIsSwiping] = useState(false)
+  const [swipeTriggered, setSwipeTriggered] = useState(null)
+  const [activeNotif, setActiveNotif] = useState(null)
+  const [notifs, setNotifs] = useState(() => getNotificationsForTask(localTask.id))
   const timerRef = useRef(null)
   const holdRef = useRef(null)
   const isHoldRef = useRef(false)
   const swipeRef = useRef(null)
+
+  const topNotif = notifs[0] ?? null
+
+  function refreshNotifs() { setNotifs(getNotificationsForTask(localTask.id)) }
 
   const { isOverdue, isToday, days } = scoreTask(localTask)
 
@@ -341,8 +361,6 @@ function TaskItem({ task: initialTask, onComplete, index = 0 }) {
     if (!removing) return
     const t = setTimeout(async () => {
       try {
-        const { closeTask } = await import('../lib/todoist')
-        await closeTask(localTask.id)
         onComplete(localTask.id)
       } catch { haptic.error(); setRemoving(false); setPendingComplete(false) }
     }, 380)
@@ -352,6 +370,7 @@ function TaskItem({ task: initialTask, onComplete, index = 0 }) {
   function handleComplete(e) {
     e.stopPropagation()
     haptic.success()
+    haptic.fanfare()
     setCompletingAnim(true)
     setPendingComplete(true)
     timerRef.current = setTimeout(() => setRemoving(true), 5000)
@@ -371,10 +390,6 @@ function TaskItem({ task: initialTask, onComplete, index = 0 }) {
     holdRef.current = setTimeout(() => {
       isHoldRef.current = true
       haptic.medium()
-      setEditContent(localTask.content)
-      setEditPriority(localTask.priority ?? 1)
-      setEditDue(localTask.due?.date ?? '')
-      setEditDesc(localTask.description ?? '')
       setEditOpen(true)
     }, 500)
   }
@@ -398,17 +413,26 @@ function TaskItem({ task: initialTask, onComplete, index = 0 }) {
     if (!tr.decided) {
       if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return
       tr.decided = true
-      tr.horizontal = Math.abs(dx) > Math.abs(dy) * 1.2 && dx < 0
+      tr.horizontal = Math.abs(dx) > Math.abs(dy) * 1.2
     }
     if (!tr.horizontal) return
     clearTimeout(holdRef.current)
-    tr.dx = Math.max(dx, -96)
+    tr.dx = Math.max(Math.min(dx, 96), -96)
     setSwipeX(tr.dx)
     setIsSwiping(true)
+    if (tr.dx < -70 && swipeTriggered !== 'left') {
+      setSwipeTriggered('left')
+    } else if (tr.dx > 70 && swipeTriggered !== 'right') {
+      setSwipeTriggered('right')
+      haptic.chat()
+    } else if (Math.abs(tr.dx) <= 70 && swipeTriggered) {
+      setSwipeTriggered(null)
+    }
   }
   function handleTouchEnd() {
     const tr = swipeRef.current
     swipeRef.current = null
+    setSwipeTriggered(null)
     if (!tr?.horizontal) { setIsSwiping(false); return }
     if (tr.dx < -70) {
       setSwipeX(-96)
@@ -416,33 +440,25 @@ function TaskItem({ task: initialTask, onComplete, index = 0 }) {
         setSwipeX(0); setIsSwiping(false)
         handleComplete({ stopPropagation: () => {} })
       }, 200)
+    } else if (tr.dx > 70 && bucket) {
+      setSwipeX(96)
+      setTimeout(() => {
+        setSwipeX(0); setIsSwiping(false)
+        haptic.light()
+        const existing = findDiscussionByTask(bucket, localTask.id)
+        if (existing) {
+          navigate(`/buckets/${bucket}/discussions/${existing.id}`, { state: { from: `/buckets/${bucket}` } })
+        } else {
+          const disc = newDiscussion(localTask.content, localTask.id)
+          saveDiscussion(bucket, disc)
+          navigate(`/buckets/${bucket}/discussions/${disc.id}`, { state: { from: `/buckets/${bucket}` } })
+        }
+      }, 200)
     } else {
       setSwipeX(0); setIsSwiping(false)
     }
   }
 
-  async function handleSave() {
-    setSaving(true)
-    try {
-      const body = { content: editContent, priority: editPriority, description: editDesc }
-      if (editDue) body.due_date = editDue
-      await fetch(`/api/todoist?path=tasks/${localTask.id}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      })
-      haptic.success()
-      setLocalTask((prev) => ({
-        ...prev,
-        content: editContent,
-        priority: editPriority,
-        description: editDesc,
-        due: editDue ? { date: editDue } : prev.due,
-      }))
-      setEditOpen(false)
-    } catch { haptic.error() }
-    finally { setSaving(false) }
-  }
 
   return (
     <>
@@ -456,11 +472,20 @@ function TaskItem({ task: initialTask, onComplete, index = 0 }) {
     <div style={{ overflow: 'hidden' }}>
     <div className="border-b border-[#F3EDF7] last:border-0 relative overflow-hidden"
       style={{ opacity: pendingComplete ? 0.45 : 1, transition: 'opacity 0.15s ease' }}>
-      {/* Swipe reveal */}
+      {/* Swipe-left reveal (complete) */}
       <div className="absolute right-0 top-0 bottom-0 w-24 bg-[#4CAF50] flex items-center justify-center"
         style={{ opacity: swipeX < -10 ? Math.min((-swipeX - 10) / 50, 1) : 0 }}>
-        <svg xmlns="http://www.w3.org/2000/svg" height="22" viewBox="0 0 24 24" width="22" fill="white">
+        <svg xmlns="http://www.w3.org/2000/svg" height="22" viewBox="0 0 24 24" width="22" fill="white"
+          style={swipeTriggered === 'left' ? { animation: 'swipe-tick-pop 0.4s cubic-bezier(0.34,1.56,0.64,1) both' } : undefined}>
           <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+        </svg>
+      </div>
+      {/* Swipe-right reveal (discuss) */}
+      <div className="absolute left-0 top-0 bottom-0 w-24 bg-[#6750A4] flex items-center justify-center"
+        style={{ opacity: swipeX > 10 ? Math.min((swipeX - 10) / 50, 1) : 0 }}>
+        <svg xmlns="http://www.w3.org/2000/svg" height="22" viewBox="0 -960 960 960" width="22" fill="white"
+          style={swipeTriggered === 'right' ? { animation: 'swipe-chat-pop 0.4s cubic-bezier(0.34,1.56,0.64,1) both' } : undefined}>
+          <path d="M240-400h320v-80H240v80Zm0-120h480v-80H240v80Zm0-120h480v-80H240v80ZM80-80v-720q0-33 23.5-56.5T160-880h640q33 0 56.5 23.5T880-800v480q0 33-23.5 56.5T800-240H240L80-80Z"/>
         </svg>
       </div>
       <div
@@ -505,15 +530,29 @@ function TaskItem({ task: initialTask, onComplete, index = 0 }) {
             {days === 1 && <span className="text-xs font-semibold text-[#49454F] bg-[#E7E0EC] px-1.5 py-0.5 rounded">Tomorrow</span>}
             {localTask.due?.date && days > 1 && (
               <span className="text-xs text-[#79747E]">
-                {new Date(localTask.due.date + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}
+                {new Date(localTask.due.date + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: '2-digit' })}
               </span>
+            )}
+            {localTask._sectionName && (
+              <span className="text-xs text-[#79747E]">{localTask._sectionName}</span>
             )}
             {localTask.labels?.length > 0 && (
               <span className="text-xs text-[#79747E]">{localTask.labels.join(', ')}</span>
             )}
+            {bucket && findDiscussionByTask(bucket, localTask.id) && (
+              <svg xmlns="http://www.w3.org/2000/svg" height="11" viewBox="0 -960 960 960" width="11" fill="#6750A4">
+                <path d="M240-400h320v-80H240v80Zm0-120h480v-80H240v80Zm0-120h480v-80H240v80ZM80-80v-720q0-33 23.5-56.5T160-880h640q33 0 56.5 23.5T880-800v480q0 33-23.5 56.5T800-240H240L80-80Z"/>
+              </svg>
+            )}
           </div>
         </div>
 
+        {topNotif && !pendingComplete && (
+          <button
+            onClick={(e) => { e.stopPropagation(); setActiveNotif(topNotif) }}
+            className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ring-2 ring-white ${notifDotClass(topNotif.type)}`}
+          />
+        )}
         {pendingComplete ? (
           <button onClick={handleUndo}
             className="text-xs font-semibold px-2.5 py-1 rounded-full bg-[#6750A4] text-white flex-shrink-0">
@@ -545,7 +584,7 @@ function TaskItem({ task: initialTask, onComplete, index = 0 }) {
           <div className="flex flex-wrap gap-x-3 gap-y-1">
             {localTask.due?.date && (
               <span className="text-xs text-[#79747E]">
-                Due {new Date(localTask.due.date + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}
+                Due {new Date(localTask.due.date + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: '2-digit' })}
               </span>
             )}
             {localTask.due?.datetime && (
@@ -568,34 +607,22 @@ function TaskItem({ task: initialTask, onComplete, index = 0 }) {
     </div>
     </div>
 
-    <EditSheet open={editOpen} onClose={() => setEditOpen(false)} title="Edit task" onSave={handleSave} saving={saving}>
-      <div className="space-y-1">
-        <label className="text-xs font-medium text-[#49454F]">Task</label>
-        <textarea value={editContent} onChange={(ev) => setEditContent(ev.target.value)}
-          className="w-full rounded-xl border border-[#79747E] px-3 py-2 text-sm text-[#1C1B1F] focus:outline-none focus:border-[#6750A4] resize-none" rows={2} />
-      </div>
-      <div className="space-y-1">
-        <label className="text-xs font-medium text-[#49454F]">Priority</label>
-        <div className="flex gap-2">
-          {[{label:'P1',val:4},{label:'P2',val:3},{label:'P3',val:2},{label:'P4',val:1}].map(({label,val}) => (
-            <button key={val} onClick={() => setEditPriority(val)}
-              className={`flex-1 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
-                editPriority === val ? 'bg-[#6750A4] text-white border-[#6750A4]' : 'border-[#CAC4D0] text-[#49454F]'
-              }`}>{label}</button>
-          ))}
-        </div>
-      </div>
-      <div className="space-y-1">
-        <label className="text-xs font-medium text-[#49454F]">Due date</label>
-        <input type="date" value={editDue} onChange={(ev) => setEditDue(ev.target.value)}
-          className="w-full rounded-xl border border-[#79747E] px-3 py-2 text-sm text-[#1C1B1F] focus:outline-none focus:border-[#6750A4]" />
-      </div>
-      <div className="space-y-1">
-        <label className="text-xs font-medium text-[#49454F]">Notes</label>
-        <textarea value={editDesc} onChange={(ev) => setEditDesc(ev.target.value)} placeholder="Add notes"
-          className="w-full rounded-xl border border-[#79747E] px-3 py-2 text-sm text-[#1C1B1F] focus:outline-none focus:border-[#6750A4] resize-none" rows={3} />
-      </div>
-    </EditSheet>
+    <TaskEditSheet
+      open={editOpen}
+      onClose={() => setEditOpen(false)}
+      task={localTask}
+      allTasks={allTasks}
+      onSaved={(updated) => setLocalTask((prev) => ({ ...prev, ...updated }))}
+    />
+    {activeNotif && (
+      <NotificationCard
+        notification={activeNotif}
+        onClose={() => setActiveNotif(null)}
+        onAccept={() => { acceptNotification(activeNotif.id); setActiveNotif(null); refreshNotifs() }}
+        onDecline={() => { dismissNotification(activeNotif.id); setActiveNotif(null); refreshNotifs() }}
+        onRespond={() => { setActiveNotif(null); onRespond?.(activeNotif) }}
+      />
+    )}
     </>
   )
 }
@@ -607,6 +634,8 @@ export default function BucketDetail() {
   const [tasks, setTasks] = useState([])
   const [sections, setSections] = useState([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(null)
+  const [refreshing, setRefreshing] = useState(false)
   // Head chat — persisted to localStorage so history survives navigation and sessions
   const storageKey = `cos_head_${bucket}`
   const [headMessages, setHeadMessages] = useState(() => {
@@ -622,16 +651,17 @@ export default function BucketDetail() {
 
   useEffect(() => {
     if (!projectId) return
-    Promise.all([
-      getProjectTasks(projectId),
-      getProjectSections(projectId),
-    ])
-      .then(([taskData, sectionData]) => {
-        setTasks(taskData.map((t) => ({ ...t, _projectName: bucket })))
-        setSections(Array.isArray(sectionData) ? sectionData : [])
+    // Load from cache immediately
+    const cached = getCachedTasks().filter((t) => t._projectName === bucket)
+    if (cached.length) { setTasks(cached); setLoading(false) }
+    // Still fetch sections from Todoist for display grouping
+    getProjectSections(projectId)
+      .then((sectionData) => {
+        const sections = Array.isArray(sectionData) ? sectionData : []
+        setSections(sections)
+        if (!cached.length) setLoading(false)
       })
-      .catch(() => {})
-      .finally(() => setLoading(false))
+      .catch((e) => { setLoadError(e.message ?? 'Could not load tasks'); setLoading(false) })
   }, [projectId])
 
   if (!projectId) {
@@ -643,7 +673,73 @@ export default function BucketDetail() {
     )
   }
 
-  function removeTask(id) { setTasks((prev) => prev.filter((t) => t.id !== id)) }
+  function removeTask(id) {
+    setTasks((prev) => {
+      const updated = prev.filter((t) => t.id !== id)
+      const allCached = getCachedTasks().filter((t) => t.id !== id)
+      saveToCache(allCached)
+      return updated
+    })
+  }
+
+  function handleRespond(notif) {
+    setTab('head')
+    setHeadMessages((prev) => [...prev, {
+      role: 'user',
+      content: `Re: notification — ${notif.description}`,
+    }])
+  }
+
+  async function handleRefresh() {
+    setRefreshing(true)
+    clearNotificationsForSource(bucket)
+    try {
+      const cfg = loadHeadConfig(bucket)
+      const allTasks = getCachedTasks()
+      const system = REFRESH_PROMPTS.head(bucket, allTasks, cfg)
+      const { content } = await sendMessage(
+        [{ role: 'user', content: 'Run the priority refresh now.' }],
+        system,
+        null
+      )
+      const clean = content.trim().replace(/^```json\s*/i, '').replace(/```\s*$/, '').trim()
+      const result = JSON.parse(clean)
+
+      // Apply priority updates to cache
+      if (result.priorityUpdates?.length) {
+        const updated = getCachedTasks().map((t) => {
+          const upd = result.priorityUpdates.find((u) => u.taskId === t.id)
+          return upd ? { ...t, priority: upd.priority } : t
+        })
+        saveToCache(updated)
+        setTasks(updated.filter((t) => t._projectName === bucket))
+      }
+
+      // Save notifications
+      if (result.notifications?.length) {
+        const existing = getNotifications().filter((n) => n.source !== bucket)
+        saveNotifications([
+          ...existing,
+          ...result.notifications.map((n) => ({ ...n, source: bucket, status: 'pending' })),
+        ])
+      }
+
+      // Post summary to head chat
+      if (result.summary) {
+        setTab('head')
+        setHeadMessages((prev) => [
+          ...prev,
+          { role: 'assistant', content: result.summary },
+        ])
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : JSON.stringify(e)
+      setHeadMessages((prev) => [...prev, { role: 'assistant', content: `Refresh failed: ${msg}` }])
+      setTab('head')
+    } finally {
+      setRefreshing(false)
+    }
+  }
 
   const open = tasks.filter((t) => !t.is_completed)
   const overdue = open.filter((t) => scoreTask(t).isOverdue).length
@@ -698,10 +794,12 @@ export default function BucketDetail() {
       {/* Tab content — all three stay mounted; only active one is visible */}
       <div className="flex-1 overflow-hidden relative">
         <div className={`absolute inset-0 ${tab === 'tasks' ? '' : 'invisible pointer-events-none'}`}>
-          <TasksTab tasks={tasks} sections={sections} loading={loading} onComplete={removeTask} />
+          {loadError
+            ? <p className="px-4 pt-6 text-sm text-red-500">Could not load tasks — {loadError}</p>
+            : <TasksTab tasks={tasks} sections={sections} loading={loading} onComplete={removeTask} allTasks={tasks} bucket={bucket} onRefresh={handleRefresh} refreshing={refreshing} onRespond={handleRespond} />}
         </div>
         <div className={`absolute inset-0 ${tab === 'head' ? '' : 'invisible pointer-events-none'}`}>
-          <HeadTab bucket={bucket} tasks={tasks} messages={headMessages} setMessages={setHeadMessages} />
+          <HeadTab bucket={bucket} tasks={tasks} setTasks={setTasks} messages={headMessages} setMessages={setHeadMessages} />
         </div>
         <div className={`absolute inset-0 ${tab === 'discussions' ? '' : 'invisible pointer-events-none'}`}>
           <DiscussionsTab bucket={bucket} />

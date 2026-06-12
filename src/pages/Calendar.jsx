@@ -339,7 +339,7 @@ export default function Calendar() {
         {/* Selected day panel */}
         <div className="bg-white border border-[#CAC4D0] rounded-2xl p-4 mb-5">
           <p className="text-xs font-semibold text-[#49454F] mb-3">
-            {new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}
+            {new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'long', day: '2-digit', month: '2-digit', year: '2-digit' })}
           </p>
 
           {/* Events */}

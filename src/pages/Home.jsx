@@ -1,16 +1,24 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { getAllTasks, closeTask, PROJECTS } from '../lib/todoist'
+import { PROJECTS } from '../lib/todoist'
+import { getCachedTasks, saveToCache } from '../lib/taskCache'
+import { getNotificationsForTask, dismissNotification, acceptNotification } from '../lib/notifications'
+import NotificationCard, { notifDotClass } from '../components/NotificationCard'
 import { prioritise, scoreTask } from '../lib/priority'
 import { haptic } from '../lib/haptic'
 import ChatInput from '../components/ChatInput'
 import EditSheet from '../components/EditSheet'
+import TaskEditSheet from '../components/TaskEditSheet'
 import QuickAdd from '../components/QuickAdd'
+import { getDiscussions, saveDiscussion, newDiscussion, findDiscussionByTask } from '../lib/discussions'
+import { onSyncChange } from '../lib/sync'
 
 async function fetchUpcomingEvents() {
   const now = new Date()
-  const end = new Date(now); end.setDate(end.getDate() + 7)
-  const url = `/api/calendar?start=${encodeURIComponent(now.toISOString())}&end=${encodeURIComponent(end.toISOString())}`
+  // Start from midnight local time so already-started today events are included
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0)
+  const end = new Date(startOfToday); end.setDate(end.getDate() + 7)
+  const url = `/api/calendar?start=${encodeURIComponent(startOfToday.toISOString())}&end=${encodeURIComponent(end.toISOString())}`
   const res = await fetch(url)
   const data = await res.json()
   if (!res.ok) throw new Error(data.error ?? 'Calendar error')
@@ -33,7 +41,7 @@ function formatEventDay(event) {
   const dStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
   if (dStr === todayStr) return 'Today'
   if (dStr === tomorrowStr) return 'Tomorrow'
-  return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
+  return d.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: '2-digit' })
 }
 
 function formatDuration(start, end) {
@@ -196,7 +204,6 @@ function HomeEventRow({ event: initialEvent }) {
   )
 }
 
-const PROJECT_NAMES = Object.fromEntries(Object.entries(PROJECTS).map(([name, id]) => [id, name]))
 
 
 function PriorityBadge({ task }) {
@@ -213,31 +220,33 @@ function PriorityDot({ priority }) {
   return null
 }
 
-function TaskRow({ task, onComplete, index = 0 }) {
+function TaskRow({ task, onComplete, index = 0, allTasks = [] }) {
+  const navigate = useNavigate()
   const [localTask, setLocalTask] = useState(task)
   const [pendingComplete, setPendingComplete] = useState(false)
   const [removing, setRemoving] = useState(false)
   const [completingAnim, setCompletingAnim] = useState(false)
   const [expanded, setExpanded] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
-  const [editContent, setEditContent] = useState(task.content)
-  const [editPriority, setEditPriority] = useState(task.priority ?? 1)
-  const [editDue, setEditDue] = useState(task.due?.date ?? '')
-  const [editDesc, setEditDesc] = useState(task.description ?? '')
-  const [saving, setSaving] = useState(false)
   const [swipeX, setSwipeX] = useState(0)
   const [isSwiping, setIsSwiping] = useState(false)
+  const [swipeTriggered, setSwipeTriggered] = useState(null)
+  const [activeNotif, setActiveNotif] = useState(null)
+  const [notifs, setNotifs] = useState(() => getNotificationsForTask(localTask.id))
   const timerRef = useRef(null)
   const holdRef = useRef(null)
   const isHoldRef = useRef(false)
   const swipeRef = useRef(null)
   const { bucket, isOverdue } = scoreTask(localTask)
 
+  const topNotif = notifs[0] ?? null
+  function refreshNotifs() { setNotifs(getNotificationsForTask(localTask.id)) }
+
   // When removing state triggers, wait for collapse animation then call API + remove
   useEffect(() => {
     if (!removing) return
     const t = setTimeout(async () => {
-      try { await closeTask(localTask.id); onComplete(localTask.id) }
+      try { onComplete(localTask.id) }
       catch { haptic.error(); setRemoving(false); setPendingComplete(false) }
     }, 380)
     return () => clearTimeout(t)
@@ -246,6 +255,7 @@ function TaskRow({ task, onComplete, index = 0 }) {
   function handleComplete(e) {
     e.stopPropagation()
     haptic.success()
+    haptic.fanfare()
     setCompletingAnim(true)
     setPendingComplete(true)
     timerRef.current = setTimeout(() => setRemoving(true), 5000)
@@ -265,10 +275,6 @@ function TaskRow({ task, onComplete, index = 0 }) {
     holdRef.current = setTimeout(() => {
       isHoldRef.current = true
       haptic.medium()
-      setEditContent(localTask.content)
-      setEditPriority(localTask.priority ?? 1)
-      setEditDue(localTask.due?.date ?? '')
-      setEditDesc(localTask.description ?? '')
       setEditOpen(true)
     }, 500)
   }
@@ -295,54 +301,55 @@ function TaskRow({ task, onComplete, index = 0 }) {
     if (!tr.decided) {
       if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return
       tr.decided = true
-      tr.horizontal = Math.abs(dx) > Math.abs(dy) * 1.2 && dx < 0
+      tr.horizontal = Math.abs(dx) > Math.abs(dy) * 1.2
     }
     if (!tr.horizontal) return
     clearTimeout(holdRef.current)
-    tr.dx = Math.max(dx, -96)
+    tr.dx = Math.max(Math.min(dx, 96), -96)
     setSwipeX(tr.dx)
     setIsSwiping(true)
+    // Trigger animation + sound once when crossing threshold
+    if (tr.dx < -70 && swipeTriggered !== 'left') {
+      setSwipeTriggered('left')
+    } else if (tr.dx > 70 && swipeTriggered !== 'right') {
+      setSwipeTriggered('right')
+      haptic.chat()
+    } else if (Math.abs(tr.dx) <= 70 && swipeTriggered) {
+      setSwipeTriggered(null)
+    }
   }
 
   function handleTouchEnd() {
     const tr = swipeRef.current
     swipeRef.current = null
+    setSwipeTriggered(null)
     if (!tr?.horizontal) { setIsSwiping(false); return }
     if (tr.dx < -70) {
       setSwipeX(-96)
       setTimeout(() => {
-        setSwipeX(0)
-        setIsSwiping(false)
+        setSwipeX(0); setIsSwiping(false)
         handleComplete({ stopPropagation: () => {} })
       }, 200)
+    } else if (tr.dx > 70 && localTask._projectName) {
+      setSwipeX(96)
+      setTimeout(() => {
+        setSwipeX(0); setIsSwiping(false)
+        haptic.light()
+        const bucket = localTask._projectName
+        const existing = findDiscussionByTask(bucket, localTask.id)
+        if (existing) {
+          navigate(`/buckets/${bucket}/discussions/${existing.id}`, { state: { from: '/' } })
+        } else {
+          const disc = newDiscussion(localTask.content, localTask.id)
+          saveDiscussion(bucket, disc)
+          navigate(`/buckets/${bucket}/discussions/${disc.id}`, { state: { from: '/' } })
+        }
+      }, 200)
     } else {
-      setSwipeX(0)
-      setIsSwiping(false)
+      setSwipeX(0); setIsSwiping(false)
     }
   }
 
-  async function handleSave() {
-    setSaving(true)
-    try {
-      const body = { content: editContent, priority: editPriority, description: editDesc }
-      if (editDue) body.due_date = editDue
-      await fetch(`/api/todoist?path=tasks/${localTask.id}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      })
-      haptic.success()
-      setLocalTask((prev) => ({
-        ...prev,
-        content: editContent,
-        priority: editPriority,
-        description: editDesc,
-        due: editDue ? { date: editDue } : prev.due,
-      }))
-      setEditOpen(false)
-    } catch { haptic.error() }
-    finally { setSaving(false) }
-  }
 
   return (
     <>
@@ -357,11 +364,20 @@ function TaskRow({ task, onComplete, index = 0 }) {
     <div style={{ overflow: 'hidden' }}>
     <div className="border-b border-[#F3EDF7] last:border-0 relative overflow-hidden"
       style={{ opacity: pendingComplete ? 0.45 : 1, transition: 'opacity 0.15s ease' }}>
-      {/* Swipe-left reveal */}
+      {/* Swipe-left reveal (complete) */}
       <div className="absolute right-0 top-0 bottom-0 w-24 bg-[#4CAF50] flex items-center justify-center rounded-r-2xl"
         style={{ opacity: swipeX < -10 ? Math.min((-swipeX - 10) / 50, 1) : 0 }}>
-        <svg xmlns="http://www.w3.org/2000/svg" height="22" viewBox="0 0 24 24" width="22" fill="white">
+        <svg xmlns="http://www.w3.org/2000/svg" height="22" viewBox="0 0 24 24" width="22" fill="white"
+          style={swipeTriggered === 'left' ? { animation: 'swipe-tick-pop 0.4s cubic-bezier(0.34,1.56,0.64,1) both' } : undefined}>
           <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+        </svg>
+      </div>
+      {/* Swipe-right reveal (discuss) */}
+      <div className="absolute left-0 top-0 bottom-0 w-24 bg-[#6750A4] flex items-center justify-center rounded-l-2xl"
+        style={{ opacity: swipeX > 10 ? Math.min((swipeX - 10) / 50, 1) : 0 }}>
+        <svg xmlns="http://www.w3.org/2000/svg" height="22" viewBox="0 -960 960 960" width="22" fill="white"
+          style={swipeTriggered === 'right' ? { animation: 'swipe-chat-pop 0.4s cubic-bezier(0.34,1.56,0.64,1) both' } : undefined}>
+          <path d="M240-400h320v-80H240v80Zm0-120h480v-80H240v80Zm0-120h480v-80H240v80ZM80-80v-720q0-33 23.5-56.5T160-880h640q33 0 56.5 23.5T880-800v480q0 33-23.5 56.5T800-240H240L80-80Z"/>
         </svg>
       </div>
       <div
@@ -401,10 +417,24 @@ function TaskRow({ task, onComplete, index = 0 }) {
           <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
             <PriorityDot priority={localTask.priority} />
             <PriorityBadge task={localTask} />
-            {bucket && <span className="text-xs text-[#79747E]">{bucket}</span>}
+            {localTask._sectionName
+              ? <span className="text-xs text-[#79747E]">{localTask._sectionName}</span>
+              : bucket && <span className="text-xs text-[#79747E]">{bucket}</span>
+            }
+            {bucket && findDiscussionByTask(bucket, localTask.id) && (
+              <svg xmlns="http://www.w3.org/2000/svg" height="11" viewBox="0 -960 960 960" width="11" fill="#6750A4">
+                <path d="M240-400h320v-80H240v80Zm0-120h480v-80H240v80Zm0-120h480v-80H240v80ZM80-80v-720q0-33 23.5-56.5T160-880h640q33 0 56.5 23.5T880-800v480q0 33-23.5 56.5T800-240H240L80-80Z"/>
+              </svg>
+            )}
           </div>
         </div>
 
+        {topNotif && !pendingComplete && (
+          <button
+            onClick={(e) => { e.stopPropagation(); setActiveNotif(topNotif) }}
+            className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ring-2 ring-white ${notifDotClass(topNotif.type)}`}
+          />
+        )}
         {pendingComplete ? (
           <button
             onClick={handleUndo}
@@ -443,7 +473,7 @@ function TaskRow({ task, onComplete, index = 0 }) {
           <div className="flex flex-wrap gap-x-3 gap-y-1">
             {localTask.due?.date && (
               <span className="text-xs text-[#79747E]">
-                Due {new Date(localTask.due.date + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}
+                Due {new Date(localTask.due.date + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: '2-digit' })}
               </span>
             )}
             {localTask.due?.datetime && (
@@ -474,56 +504,109 @@ function TaskRow({ task, onComplete, index = 0 }) {
     </div>
     </div>
 
-    <EditSheet open={editOpen} onClose={() => setEditOpen(false)} title="Edit task" onSave={handleSave} saving={saving}>
-      <div className="space-y-1">
-        <label className="text-xs font-medium text-[#49454F]">Task</label>
-        <textarea
-          value={editContent}
-          onChange={(ev) => setEditContent(ev.target.value)}
-          className="w-full rounded-xl border border-[#79747E] px-3 py-2 text-sm text-[#1C1B1F] focus:outline-none focus:border-[#6750A4] resize-none"
-          rows={2}
-        />
-      </div>
-      <div className="space-y-1">
-        <label className="text-xs font-medium text-[#49454F]">Priority</label>
-        <div className="flex gap-2">
-          {[{label:'P1',val:4},{label:'P2',val:3},{label:'P3',val:2},{label:'P4',val:1}].map(({label,val}) => (
-            <button key={val}
-              onClick={() => setEditPriority(val)}
-              className={`flex-1 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
-                editPriority === val ? 'bg-[#6750A4] text-white border-[#6750A4]' : 'border-[#CAC4D0] text-[#49454F]'
-              }`}
-            >{label}</button>
-          ))}
-        </div>
-      </div>
-      <div className="space-y-1">
-        <label className="text-xs font-medium text-[#49454F]">Due date</label>
-        <input
-          type="date"
-          value={editDue}
-          onChange={(ev) => setEditDue(ev.target.value)}
-          className="w-full rounded-xl border border-[#79747E] px-3 py-2 text-sm text-[#1C1B1F] focus:outline-none focus:border-[#6750A4]"
-        />
-      </div>
-      <div className="space-y-1">
-        <label className="text-xs font-medium text-[#49454F]">Notes</label>
-        <textarea
-          value={editDesc}
-          onChange={(ev) => setEditDesc(ev.target.value)}
-          placeholder="Add notes"
-          className="w-full rounded-xl border border-[#79747E] px-3 py-2 text-sm text-[#1C1B1F] focus:outline-none focus:border-[#6750A4] resize-none"
-          rows={3}
-        />
-      </div>
-    </EditSheet>
+    <TaskEditSheet
+      open={editOpen}
+      onClose={() => setEditOpen(false)}
+      task={localTask}
+      allTasks={allTasks}
+      onSaved={(updated) => setLocalTask((prev) => ({ ...prev, ...updated }))}
+    />
+    {activeNotif && (
+      <NotificationCard
+        notification={activeNotif}
+        onClose={() => setActiveNotif(null)}
+        onAccept={() => { acceptNotification(activeNotif.id); setActiveNotif(null); refreshNotifs() }}
+        onDecline={() => { dismissNotification(activeNotif.id); setActiveNotif(null); refreshNotifs() }}
+        onRespond={() => {
+          setActiveNotif(null)
+          navigate('/chief', { state: { initialMessage: `Re: ${activeNotif.description}`, from: '/' } })
+        }}
+      />
+    )}
     </>
+  )
+}
+
+const QUOTES = [
+  { text: "The details are not the details. They make the design.", author: "Charles Eames" },
+  { text: "You can't connect the dots looking forward; you can only connect them looking backwards.", author: "Steve Jobs" },
+  { text: "Compound interest is the eighth wonder of the world. He who understands it, earns it.", author: "Albert Einstein" },
+  { text: "Be the change you wish to see in the world.", author: "Gandhi" },
+  { text: "The quality of a father can be seen in the goals, dreams and aspirations he sets not only for himself, but for his family.", author: "Reed Markham" },
+  { text: "An architect's most useful tools are an eraser at the drafting board and a wrecking ball on the site.", author: "Frank Lloyd Wright" },
+  { text: "Small daily improvements over time lead to stunning results.", author: "Robin Sharma" },
+  { text: "The secret of getting ahead is getting started.", author: "Mark Twain" },
+  { text: "Your body is your most priceless possession. Take care of it.", author: "Jack LaLanne" },
+  { text: "A man who dares to waste one hour of time has not discovered the value of life.", author: "Charles Darwin" },
+  { text: "The best time to plant a tree was 20 years ago. The second best time is now.", author: "Chinese Proverb" },
+  { text: "Design is not just what it looks like and feels like. Design is how it works.", author: "Steve Jobs" },
+  { text: "It always seems impossible until it's done.", author: "Nelson Mandela" },
+  { text: "The most important investment you can make is in yourself.", author: "Warren Buffett" },
+  { text: "We do not remember days, we remember moments.", author: "Cesare Pavese" },
+  { text: "Architecture is the learned game, correct and magnificent, of forms assembled in the light.", author: "Le Corbusier" },
+  { text: "What you do today can improve all your tomorrows.", author: "Ralph Marston" },
+  { text: "The groundwork of all happiness is health.", author: "Leigh Hunt" },
+  { text: "Your children need your presence more than your presents.", author: "Jesse Jackson" },
+  { text: "A good system shortens the road to the goal.", author: "Orison Swett Marden" },
+  { text: "Build your own dreams, or someone else will hire you to build theirs.", author: "Farrah Gray" },
+  { text: "The first wealth is health.", author: "Ralph Waldo Emerson" },
+  { text: "You will never always be motivated. You have to learn to be disciplined.", author: "Unknown" },
+  { text: "Success is the sum of small efforts, repeated day in and day out.", author: "Robert Collier" },
+  { text: "The home should be the treasure chest of living.", author: "Le Corbusier" },
+  { text: "Don't count the days, make the days count.", author: "Muhammad Ali" },
+  { text: "Every moment is a fresh beginning.", author: "T.S. Eliot" },
+  { text: "Work hard in silence, let success be your noise.", author: "Frank Ocean" },
+  { text: "You miss 100% of the shots you don't take.", author: "Wayne Gretzky" },
+  { text: "The scariest moment is always just before you start.", author: "Stephen King" },
+  { text: "To design is much more than simply to assemble, to order, or even to edit: it is to add value and meaning.", author: "Paul Rand" },
+  { text: "Nothing will work unless you do.", author: "Maya Angelou" },
+  { text: "The key is not to prioritise what's on your schedule, but to schedule your priorities.", author: "Stephen Covey" },
+  { text: "A strong man stands up for himself. A stronger man stands up for others.", author: "Unknown" },
+  { text: "You are the average of the five people you spend the most time with.", author: "Jim Rohn" },
+  { text: "Don't wish it were easier; wish you were better.", author: "Jim Rohn" },
+  { text: "The goal is not to be perfect by the end. The goal is to be better today.", author: "Simon Sinek" },
+  { text: "Good enough never is.", author: "Debbi Fields" },
+  { text: "Take care of your body. It's the only place you have to live.", author: "Jim Rohn" },
+  { text: "The future belongs to those who believe in the beauty of their dreams.", author: "Eleanor Roosevelt" },
+  { text: "Either you run the day or the day runs you.", author: "Jim Rohn" },
+  { text: "A home is a kingdom of its own in the midst of the world.", author: "Dietrich Bonhoeffer" },
+  { text: "If you want to go fast, go alone. If you want to go far, go together.", author: "African Proverb" },
+  { text: "The secret to getting ahead is getting started.", author: "Agatha Christie" },
+  { text: "Energy and persistence conquer all things.", author: "Benjamin Franklin" },
+  { text: "The way to get started is to quit talking and begin doing.", author: "Walt Disney" },
+  { text: "You don't have to be great to start, but you have to start to be great.", author: "Zig Ziglar" },
+  { text: "Do not wait to strike till the iron is hot, but make it hot by striking.", author: "W.B. Yeats" },
+  { text: "The expert in anything was once a beginner.", author: "Helen Hayes" },
+  { text: "Start where you are. Use what you have. Do what you can.", author: "Arthur Ashe" },
+  { text: "A year from now you will wish you had started today.", author: "Karen Lamb" },
+  { text: "It's not about having time, it's about making time.", author: "Unknown" },
+  { text: "In the middle of every difficulty lies opportunity.", author: "Albert Einstein" },
+  { text: "Simplicity is the ultimate sophistication.", author: "Leonardo da Vinci" },
+]
+
+function getDailyQuote() {
+  const now = new Date()
+  const start = new Date(now.getFullYear(), 0, 0)
+  const dayOfYear = Math.floor((now - start) / (1000 * 60 * 60 * 24))
+  return QUOTES[dayOfYear % QUOTES.length]
+}
+
+function DailyQuote() {
+  const q = getDailyQuote()
+  return (
+    <div className="bg-[#F3EDF7] rounded-2xl px-4 py-3 mb-4" style={{ animation: 'fade-up 0.6s cubic-bezier(0.22,1,0.36,1) 0.1s both' }}>
+      <p className="text-xs font-medium text-[#6750A4] mb-1">Quote of the day</p>
+      <p className="text-sm text-[#1C1B1F] leading-snug italic">"{q.text}"</p>
+      <p className="text-xs text-[#79747E] mt-1.5">&mdash; {q.author}</p>
+    </div>
   )
 }
 
 export default function Home() {
   const navigate = useNavigate()
-  const today = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
+  const _d = new Date()
+  const ordinal = (n) => { const s = ['th','st','nd','rd']; const v = n % 100; return n + (s[(v-20)%10] || s[v] || s[0]) }
+  const today = _d.toLocaleDateString('en-GB', { weekday: 'long' }) + ', ' + ordinal(_d.getDate()) + ' ' + _d.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
   const hour = new Date().getHours()
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
 
@@ -531,6 +614,10 @@ export default function Home() {
   const [loading, setLoading]         = useState(true)
   const [refreshing, setRefreshing]   = useState(false)
   const [error, setError]             = useState(null)
+  const [lastRefreshed, setLastRefreshed] = useState(null)
+  const [lastWeeklyReview, setLastWeeklyReview] = useState(() => {
+    try { const s = localStorage.getItem('lastWeeklyReview'); return s ? new Date(s) : null } catch { return null }
+  })
   const [events, setEvents]           = useState([])
   const [eventsLoading, setEventsLoading] = useState(true)
   const [quickAddOpen, setQuickAddOpen] = useState(false)
@@ -542,15 +629,19 @@ export default function Home() {
 
   function loadTasks(showRefreshing = false) {
     if (showRefreshing) setRefreshing(true)
-    else setLoading(true)
-    getAllTasks()
-      .then((data) => data.map((t) => ({ ...t, _projectName: PROJECT_NAMES[t.project_id] })))
-      .then(setTasks)
-      .catch((e) => setError(e.message))
-      .finally(() => { setLoading(false); setRefreshing(false) })
+    const cached = getCachedTasks()
+    setTasks(cached)
+    setLastRefreshed(new Date())
+    setLoading(false)
+    setRefreshing(false)
   }
 
   useEffect(() => { loadTasks() }, [])
+  useEffect(() => {
+    return onSyncChange('last_weekly_review', () => {
+      try { const s = localStorage.getItem('lastWeeklyReview'); setLastWeeklyReview(s ? new Date(s) : null) } catch {}
+    })
+  }, [])
   useEffect(() => {
     fetchUpcomingEvents()
       .then(setEvents)
@@ -596,21 +687,28 @@ export default function Home() {
     }
   }, [])
 
-  function removeTask(id) { setTasks((prev) => prev.filter((t) => t.id !== id)) }
+  function removeTask(id) {
+    setTasks((prev) => {
+      const updated = prev.filter((t) => t.id !== id)
+      saveToCache(getCachedTasks().filter((t) => t.id !== id))
+      return updated
+    })
+  }
 
   function handleSend(content, attachmentName) {
-    navigate('/chief', { state: { initialMessage: content, attachmentName } })
+    navigate('/chief', { state: { initialMessage: content, attachmentName, from: '/' } })
   }
 
   const { active, someday } = prioritise(tasks)
   const todayStr = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` })()
-  const todayCount   = tasks.filter((t) => t.due?.date === todayStr).length
+  const todayCount   = tasks.filter((t) => t.due?.date?.slice(0, 10) === todayStr).length
   const p1Count      = tasks.filter((t) => t.priority === 4).length
   const overdueCount = active.filter((t) => scoreTask(t).isOverdue).length
   const focusList    = active.slice(0, 8)
   const todayEvents  = events.filter((e) => {
-    const d = e.start?.date ?? e.start?.dateTime?.split('T')[0]
-    return d === todayStr
+    if (e.start?.date) return e.start.date === todayStr
+    if (e.start?.dateTime) return new Date(e.start.dateTime).toLocaleDateString('en-CA') === todayStr
+    return false
   })
 
   return (
@@ -630,17 +728,28 @@ export default function Home() {
             <p className="text-xs text-[#49454F]">{today}</p>
             <h1 className="text-xl font-semibold text-[#1C1B1F]">{greeting}, Yogesh</h1>
           </div>
-          <button
-            onClick={() => loadTasks(true)}
-            disabled={refreshing}
-            className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full bg-[#EADDFF] text-[#6750A4] hover:bg-[#D8CBFF] transition-colors disabled:opacity-50 mt-1"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" height="14" viewBox="0 -960 960 960" width="14" fill="currentColor" className={refreshing ? 'animate-spin' : ''}>
-              <path d="M480-160q-134 0-227-93t-93-227q0-134 93-227t227-93q69 0 132 28.5T720-690v-110h80v280H520v-80h168q-32-56-87.5-88T480-720q-100 0-170 70t-70 170q0 100 70 170t170 70q77 0 139-44t87-116h84q-28 106-114 173t-196 67Z" />
-            </svg>
-            {refreshing ? 'Refreshing…' : 'Refresh all'}
-          </button>
+          <div className="flex flex-col gap-1.5 items-end mt-1">
+            <button
+              onClick={() => loadTasks(true)}
+              disabled={refreshing}
+              className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full bg-[#EADDFF] text-[#6750A4] hover:bg-[#D8CBFF] transition-colors disabled:opacity-50"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" height="14" viewBox="0 -960 960 960" width="14" fill="currentColor" className={refreshing ? 'animate-spin' : ''}>
+                <path d="M480-160q-134 0-227-93t-93-227q0-134 93-227t227-93q69 0 132 28.5T720-690v-110h80v280H520v-80h168q-32-56-87.5-88T480-720q-100 0-170 70t-70 170q0 100 70 170t170 70q77 0 139-44t87-116h84q-28 106-114 173t-196 67Z" />
+              </svg>
+              {refreshing ? 'Refreshing…' : 'Refresh all'}
+            </button>
+            <button
+              onClick={() => navigate('/weekly-review')}
+              className="flex items-center gap-1 text-xs font-medium px-3 py-1.5 rounded-full bg-[#F3EDF7] text-[#6750A4] hover:bg-[#EADDFF] transition-colors"
+            >
+              Weekly review →
+            </button>
+          </div>
         </div>
+
+        {/* Quote of the day */}
+        <DailyQuote />
 
         {/* Stats */}
         <div className="grid grid-cols-4 gap-2 mb-4">
@@ -660,10 +769,19 @@ export default function Home() {
 
         {/* Priority list */}
         <div className="bg-white border border-[#CAC4D0] rounded-2xl p-4 mb-3 shadow-sm">
-          <div className="flex items-center justify-between mb-2">
-            <h2 className="text-sm font-semibold text-[#1C1B1F]">Priority list</h2>
-            {!loading && active.length > 8 && (
-              <span className="text-xs text-[#79747E]">{active.length} active</span>
+          <div className="mb-2">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-[#1C1B1F]">Priority list</h2>
+              {lastRefreshed && (
+                <span className="text-[11px] text-[#CAC4D0]">
+                  Updated {lastRefreshed.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}, {lastRefreshed.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+                </span>
+              )}
+            </div>
+            {lastWeeklyReview && (
+              <p className="text-[11px] text-[#CAC4D0] mt-0.5">
+                Last reviewed: {lastWeeklyReview.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short' })}, {lastWeeklyReview.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+              </p>
             )}
           </div>
 
@@ -685,21 +803,10 @@ export default function Home() {
           )}
 
           {!loading && !error && focusList.map((task, i) => (
-            <TaskRow key={task.id} task={task} onComplete={removeTask} index={i} />
+            <TaskRow key={task.id} task={task} onComplete={removeTask} index={i} allTasks={tasks} />
           ))}
         </div>
 
-        {/* Someday / Weekly Review */}
-        {!loading && someday.length > 0 && (
-          <div className="bg-[#F3EDF7] rounded-xl px-4 py-2.5 mb-3 flex items-center justify-between">
-            <p className="text-xs text-[#49454F]">
-              <span className="font-semibold text-[#6750A4]">{someday.length} someday</span> — no date, P4.
-            </p>
-            <button onClick={() => navigate('/weekly-review')} className="text-xs font-semibold text-[#6750A4] ml-2 flex-shrink-0">
-              Weekly review →
-            </button>
-          </div>
-        )}
 
         {/* Upcoming events */}
         <div className="bg-white border border-[#CAC4D0] rounded-2xl p-4 mb-4 shadow-sm">

@@ -18,8 +18,8 @@ const PROJECT_TO_BUCKET = Object.fromEntries(
 function daysDiff(dateStr) {
   const today = new Date()
   today.setHours(0, 0, 0, 0)
-  const due = new Date(dateStr)
-  due.setHours(0, 0, 0, 0)
+  // Append T00:00:00 so the date parses as local midnight, not UTC midnight
+  const due = new Date(dateStr + 'T00:00:00')
   return Math.round((due - today) / (1000 * 60 * 60 * 24))
 }
 
@@ -29,7 +29,7 @@ export function scoreTask(task) {
 
   const bucket = PROJECT_TO_BUCKET[task.project_id]
   const bucketWeight = BUCKET_WEIGHTS[bucket] ?? 5
-  const days = task.due ? daysDiff(task.due.date) : null
+  const days = task.due ? daysDiff(task.due.date.slice(0, 10)) : null
   const isOverdue = days !== null && days < 0
   const isToday = days === 0
   const isSoon = days !== null && days > 0 && days <= 3

@@ -1,94 +1,78 @@
-const PROJECTS = {
-  Finance:  '6gmVXCpMmXX8V5MV',
-  Health:   '6gmVXCm3jxXfXVWw',
-  Home:     '6gmVXCpQQxw3gFgw',
-  Work:     '6gmVXCv7j946mv75',
-  Family:   '6gmVXCpr8mc6mjjX',
-  Personal: '6gmcXJpGfj6gh4Gc',
-  Systems:  '6gmVXCmRw6X6cgpM',
-}
+const BUCKETS = ['Finance', 'Health', 'Work', 'Family', 'Home', 'Personal', 'Systems']
 
 const TOOLS = [
   {
     name: 'create_task',
-    description: 'Create a new task in Todoist for Yogesh.',
+    description: 'Create a new task in the Life OS task list. To create a subtask, pass the parent task\'s ID as parent_id.',
     input_schema: {
       type: 'object',
       properties: {
         content:      { type: 'string', description: 'Task title' },
         priority:     { type: 'integer', description: '4=P1 (urgent), 3=P2, 2=P3, 1=P4 (someday)', enum: [1,2,3,4] },
-        due_string:   { type: 'string', description: 'Due date in natural language, e.g. "today", "tomorrow", "next Monday"' },
-        project_name: { type: 'string', description: 'Bucket: Finance, Health, Work, Family, Home, Personal, or Systems', enum: Object.keys(PROJECTS) },
+        due_string:   { type: 'string', description: 'Due date in ISO format YYYY-MM-DD, e.g. "2026-06-15"' },
+        project_name: { type: 'string', description: 'Bucket: Finance, Health, Work, Family, Home, Personal, or Systems', enum: BUCKETS },
+        parent_id:    { type: 'string', description: 'ID of the parent task to nest this as a subtask.' },
       },
       required: ['content'],
     },
   },
   {
     name: 'complete_task',
-    description: 'Mark an existing Todoist task as complete.',
+    description: 'Mark an existing task as complete and remove it from the active task list.',
     input_schema: {
       type: 'object',
       properties: {
-        task_id: { type: 'string', description: 'The Todoist task ID to complete' },
+        task_id: { type: 'string', description: 'The task ID to complete' },
       },
       required: ['task_id'],
     },
   },
   {
     name: 'update_task',
-    description: 'Update an existing Todoist task (change priority, due date, or content).',
+    description: 'Update an existing task (change priority, due date, or content).',
     input_schema: {
       type: 'object',
       properties: {
-        task_id:    { type: 'string', description: 'The Todoist task ID to update' },
+        task_id:    { type: 'string', description: 'The task ID to update' },
         content:    { type: 'string', description: 'New task title (omit to keep existing)' },
         priority:   { type: 'integer', description: '4=P1, 3=P2, 2=P3, 1=P4', enum: [1,2,3,4] },
-        due_string: { type: 'string', description: 'New due date in natural language, e.g. "next Friday"' },
+        due_string: { type: 'string', description: 'New due date in ISO format YYYY-MM-DD' },
       },
       required: ['task_id'],
     },
   },
 ]
 
-async function executeTool(name, input) {
-  const key = process.env.TODOIST_API_KEY
-  if (!key) return { error: 'TODOIST_API_KEY not configured' }
-
+// Mutates the tasks array in place and returns a result summary
+function executeTool(name, input, tasks) {
   if (name === 'create_task') {
-    const body = { content: input.content }
-    if (input.priority)     body.priority = input.priority
-    if (input.due_string)   body.due_string = input.due_string
-    if (input.project_name) body.project_id = PROJECTS[input.project_name]
-    const r = await fetch('https://api.todoist.com/rest/v2/tasks', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    })
-    if (!r.ok) return { error: `Todoist error: ${r.status}` }
-    const t = await r.json()
-    return { success: true, task_id: t.id, message: `Task created: "${t.content}"` }
+    const newTask = {
+      id: `local_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      content: input.content,
+      priority: input.priority ?? 1,
+      _projectName: input.project_name ?? null,
+      parent_id: input.parent_id ?? null,
+      due: input.due_string ? { date: input.due_string } : null,
+      created_at: new Date().toISOString(),
+      _local: true,
+    }
+    tasks.push(newTask)
+    return { success: true, task_id: newTask.id, message: `Task created: "${newTask.content}"` }
   }
 
   if (name === 'complete_task') {
-    const r = await fetch(`https://api.todoist.com/rest/v2/tasks/${input.task_id}/close`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${key}` },
-    })
-    if (!r.ok) return { error: `Todoist error: ${r.status}` }
-    return { success: true, message: 'Task completed.' }
+    const idx = tasks.findIndex((t) => t.id === input.task_id)
+    if (idx === -1) return { error: `Task not found: ${input.task_id}` }
+    tasks.splice(idx, 1)
+    return { success: true, message: 'Task completed and removed.' }
   }
 
   if (name === 'update_task') {
-    const body = {}
-    if (input.content)    body.content = input.content
-    if (input.priority)   body.priority = input.priority
-    if (input.due_string) body.due_string = input.due_string
-    const r = await fetch(`https://api.todoist.com/rest/v2/tasks/${input.task_id}`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    })
-    if (!r.ok) return { error: `Todoist error: ${r.status}` }
+    const task = tasks.find((t) => t.id === input.task_id)
+    if (!task) return { error: `Task not found: ${input.task_id}` }
+    if (input.content)    task.content = input.content
+    if (input.priority)   task.priority = input.priority
+    if (input.due_string) task.due = { date: input.due_string }
     return { success: true, message: 'Task updated.' }
   }
 
@@ -105,17 +89,20 @@ export default async function handler(req, res) {
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not configured' })
 
-  const { messages, system } = req.body ?? {}
+  const { messages, system, tasks: initialTasks, model: requestedModel } = req.body ?? {}
   if (!messages?.length) return res.status(400).json({ error: 'messages required' })
+  // Mutable local copy of tasks — tools mutate this array
+  const tasks = Array.isArray(initialTasks) ? initialTasks.map((t) => ({ ...t })) : []
 
   // Streaming branch — agentic loop with tool support
   if (req.query.stream === '1') {
     res.setHeader('Content-Type', 'text/event-stream; charset=utf-8')
     res.setHeader('Cache-Control', 'no-cache')
     res.setHeader('X-Accel-Buffering', 'no')
-    res.setHeader('Access-Control-Allow-Origin', '*')
     try {
       let currentMessages = messages
+      let totalInputTokens = 0
+      let totalOutputTokens = 0
 
       for (let round = 0; round < 5; round++) {
         const upstream = await fetch('https://api.anthropic.com/v1/messages', {
@@ -123,11 +110,12 @@ export default async function handler(req, res) {
           headers: {
             'x-api-key': apiKey,
             'anthropic-version': '2023-06-01',
+
             'content-type': 'application/json',
           },
           body: JSON.stringify({
-            model: 'claude-haiku-4-5-20251001',
-            max_tokens: 1024,
+            model: 'claude-sonnet-4-5',
+            max_tokens: 4096,
             stream: true,
             ...(system ? { system } : {}),
             messages: currentMessages,
@@ -147,8 +135,6 @@ export default async function handler(req, res) {
         // Index → accumulated block (text or tool_use)
         const blocks = {}
         let stopReason = null
-        let roundInputTokens = 0
-        let roundOutputTokens = 0
 
         while (true) {
           const { done, value } = await reader.read()
@@ -183,12 +169,12 @@ export default async function handler(req, res) {
               }
 
               if (evt.type === 'message_start') {
-                roundInputTokens += evt.message?.usage?.input_tokens ?? 0
+                totalInputTokens += evt.message?.usage?.input_tokens ?? 0
               }
 
               if (evt.type === 'message_delta') {
                 stopReason = evt.delta?.stop_reason
-                roundOutputTokens += evt.usage?.output_tokens ?? 0
+                totalOutputTokens += evt.usage?.output_tokens ?? 0
               }
             } catch {}
           }
@@ -203,13 +189,11 @@ export default async function handler(req, res) {
           )
           const toolUseBlocks = assistantContent.filter((b) => b.type === 'tool_use')
 
-          // Execute all tools in parallel
-          const toolResults = await Promise.all(
-            toolUseBlocks.map(async (block) => {
-              const result = await executeTool(block.name, block.input)
-              return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(result) }
-            })
-          )
+          // Execute all tools (synchronously against shared tasks array)
+          const toolResults = toolUseBlocks.map((block) => {
+            const result = executeTool(block.name, block.input, tasks)
+            return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(result) }
+          })
 
           currentMessages = [
             ...currentMessages,
@@ -222,7 +206,8 @@ export default async function handler(req, res) {
         break // end_turn or max_tokens — done
       }
 
-      res.write(`data: ${JSON.stringify({ usage: { input_tokens: roundInputTokens, output_tokens: roundOutputTokens } })}\n\n`)
+      res.write(`data: ${JSON.stringify({ usage: { input_tokens: totalInputTokens, output_tokens: totalOutputTokens } })}\n\n`)
+      if (initialTasks) res.write(`data: ${JSON.stringify({ tasks_updated: tasks })}\n\n`)
       res.write('data: [DONE]\n\n')
       res.end()
     } catch (err) {
@@ -246,9 +231,9 @@ export default async function handler(req, res) {
           'content-type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'claude-haiku-4-5-20251001',
-          max_tokens: 1024,
-          ...(system ? { system } : {}),
+          model: requestedModel ?? 'claude-haiku-4-5-20251001',
+          max_tokens: 4096,
+          ...(system ? { system: Array.isArray(system) ? system.map(({ cache_control, ...b }) => b) : system } : {}),
           messages: currentMessages,
           tools: TOOLS,
         }),
@@ -265,13 +250,11 @@ export default async function handler(req, res) {
         break
       }
 
-      // Execute all tools in parallel
-      const toolResults = await Promise.all(
-        toolUseBlocks.map(async (block) => {
-          const result = await executeTool(block.name, block.input)
-          return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(result) }
-        })
-      )
+      // Execute all tools (synchronously against shared tasks array)
+      const toolResults = toolUseBlocks.map((block) => {
+        const result = executeTool(block.name, block.input, tasks)
+        return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(result) }
+      })
 
       currentMessages = [
         ...currentMessages,
@@ -280,7 +263,7 @@ export default async function handler(req, res) {
       ]
     }
 
-    res.status(200).json({ content: finalText })
+    res.status(200).json({ content: finalText, tasks: initialTasks ? tasks : undefined })
   } catch (err) {
     res.status(500).json({ error: err.message })
   }

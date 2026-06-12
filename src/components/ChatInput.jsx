@@ -236,7 +236,6 @@ export default function ChatInput({ placeholder, onSend, disabled, extraAbove, t
           ref={textareaRef}
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); doSend() } }}
           onPaste={async (e) => {
             const items = Array.from(e.clipboardData?.items ?? [])
             const imgItem = items.find((i) => i.type.startsWith('image/'))

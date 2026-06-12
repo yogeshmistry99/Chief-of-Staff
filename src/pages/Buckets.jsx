@@ -80,7 +80,7 @@ export default function Buckets() {
 
       {/* Chief of Staff tile */}
       <button
-        onClick={() => navigate('/chief')}
+        onClick={() => navigate('/chief', { state: { from: '/buckets' } })}
         className="bg-[#EADDFF] text-[#21005D] rounded-2xl p-4 text-left active:scale-[0.98] transition-transform shadow-sm mb-3 w-full flex items-center gap-3"
       >
         <span className="text-3xl flex-shrink-0">🎯</span>

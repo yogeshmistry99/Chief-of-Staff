@@ -1,8 +1,8 @@
 import { useState, useRef, useEffect } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
-import { getProjectTasks, PROJECTS } from '../lib/todoist'
+import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { sendMessageStream, SYSTEM_PROMPTS } from '../lib/claude'
 import { loadHeadConfig } from '../lib/headConfig'
+import { getCachedTasks, saveToCache } from '../lib/taskCache'
 import { getDiscussions, saveDiscussion, newDiscussion } from '../lib/discussions'
 import Markdown from '../components/Markdown'
 import ChatInput from '../components/ChatInput'
@@ -10,6 +10,8 @@ import ChatInput from '../components/ChatInput'
 export default function DiscussionThread() {
   const { bucket, id } = useParams()
   const navigate = useNavigate()
+  const location = useLocation()
+  const backTo = location.state?.from ?? `/buckets/${bucket}`
   const isNew = id === 'new'
 
   // Load existing discussion or initialise a new one
@@ -19,17 +21,9 @@ export default function DiscussionThread() {
   })
 
   const [editingTitle, setEditingTitle] = useState(isNew)
-  const [tasks, setTasks] = useState([])
+  const [tasks, setTasks] = useState(() => getCachedTasks())
   const inputRef = useRef(null)
   const endRef = useRef(null)
-
-  useEffect(() => {
-    const projectId = PROJECTS[bucket]
-    if (!projectId) return
-    getProjectTasks(projectId)
-      .then((data) => setTasks(data.map((t) => ({ ...t, _projectName: bucket }))))
-      .catch(() => {})
-  }, [bucket])
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [discussion?.messages])
   useEffect(() => { if (isNew) inputRef.current?.focus() }, [isNew])
@@ -60,6 +54,9 @@ export default function DiscussionThread() {
           if (!last?.streaming) return prev
           return { ...prev, messages: [...msgs.slice(0, -1), { ...last, content: last.content + chunk }] }
         })
+      }, tasks, (updatedTasks) => {
+        setTasks(updatedTasks)
+        saveToCache(updatedTasks)
       })
       setDiscussion((prev) => {
         if (!prev) return prev
@@ -83,7 +80,7 @@ export default function DiscussionThread() {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-3">
         <p className="text-sm text-[#49454F]">Discussion not found.</p>
-        <button onClick={() => navigate(`/buckets/${bucket}`)} className="text-xs text-[#6750A4]">← Back</button>
+        <button onClick={() => navigate(backTo)} className="text-xs text-[#6750A4]">← Back</button>
       </div>
     )
   }
@@ -95,7 +92,7 @@ export default function DiscussionThread() {
       {/* Header */}
       <div className="bg-white border-b border-[#CAC4D0] px-4 pt-4 pb-3">
         <div className="flex items-center gap-2">
-          <button onClick={() => navigate(`/buckets/${bucket}`)} className="text-[#6750A4] p-1 -ml-1 flex-shrink-0">
+          <button onClick={() => navigate(backTo)} className="text-[#6750A4] p-1 -ml-1 flex-shrink-0">
             <svg xmlns="http://www.w3.org/2000/svg" height="20" viewBox="0 -960 960 960" width="20" fill="currentColor">
               <path d="M560-240 320-480l240-240 56 56-184 184 184 184-56 56Z" />
             </svg>
@@ -123,14 +120,6 @@ export default function DiscussionThread() {
               </button>
             )}
             <p className="text-xs text-[#79747E]">{bucket} · Discussion</p>
-          </div>
-          <div className="flex gap-2 flex-shrink-0">
-            <button
-              onClick={() => alert('Add to tasks — coming soon.')}
-              className="text-xs font-medium px-3 py-1.5 rounded-full bg-[#EADDFF] text-[#6750A4] hover:bg-[#D8CBFF] transition-colors"
-            >
-              + Task
-            </button>
           </div>
         </div>
       </div>

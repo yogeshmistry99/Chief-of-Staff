@@ -157,7 +157,6 @@ export default function TaskEditSheet({ open, onClose, task, allTasks = [], task
   const [enterDir, setEnterDir] = useState(null)
   const [transitioning, setTransitioning] = useState(false)
   const swipeRef = useRef(null)
-
   // Field values for current task
   const [content, setContent] = useState('')
   const [priority, setPriority] = useState(1)
@@ -165,6 +164,7 @@ export default function TaskEditSheet({ open, onClose, task, allTasks = [], task
   const [description, setDescription] = useState('')
   const [subtasks, setSubtasks] = useState([])
   const [newSubtask, setNewSubtask] = useState('')
+  const [newSubtaskPriority, setNewSubtaskPriority] = useState(1)
 
   // Inline edit modes
   const [editingContent, setEditingContent] = useState(false)
@@ -209,7 +209,7 @@ export default function TaskEditSheet({ open, onClose, task, allTasks = [], task
     setDescription(task.description ?? '')
     setSubtasks(allTasks.filter((t) => t.parent_id === task.id))
     setEditingContent(false); setEditingDue(false); setEditingDesc(false)
-    setEditingSubtask(null); setNewSubtask('')
+    setEditingSubtask(null); setNewSubtask(''); setNewSubtaskPriority(1)
     clearTimeout(autoSaveRef.current)
   }, [task?.id, open])
 
@@ -347,12 +347,12 @@ export default function TaskEditSheet({ open, onClose, task, allTasks = [], task
     try {
       const res = await fetch('/api/todoist?path=tasks', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: newSubtask.trim(), parent_id: task.id, project_id: task.project_id }),
+        body: JSON.stringify({ content: newSubtask.trim(), parent_id: task.id, project_id: task.project_id, priority: newSubtaskPriority }),
       })
       if (!res.ok) throw new Error()
       const created = await res.json()
       setSubtasks((prev) => [...prev, created])
-      setNewSubtask(''); haptic.success()
+      setNewSubtask(''); setNewSubtaskPriority(1); haptic.success()
     } catch { haptic.error() }
   }
 
@@ -392,62 +392,63 @@ export default function TaskEditSheet({ open, onClose, task, allTasks = [], task
         className="relative w-full bg-white rounded-t-3xl shadow-2xl flex flex-col max-h-[88vh]"
         style={{ transform: sheetTransform, transition: sheetTransition, willChange: 'transform' }}>
 
-        {/* Drag handle */}
-        <div data-drag-handle className="flex justify-center pt-3 pb-1 flex-shrink-0 cursor-grab touch-none select-none"
+        {/* Drag handle — pip row with nav arrows at far ends */}
+        <div className="flex-shrink-0 cursor-grab active:cursor-grabbing touch-none select-none"
           onPointerDown={onHandleDown} onPointerMove={onHandleMove} onPointerUp={onHandleUp} onPointerCancel={onHandleUp}>
-          <div className="w-10 h-1.5 rounded-full bg-[#CAC4D0]" />
-        </div>
-
-        {/* Header row */}
-        <div className="flex items-center justify-between px-4 pb-2 flex-shrink-0">
-          <div className="flex items-center gap-2">
-            <h2 className="text-base font-semibold text-[#1C1B1F]">Edit task</h2>
-            {autoSaved && (
-              <span className="text-xs text-green-600 flex items-center gap-1" style={{ animation: 'fade-up 0.2s ease' }}>
-                <svg xmlns="http://www.w3.org/2000/svg" height="12" viewBox="0 -960 960 960" width="12" fill="currentColor"><path d="M382-240 154-468l57-57 171 171 367-367 57 57-424 424Z"/></svg>
-                Saved
-              </span>
-            )}
+          <div className="flex items-center pt-3 pb-1 px-2">
+            {tasks?.length > 1
+              ? <>
+                  <button onPointerDown={(e) => e.stopPropagation()} onClick={() => hasPrev && swapTask(curIdx - 1, 'right')}
+                    disabled={!hasPrev} className="text-[#79747E] disabled:opacity-25 p-1 cursor-pointer flex-shrink-0">
+                    <svg xmlns="http://www.w3.org/2000/svg" height="18" viewBox="0 -960 960 960" width="18" fill="currentColor"><path d="M560-240 320-480l240-240 56 56-184 184 184 184-56 56Z"/></svg>
+                  </button>
+                  <div className="flex-1 flex items-center justify-center gap-2">
+                    <div className="w-8 h-1 rounded-full bg-[#CAC4D0]" />
+                    <span className="text-[10px] text-[#CAC4D0]">{curIdx + 1}/{tasks.length}</span>
+                    {autoSaved && (
+                      <span className="text-[10px] text-green-600 flex items-center gap-0.5">
+                        <svg xmlns="http://www.w3.org/2000/svg" height="10" viewBox="0 -960 960 960" width="10" fill="currentColor"><path d="M382-240 154-468l57-57 171 171 367-367 57 57-424 424Z"/></svg>
+                        Saved
+                      </span>
+                    )}
+                    <div className="w-8 h-1 rounded-full bg-[#CAC4D0]" />
+                  </div>
+                  <button onPointerDown={(e) => e.stopPropagation()} onClick={() => hasNext && swapTask(curIdx + 1, 'left')}
+                    disabled={!hasNext} className="text-[#79747E] disabled:opacity-25 p-1 cursor-pointer flex-shrink-0">
+                    <svg xmlns="http://www.w3.org/2000/svg" height="18" viewBox="0 -960 960 960" width="18" fill="currentColor"><path d="M400-240 640-480 400-720l-56 56 184 184-184 184 56 56Z"/></svg>
+                  </button>
+                </>
+              : <div className="flex-1 flex items-center justify-center gap-2">
+                  <div className="w-10 h-1.5 rounded-full bg-[#CAC4D0]" />
+                  {autoSaved && (
+                    <span className="text-[10px] text-green-600 flex items-center gap-0.5">
+                      <svg xmlns="http://www.w3.org/2000/svg" height="10" viewBox="0 -960 960 960" width="10" fill="currentColor"><path d="M382-240 154-468l57-57 171 171 367-367 57 57-424 424Z"/></svg>
+                      Saved
+                    </span>
+                  )}
+                </div>
+            }
           </div>
-          {tasks?.length > 1 && (
-            <div className="flex items-center gap-2">
-              <button onClick={() => hasPrev && swapTask(curIdx - 1, 'right')} disabled={!hasPrev}
-                className="text-[#79747E] disabled:opacity-25 p-1">
-                <svg xmlns="http://www.w3.org/2000/svg" height="18" viewBox="0 -960 960 960" width="18" fill="currentColor"><path d="M560-240 320-480l240-240 56 56-184 184 184 184-56 56Z"/></svg>
-              </button>
-              <span className="text-xs text-[#CAC4D0]">{curIdx + 1}/{tasks.length}</span>
-              <button onClick={() => hasNext && swapTask(curIdx + 1, 'left')} disabled={!hasNext}
-                className="text-[#79747E] disabled:opacity-25 p-1">
-                <svg xmlns="http://www.w3.org/2000/svg" height="18" viewBox="0 -960 960 960" width="18" fill="currentColor"><path d="M400-240 640-480 400-720l-56 56 184 184-184 184 56 56Z"/></svg>
-              </button>
-            </div>
-          )}
-          {!tasks?.length && (
-            <button onClick={dismiss} className="p-1 text-[#79747E]">
-              <svg xmlns="http://www.w3.org/2000/svg" height="20" viewBox="0 -960 960 960" width="20" fill="currentColor"><path d="m256-200-56-56 224-224-224-224 56-56 224 224 224-224 56 56-224 224 224 224-56 56-224-224-224 224Z"/></svg>
-            </button>
-          )}
         </div>
 
-        {/* Swipeable content area */}
-        <div className="flex-1 overflow-y-auto"
-          onTouchStart={onContentTouchStart} onTouchMove={onContentTouchMove} onTouchEnd={onContentTouchEnd}>
+        {/* Content area */}
+        <div className="flex-1 overflow-y-auto">
           <div style={contentAnim} className="px-4 space-y-px pb-2">
 
             {/* Task name */}
             <div className="flex items-start gap-2.5 py-3 border-b border-[#F3EDF7]">
-              <PriorityPill value={priority} onChange={setPriority} />
+              <div className="flex flex-col items-center gap-0.5 flex-shrink-0">
+                <PriorityPill value={priority} onChange={setPriority} />
+                <span className="text-[9px] text-[#CAC4D0] leading-none">hold</span>
+              </div>
               <div className="flex-1 min-w-0">
                 {editingContent
                   ? <textarea autoFocus value={content} onChange={(e) => setContent(e.target.value)}
                       onBlur={() => setEditingContent(false)} rows={2}
-                      className="w-full text-sm text-[#1C1B1F] resize-none outline-none border-b border-[#6750A4] bg-transparent leading-snug" />
-                  : <p className="text-sm text-[#1C1B1F] leading-snug">{content || 'No title'}</p>
+                      className="w-full text-sm font-bold text-[#1C1B1F] resize-none outline-none border-b border-[#6750A4] bg-transparent leading-snug" />
+                  : <p onClick={() => setEditingContent(true)} className="text-sm font-bold text-[#1C1B1F] leading-snug cursor-text">{content || 'No title'}</p>
                 }
               </div>
-              {!editingContent && (
-                <button onClick={() => setEditingContent(true)} className="text-[#79747E] p-1 flex-shrink-0"><EditIcon /></button>
-              )}
             </div>
 
             {/* Due date */}
@@ -466,22 +467,24 @@ export default function TaskEditSheet({ open, onClose, task, allTasks = [], task
               )}
             </div>
 
-            {/* Notes */}
-            <div className="flex items-start gap-2 py-3 border-b border-[#F3EDF7]">
-              <span className="text-xs text-[#79747E] w-8 flex-shrink-0 mt-0.5">Notes</span>
-              <div className="flex-1 min-w-0">
-                {editingDesc
-                  ? <textarea autoFocus value={description} onChange={(e) => setDescription(e.target.value)}
-                      onBlur={() => setEditingDesc(false)} rows={3} placeholder="Add notes…"
-                      className="w-full text-sm text-[#1C1B1F] resize-none outline-none border-b border-[#6750A4] bg-transparent leading-relaxed" />
-                  : <p className="text-sm text-[#1C1B1F] leading-relaxed whitespace-pre-wrap">
-                      {description || <span className="text-[#CAC4D0]">Add notes…</span>}
-                    </p>
-                }
+            {/* Description */}
+            <div className="py-3 border-b border-[#F3EDF7]">
+              <p className="text-xs font-semibold text-[#49454F] mb-1.5">Description</p>
+              <div className="flex items-start gap-2">
+                <div className="flex-1 min-w-0">
+                  {editingDesc
+                    ? <textarea autoFocus value={description} onChange={(e) => setDescription(e.target.value)}
+                        onBlur={() => setEditingDesc(false)} rows={3} placeholder="Add description…"
+                        className="w-full text-sm text-[#1C1B1F] resize-none outline-none border-b border-[#6750A4] bg-transparent leading-relaxed" />
+                    : <p className="text-sm text-[#1C1B1F] leading-relaxed whitespace-pre-wrap">
+                        {description || <span className="text-[#CAC4D0]">Add description…</span>}
+                      </p>
+                  }
+                </div>
+                {!editingDesc && (
+                  <button onClick={() => setEditingDesc(true)} className="text-[#79747E] p-1 flex-shrink-0"><EditIcon /></button>
+                )}
               </div>
-              {!editingDesc && (
-                <button onClick={() => setEditingDesc(true)} className="text-[#79747E] p-1 flex-shrink-0"><EditIcon /></button>
-              )}
             </div>
 
             {/* Subtasks */}
@@ -499,17 +502,20 @@ export default function TaskEditSheet({ open, onClose, task, allTasks = [], task
               )}
               <SubtaskList subtasks={subtasks} setSubtasks={setSubtasks}
                 onEditSubtask={(sub) => setEditingSubtask({ id: sub.id, content: sub.content })} />
-              <div className="flex items-center gap-2 mt-2">
-                <span className="text-[#CAC4D0]">
-                  <svg xmlns="http://www.w3.org/2000/svg" height="16" viewBox="0 -960 960 960" width="16" fill="currentColor"><path d="M440-440H200v-80h240v-240h80v240h240v80H520v240h-80v-240Z"/></svg>
-                </span>
+              {/* Add subtask row */}
+              <div className="flex items-center gap-2 mt-2 py-1">
+                <div className="flex flex-col items-center gap-0.5 flex-shrink-0">
+                  <PriorityPill value={newSubtaskPriority} onChange={setNewSubtaskPriority} size="sm" />
+                  <span className="text-[9px] text-[#CAC4D0] leading-none">hold</span>
+                </div>
                 <input value={newSubtask} onChange={(e) => setNewSubtask(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter') handleAddSubtask() }}
                   placeholder="Add subtask…"
                   className="flex-1 text-sm text-[#1C1B1F] placeholder:text-[#CAC4D0] outline-none bg-transparent" />
-                {newSubtask.trim() && (
-                  <button onClick={handleAddSubtask} className="text-xs font-semibold text-[#6750A4]">Add</button>
-                )}
+                <button onClick={handleAddSubtask} disabled={!newSubtask.trim()}
+                  className="w-7 h-7 rounded-full bg-[#6750A4] disabled:bg-[#CAC4D0] text-white flex items-center justify-center flex-shrink-0 transition-colors">
+                  <svg xmlns="http://www.w3.org/2000/svg" height="16" viewBox="0 -960 960 960" width="16" fill="currentColor"><path d="M440-440H200v-80h240v-240h80v240h240v80H520v240h-80v-240Z"/></svg>
+                </button>
               </div>
             </div>
           </div>

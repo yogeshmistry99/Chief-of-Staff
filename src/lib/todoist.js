@@ -21,9 +21,16 @@ async function get(path, params = {}) {
   return Array.isArray(data) ? data : (data.results ?? data)
 }
 
-// All tasks across all 7 projects
+// All tasks across all 7 projects — fetch per-project to avoid pagination gaps
 export async function getAllTasks() {
-  return get('tasks')
+  const projectIds = Object.values(PROJECTS)
+  const [taskResults, sectionResults] = await Promise.all([
+    Promise.all(projectIds.map((id) => getProjectTasks(id))),
+    Promise.all(projectIds.map((id) => getProjectSections(id))),
+  ])
+  const sectionMap = {}
+  sectionResults.flat().forEach((s) => { sectionMap[s.id] = s.name })
+  return taskResults.flat().map((t) => ({ ...t, _sectionName: sectionMap[t.section_id] ?? null }))
 }
 
 // Tasks for a single project
@@ -52,11 +59,11 @@ export function priorityLabel(p) {
 export function isToday(task) {
   if (!task.due) return false
   const _d = new Date(); const today = `${_d.getFullYear()}-${String(_d.getMonth()+1).padStart(2,'0')}-${String(_d.getDate()).padStart(2,'0')}`
-  return task.due.date === today
+  return task.due.date.slice(0, 10) === today
 }
 
 export function isOverdue(task) {
   if (!task.due) return false
   const _d = new Date(); const today = `${_d.getFullYear()}-${String(_d.getMonth()+1).padStart(2,'0')}-${String(_d.getDate()).padStart(2,'0')}`
-  return task.due.date < today
+  return task.due.date.slice(0, 10) < today
 }
