@@ -8,7 +8,7 @@ function usePendingCount() {
 
 const tabs = [
   {
-    to: '/',
+    to: '/chief',
     label: 'CoS',
     icon: () => (
       <svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 -960 960 960" width="24" fill="currentColor">
@@ -54,7 +54,7 @@ export default function BottomNav() {
         <NavLink
           key={to}
           to={to}
-          end={to === '/'}
+          end={to === '/chief'}
           onClick={() => haptic.light()}
           className={({ isActive }) =>
             `flex-1 flex flex-col items-center justify-center py-2 gap-1 text-xs transition-colors ${

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'life-os-v6';
+const CACHE_NAME = 'life-os-v7';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();

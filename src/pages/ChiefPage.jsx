@@ -125,11 +125,6 @@ export default function ChiefPage() {
       {/* Header */}
       <div className="bg-[#F3EDF7] px-4 pt-4 pb-0 flex-shrink-0">
         <div className="flex items-center gap-3 mb-3">
-          <button onClick={() => navigate(location.state?.from ?? '/')} className="opacity-70 p-1 -ml-1 text-[#1C1B1F]">
-            <svg xmlns="http://www.w3.org/2000/svg" height="20" viewBox="0 -960 960 960" width="20" fill="currentColor">
-              <path d="M560-240 320-480l240-240 56 56-184 184 184 184-56 56Z"/>
-            </svg>
-          </button>
           <span className="text-2xl">🎯</span>
           <div className="flex-1 min-w-0">
             <h1 className="text-lg font-semibold leading-tight text-[#1C1B1F]">Chief of Staff</h1>

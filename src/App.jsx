@@ -15,14 +15,14 @@ import HeadConfig from './pages/HeadConfig'
 import SyncProvider from './components/SyncProvider'
 
 const TABS = [
-  { path: '/',          Component: Home },
+  { path: '/chief',     Component: ChiefPage },
   { path: '/calendar',  Component: Calendar },
   { path: '/buckets',   Component: Buckets },
   { path: '/settings',  Component: Settings },
 ]
 
 function getTabIdx(pathname) {
-  if (pathname === '/') return 0
+  if (pathname === '/chief') return 0
   return TABS.findIndex((t, i) => i > 0 && pathname.startsWith(t.path))
 }
 
@@ -30,8 +30,8 @@ function isSubRoute(pathname) {
   return (pathname.startsWith('/buckets/') && pathname !== '/buckets') ||
          pathname.startsWith('/calendar/event') ||
          pathname === '/weekly-review' ||
-         pathname === '/chief' ||
-         pathname.startsWith('/chief/')
+         pathname.startsWith('/chief/') ||
+         pathname === '/'
 }
 
 function TabStrip() {
@@ -152,10 +152,10 @@ function AppInner() {
             <Route path="/buckets/:bucket/discussions/:id"      element={<DiscussionThread />} />
             <Route path="/calendar/event/:id"                   element={<CalendarEvent />} />
             <Route path="/weekly-review"                        element={<WeeklyReview />} />
-            <Route path="/chief"                                element={<ChiefPage />} />
             <Route path="/chief/config"                         element={<HeadConfig />} />
             <Route path="/buckets/:bucket/config"               element={<HeadConfig />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
+            <Route path="/" element={<Navigate to="/chief" replace />} />
+            <Route path="*" element={<Navigate to="/chief" replace />} />
           </Routes>
         </div>
         <BottomNav />
