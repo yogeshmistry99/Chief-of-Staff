@@ -379,7 +379,7 @@ export default function Calendar() {
           )}
 
           {calendarError && (
-            <p className="text-xs text-amber-600 mt-2">Calendar not connected — showing tasks only. Add Google credentials in Vercel to enable events.</p>
+            <p className="text-xs text-amber-600 mt-2">Calendar error: {calendarError}</p>
           )}
         </div>
 
