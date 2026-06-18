@@ -95,7 +95,7 @@ export default function ChatInput({ placeholder, onSend, disabled, extraAbove, t
     if (!text && !attachment) return
     haptic.medium()
     const content = buildContent(text, attachment)
-    onSend(content, attachment?.name ?? null)
+    onSend(content, attachment?.name ?? null, attachment?.preview ?? null)
     setInput('')
     setAttachment(null)
   }

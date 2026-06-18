@@ -7,6 +7,7 @@ import NotificationCard, { notifDotClass } from '../components/NotificationCard'
 import { prioritise, scoreTask } from '../lib/priority'
 import { haptic } from '../lib/haptic'
 import ChatInput from '../components/ChatInput'
+import ImageLightbox from '../components/ImageLightbox'
 import EditSheet from '../components/EditSheet'
 import TaskEditSheet from '../components/TaskEditSheet'
 import QuickAdd from '../components/QuickAdd'
@@ -629,6 +630,7 @@ export default function Home() {
     try { return JSON.parse(localStorage.getItem('cos_home_messages') ?? '[]') } catch { return [] }
   })
   const [cosRefreshing, setCosRefreshing] = useState(false)
+  const [lightboxSrc, setLightboxSrc] = useState(null)
   const inputRef = useRef(null)
   const scrollRef = useRef(null)
   const chatEndRef = useRef(null)
@@ -743,8 +745,8 @@ export default function Home() {
     }
   }
 
-  async function handleSend(content, attachmentName) {
-    const userMsg = { role: 'user', content, attachmentName }
+  async function handleSend(content, attachmentName, attachmentPreview) {
+    const userMsg = { role: 'user', content, attachmentName, attachmentPreview }
     setMessages((prev) => [...prev, userMsg, { role: 'assistant', content: '', streaming: true }])
     const cfg = loadHeadConfig('chief')
     try {
@@ -827,7 +829,12 @@ export default function Home() {
                   </>
                 ) : (
                   <>
-                    {msg.attachmentName && <span className="text-xs opacity-70 block mb-0.5">📎 {msg.attachmentName}</span>}
+                    {msg.attachmentPreview ? (
+                      <img src={msg.attachmentPreview} alt={msg.attachmentName} onClick={() => setLightboxSrc(msg.attachmentPreview)}
+                        className="max-w-[200px] rounded-xl mb-1 cursor-pointer active:opacity-80" />
+                    ) : msg.attachmentName && (
+                      <span className="text-xs opacity-70 block mb-0.5">📎 {msg.attachmentName}</span>
+                    )}
                     {typeof msg.content === 'string' ? msg.content : msg.content.find?.((b) => b.type === 'text')?.text ?? ''}
                   </>
                 )}
@@ -969,6 +976,7 @@ export default function Home() {
         </div>
       </div>
       <QuickAdd open={quickAddOpen} onClose={() => setQuickAddOpen(false)} />
+      {lightboxSrc && <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />}
     </div>
   )
 }
