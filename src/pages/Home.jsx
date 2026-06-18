@@ -12,7 +12,7 @@ import TaskEditSheet from '../components/TaskEditSheet'
 import QuickAdd from '../components/QuickAdd'
 import { getDiscussions, saveDiscussion, newDiscussion, findDiscussionByTask } from '../lib/discussions'
 import { onSyncChange } from '../lib/sync'
-import { sendMessageStream, SYSTEM_PROMPTS, onCalendarChange } from '../lib/claude'
+import { sendMessageStream, sendMessage, SYSTEM_PROMPTS, REFRESH_PROMPTS, onCalendarChange } from '../lib/claude'
 import { loadHeadConfig } from '../lib/headConfig'
 import Markdown from '../components/Markdown'
 
@@ -628,6 +628,7 @@ export default function Home() {
   const [messages, setMessages]       = useState(() => {
     try { return JSON.parse(localStorage.getItem('cos_home_messages') ?? '[]') } catch { return [] }
   })
+  const [cosRefreshing, setCosRefreshing] = useState(false)
   const inputRef = useRef(null)
   const scrollRef = useRef(null)
   const chatEndRef = useRef(null)
@@ -708,6 +709,40 @@ export default function Home() {
     localStorage.setItem('cos_home_messages', JSON.stringify(toSave))
   }, [messages])
 
+  async function handleCosRefresh() {
+    setCosRefreshing(true)
+    try {
+      const cfg = loadHeadConfig('chief')
+      const allTasks = getCachedTasks()
+      const system = REFRESH_PROMPTS.cos(allTasks, cfg)
+      const { content } = await sendMessage(
+        [{ role: 'user', content: 'Run the priority refresh now.' }],
+        system,
+        null,
+        { model: 'claude-sonnet-4-6' }
+      )
+      const match = content.match(/\{[\s\S]*\}/)
+      const result = JSON.parse(match ? match[0] : content.trim())
+      if (result.priorityUpdates?.length) {
+        const updated = getCachedTasks().map((t) => {
+          const upd = result.priorityUpdates.find((u) => u.taskId === t.id)
+          return upd ? { ...t, priority: upd.priority } : t
+        })
+        saveToCache(updated)
+        setTasks(updated)
+      }
+      if (result.summary) {
+        setMessages((prev) => [...prev, { role: 'assistant', content: result.summary }])
+        setTab('chief')
+      }
+    } catch (e) {
+      setMessages((prev) => [...prev, { role: 'assistant', content: `Refresh failed: ${e.message}` }])
+      setTab('chief')
+    } finally {
+      setCosRefreshing(false)
+    }
+  }
+
   async function handleSend(content, attachmentName) {
     const userMsg = { role: 'user', content, attachmentName }
     setMessages((prev) => [...prev, userMsg, { role: 'assistant', content: '', streaming: true }])
@@ -759,6 +794,19 @@ export default function Home() {
 
       {/* Chief of Staff chat tab */}
       <div className={`flex-1 overflow-hidden flex-col ${tab === 'chief' ? 'flex' : 'hidden'}`}>
+        <div className="flex justify-end px-4 pt-2 flex-shrink-0">
+          <button
+            onClick={handleCosRefresh}
+            disabled={cosRefreshing}
+            className="flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold bg-[#F3EDF7] text-[#6750A4] hover:bg-[#EADDFF] transition-colors disabled:opacity-50"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" height="12" viewBox="0 -960 960 960" width="12" fill="currentColor"
+              style={cosRefreshing ? { animation: 'spin 1s linear infinite' } : undefined}>
+              <path d="M480-160q-134 0-227-93t-93-227q0-134 93-227t227-93q69 0 132 28.5T720-690v-110h80v280H520v-80h168q-32-56-87.5-88T480-720q-100 0-170 70t-70 170q0 100 70 170t170 70q77 0 139-44t87-116h84q-28 106-114 173t-196 67Z"/>
+            </svg>
+            {cosRefreshing ? 'Refreshing…' : 'Refresh priorities'}
+          </button>
+        </div>
         <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
           {messages.length === 0 && (
             <div className="text-center py-12">
