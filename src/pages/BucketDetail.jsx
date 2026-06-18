@@ -11,6 +11,7 @@ import NotificationCard, { notifDotClass } from '../components/NotificationCard'
 import { haptic } from '../lib/haptic'
 import Markdown from '../components/Markdown'
 import ChatInput from '../components/ChatInput'
+import ImageLightbox from '../components/ImageLightbox'
 import { getDiscussions, deleteDiscussion, saveDiscussion, newDiscussion, findDiscussionByTask } from '../lib/discussions'
 
 function extractJSON(text) {
@@ -49,11 +50,12 @@ const BUCKET_META = {
 function HeadTab({ bucket, tasks, setTasks, messages, setMessages }) {
   const navigate = useNavigate()
   const endRef = useRef(null)
+  const [lightboxSrc, setLightboxSrc] = useState(null)
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
 
-  async function handleSend(content, attachmentName) {
-    const userMsg = { role: 'user', content, attachmentName }
+  async function handleSend(content, attachmentName, attachmentPreview) {
+    const userMsg = { role: 'user', content, attachmentName, attachmentPreview }
     setMessages((prev) => [...prev, userMsg])
     // Add empty streaming message immediately
     setMessages((prev) => [...prev, { role: 'assistant', content: '', streaming: true }])
@@ -133,7 +135,16 @@ function HeadTab({ bucket, tasks, setTasks, messages, setMessages }) {
                 </>
               ) : (
                 <>
-                  {msg.attachmentName && <span className="text-xs opacity-70 block mb-0.5">📎 {msg.attachmentName}</span>}
+                  {msg.attachmentPreview ? (
+                    <img
+                      src={msg.attachmentPreview}
+                      alt={msg.attachmentName ?? 'attachment'}
+                      className="w-32 h-32 object-cover rounded-xl mb-1 cursor-pointer"
+                      onClick={() => setLightboxSrc(msg.attachmentPreview)}
+                    />
+                  ) : msg.attachmentName ? (
+                    <span className="text-xs opacity-70 block mb-0.5">📎 {msg.attachmentName}</span>
+                  ) : null}
                   {typeof msg.content === 'string' ? msg.content : msg.content.find((b) => b.type === 'text')?.text ?? ''}
                 </>
               )}
@@ -145,6 +156,7 @@ function HeadTab({ bucket, tasks, setTasks, messages, setMessages }) {
       <div className="bg-white border-t border-[#CAC4D0] px-4 pt-3 pb-3">
         <ChatInput placeholder={`Ask your ${bucket} Head…`} onSend={handleSend} />
       </div>
+      {lightboxSrc && <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />}
     </div>
   )
 }

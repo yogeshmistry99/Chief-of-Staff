@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { sendMessageStream, sendMessage, SYSTEM_PROMPTS, REFRESH_PROMPTS } from '../lib/claude'
+import ImageLightbox from '../components/ImageLightbox'
 import { loadHeadConfig } from '../lib/headConfig'
 import { getCachedTasks, saveToCache } from '../lib/taskCache'
 import { getNotifications, getNotificationsForTask, saveNotifications, clearNotificationsForSource, dismissNotification, acceptNotification } from '../lib/notifications'
@@ -30,6 +31,7 @@ export default function ChiefPage() {
   })
   const [refreshing, setRefreshing] = useState(false)
   const [tab, setTab] = useState('priorities')
+  const [lightboxSrc, setLightboxSrc] = useState(null)
   const endRef = useRef(null)
   const inputRef = useRef(null)
   const autoSentRef = useRef(false)
@@ -95,8 +97,8 @@ export default function ChiefPage() {
     localStorage.setItem('cos_home_messages', JSON.stringify(toSave))
   }, [messages])
 
-  async function handleSend(content, attachmentName) {
-    const userMsg = { role: 'user', content, attachmentName }
+  async function handleSend(content, attachmentName, attachmentPreview) {
+    const userMsg = { role: 'user', content, attachmentName, attachmentPreview }
     setMessages((prev) => [...prev, userMsg, { role: 'assistant', content: '', streaming: true }])
     const cfg = loadHeadConfig('chief')
     try {
@@ -250,7 +252,16 @@ export default function ChiefPage() {
                     </>
                   ) : (
                     <>
-                      {msg.attachmentName && <span className="text-xs opacity-70 block mb-0.5">📎 {msg.attachmentName}</span>}
+                      {msg.attachmentPreview ? (
+                        <img
+                          src={msg.attachmentPreview}
+                          alt={msg.attachmentName ?? 'attachment'}
+                          className="w-32 h-32 object-cover rounded-xl mb-1 cursor-pointer"
+                          onClick={() => setLightboxSrc(msg.attachmentPreview)}
+                        />
+                      ) : msg.attachmentName ? (
+                        <span className="text-xs opacity-70 block mb-0.5">📎 {msg.attachmentName}</span>
+                      ) : null}
                       {typeof msg.content === 'string' ? msg.content : msg.content.find?.((b) => b.type === 'text')?.text ?? ''}
                     </>
                   )}
@@ -265,6 +276,7 @@ export default function ChiefPage() {
         </div>
 
       </div>
+      {lightboxSrc && <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />}
     </div>
   )
 }
