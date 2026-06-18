@@ -11,6 +11,15 @@ import Markdown from '../components/Markdown'
 import ChatInput from '../components/ChatInput'
 import TaskEditSheet from '../components/TaskEditSheet'
 
+function extractJSON(text) {
+  try { return JSON.parse(text.trim()) } catch {}
+  const stripped = text.trim().replace(/^```json\s*/i, '').replace(/```\s*$/, '').trim()
+  try { return JSON.parse(stripped) } catch {}
+  const match = text.match(/\{[\s\S]*\}/)
+  if (match) { try { return JSON.parse(match[0]) } catch {} }
+  throw new Error('No valid JSON found in response')
+}
+
 export default function ChiefPage() {
   const navigate = useNavigate()
   const location = useLocation()
@@ -38,8 +47,7 @@ export default function ChiefPage() {
         null,
         { model: 'claude-sonnet-4-6' }
       )
-      const clean = content.trim().replace(/^```json\s*/i, '').replace(/```\s*$/, '').trim()
-      const result = JSON.parse(clean)
+      const result = extractJSON(content)
 
       if (result.priorityUpdates?.length) {
         const updated = getCachedTasks().map((t) => {

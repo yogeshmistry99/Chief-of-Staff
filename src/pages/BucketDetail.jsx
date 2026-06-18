@@ -13,6 +13,18 @@ import Markdown from '../components/Markdown'
 import ChatInput from '../components/ChatInput'
 import { getDiscussions, deleteDiscussion, saveDiscussion, newDiscussion, findDiscussionByTask } from '../lib/discussions'
 
+function extractJSON(text) {
+  // Try clean parse first
+  try { return JSON.parse(text.trim()) } catch {}
+  // Strip markdown code fences
+  const stripped = text.trim().replace(/^```json\s*/i, '').replace(/```\s*$/, '').trim()
+  try { return JSON.parse(stripped) } catch {}
+  // Find first {...} block in the text (handles preamble like "Proceeding...")
+  const match = text.match(/\{[\s\S]*\}/)
+  if (match) { try { return JSON.parse(match[0]) } catch {} }
+  throw new Error('No valid JSON found in response')
+}
+
 const BUCKET_DESCRIPTIONS = {
   Finance:  'Investments, tax, budgets, and financial decisions.',
   Health:   'Physical health, fitness, medical, and mental wellbeing.',
@@ -702,8 +714,7 @@ export default function BucketDetail() {
         system,
         null
       )
-      const clean = content.trim().replace(/^```json\s*/i, '').replace(/```\s*$/, '').trim()
-      const result = JSON.parse(clean)
+      const result = extractJSON(content)
 
       // Apply priority updates to cache
       if (result.priorityUpdates?.length) {
