@@ -308,11 +308,11 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept, Mcp-Session-Id')
   if (req.method === 'OPTIONS') return res.status(200).end()
 
-  // Bearer token auth
+  // Token auth via query param (?token=xxx) — compatible with Claude.ai custom connectors
   const apiKey = process.env.MCP_API_KEY
   if (apiKey) {
-    const auth = req.headers.authorization ?? ''
-    if (!auth.startsWith('Bearer ') || auth.slice(7) !== apiKey) {
+    const token = req.query.token ?? ''
+    if (token !== apiKey) {
       return res.status(401).json({ jsonrpc: '2.0', error: { code: -32600, message: 'Unauthorized' } })
     }
   }
