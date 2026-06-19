@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { getAllTasks, PROJECTS } from '../lib/todoist'
+import { PROJECTS } from '../lib/todoist'
+import { getCachedTasks } from '../lib/taskCache'
 import { haptic } from '../lib/haptic'
 import EditSheet from '../components/EditSheet'
 import { onCalendarChange } from '../lib/claude'
@@ -229,16 +230,16 @@ export default function Calendar() {
   const today = new Date()
   today.setHours(0, 0, 0, 0)
 
-  // Load tasks
+  // Load tasks from cache (fast, no API calls needed for calendar dots)
   useEffect(() => {
-    getAllTasks()
-      .then((data) => setTasks(data.map((t) => ({ ...t, _bucket: PROJECT_NAMES[t.project_id] }))))
-      .catch(() => {})
-      .finally(() => setLoading(false))
+    const cached = getCachedTasks()
+    setTasks(cached.map((t) => ({ ...t, _bucket: PROJECT_NAMES[t.project_id] ?? t._projectName })))
+    setLoading(false)
   }, [])
 
   // Load calendar events — fetch a wide window covering this month ± 1
   const loadEvents = useCallback(() => {
+    setCalendarError(null)
     const start = new Date(today.getFullYear(), today.getMonth() + monthOffset - 1, 1).toISOString()
     const end = new Date(today.getFullYear(), today.getMonth() + monthOffset + 2, 1).toISOString()
     fetchEvents(start, end)
@@ -330,6 +331,25 @@ export default function Calendar() {
     <div className="flex flex-col h-full overflow-y-auto pb-4">
       <div className="px-4 pt-5 max-w-lg mx-auto w-full">
 
+        {/* Calendar error banner */}
+        {calendarError && (
+          <div className="mb-4 rounded-2xl bg-red-50 border border-red-200 px-4 py-3">
+            <p className="text-sm font-semibold text-red-800 mb-0.5">Google Calendar error</p>
+            <p className="text-xs text-red-700 leading-relaxed">{calendarError}</p>
+            {calendarError.toLowerCase().includes('token') && (
+              <p className="text-xs text-red-600 mt-1.5">
+                The Google refresh token has expired. Go to Vercel → Environment Variables and update <code className="bg-red-100 px-1 rounded">GOOGLE_REFRESH_TOKEN</code> with a new token from the OAuth Playground.
+              </p>
+            )}
+            <button
+              onClick={loadEvents}
+              className="mt-2 text-xs font-medium text-red-700 underline"
+            >
+              Retry
+            </button>
+          </div>
+        )}
+
         {/* Weekly strip */}
         <div className="mb-5">
           <p className="text-xs text-[#79747E] mb-2 font-medium uppercase tracking-wide">This week</p>
@@ -376,10 +396,6 @@ export default function Calendar() {
 
           {selectedEvents.length === 0 && selectedTasks.length === 0 && !loading && (
             <p className="text-sm text-[#79747E]">Nothing on this day.</p>
-          )}
-
-          {calendarError && (
-            <p className="text-xs text-amber-600 mt-2">Calendar error: {calendarError}</p>
           )}
         </div>
 
