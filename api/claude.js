@@ -55,14 +55,15 @@ const TOOLS = [
   },
   {
     name: 'update_task',
-    description: 'Update an existing task (change priority, due date, or content).',
+    description: 'Update an existing task (change priority, due date, or content). Use remove_due_date:true to clear the due date entirely.',
     input_schema: {
       type: 'object',
       properties: {
-        task_id:    { type: 'string', description: 'The task ID to update' },
-        content:    { type: 'string', description: 'New task title (omit to keep existing)' },
-        priority:   { type: 'integer', description: '4=P1, 3=P2, 2=P3, 1=P4', enum: [1,2,3,4] },
-        due_string: { type: 'string', description: 'New due date in ISO format YYYY-MM-DD' },
+        task_id:         { type: 'string',  description: 'The task ID to update' },
+        content:         { type: 'string',  description: 'New task title (omit to keep existing)' },
+        priority:        { type: 'integer', description: '4=P1, 3=P2, 2=P3, 1=P4', enum: [1,2,3,4] },
+        due_string:      { type: 'string',  description: 'New due date in ISO format YYYY-MM-DD' },
+        remove_due_date: { type: 'boolean', description: 'Set true to remove the due date entirely' },
       },
       required: ['task_id'],
     },
@@ -152,10 +153,19 @@ async function executeTool(name, input, tasks) {
   if (name === 'update_task') {
     const task = tasks.find((t) => t.id === input.task_id)
     if (!task) return { error: `Task not found: ${input.task_id}` }
-    if (input.content)    task.content = input.content
-    if (input.priority)   task.priority = input.priority
-    if (input.due_string) task.due = { date: input.due_string }
-    return { success: true, message: 'Task updated.' }
+    if (input.content !== undefined)  task.content  = input.content
+    if (input.priority !== undefined) task.priority = input.priority
+    if (input.remove_due_date)        task.due      = null
+    else if (input.due_string)        task.due      = { date: input.due_string }
+    // Return the actual resulting state so Claude can verify what changed
+    return {
+      success: true,
+      verified: {
+        content:  task.content,
+        priority: task.priority,
+        due:      task.due ?? null,
+      },
+    }
   }
 
   if (name === 'read_calendar') {
@@ -185,14 +195,21 @@ async function executeTool(name, input, tasks) {
     }
     const { ok, data } = await calendarRequest('POST', body)
     if (!ok) return { error: data.error ?? 'Failed to create event' }
-    return { success: true, event_id: data.id, message: `Event created: "${input.title}"`, calendar_changed: true }
+    // Verify: re-fetch the created event
+    const verify = await calendarRequest('GET', null, {
+      start: new Date(input.date).toISOString(),
+      end:   new Date(input.date + 'T23:59:59').toISOString(),
+    })
+    const created = (Array.isArray(verify.data) ? verify.data : []).find((e) => e.id === data.id)
+    if (!created) return { error: 'Event was submitted but could not be verified — please check your calendar.' }
+    return { success: true, event_id: data.id, verified: { title: created.summary, date: created.start?.date ?? created.start?.dateTime?.slice(0, 10), start_time: created.start?.dateTime?.slice(11, 16) ?? 'All day' }, calendar_changed: true }
   }
 
   if (name === 'update_calendar_event') {
     const updates = {}
     if (input.title)       updates.summary     = input.title
-    if (input.location)    updates.location    = input.location
-    if (input.description) updates.description = input.description
+    if (input.location !== undefined) updates.location    = input.location
+    if (input.description !== undefined) updates.description = input.description
     if (input.date || input.start_time) {
       const date = input.date ?? new Date().toISOString().slice(0, 10)
       updates.start = toGCalDateTime(date, input.start_time)
@@ -200,13 +217,35 @@ async function executeTool(name, input, tasks) {
     }
     const { ok, data } = await calendarRequest('PATCH', { eventId: input.event_id, ...updates })
     if (!ok) return { error: data.error ?? 'Failed to update event' }
-    return { success: true, message: `Event updated.`, calendar_changed: true }
+    // Verify: re-fetch the event and check fields match
+    const verifyDate = input.date ?? data.start?.date ?? data.start?.dateTime?.slice(0, 10) ?? new Date().toISOString().slice(0, 10)
+    const vr = await calendarRequest('GET', null, {
+      start: new Date(verifyDate).toISOString(),
+      end:   new Date(verifyDate + 'T23:59:59').toISOString(),
+    })
+    const verified = (Array.isArray(vr.data) ? vr.data : []).find((e) => e.id === input.event_id)
+    if (!verified) return { error: 'Update was submitted but event could not be re-fetched to verify.' }
+    const actualTitle = verified.summary
+    const actualDate  = verified.start?.date ?? verified.start?.dateTime?.slice(0, 10)
+    const actualStart = verified.start?.dateTime?.slice(11, 16) ?? 'All day'
+    // Check title matched if we tried to set it
+    if (input.title && actualTitle !== input.title) {
+      return { error: `Title update failed — calendar still shows "${actualTitle}", expected "${input.title}".` }
+    }
+    return { success: true, verified: { title: actualTitle, date: actualDate, start_time: actualStart }, calendar_changed: true }
   }
 
   if (name === 'delete_calendar_event') {
     const { ok, data } = await calendarRequest('DELETE', { eventId: input.event_id })
     if (!ok) return { error: data.error ?? 'Failed to delete event' }
-    return { success: true, message: 'Event deleted.', calendar_changed: true }
+    // Verify: attempt to GET the event — expect it to be gone
+    const vr = await calendarRequest('GET', null, {
+      start: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+      end:   new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
+    })
+    const stillExists = (Array.isArray(vr.data) ? vr.data : []).some((e) => e.id === input.event_id)
+    if (stillExists) return { error: 'Delete was submitted but the event still appears in the calendar. Try again.' }
+    return { success: true, verified: { deleted: true }, calendar_changed: true }
   }
 
   return { error: `Unknown tool: ${name}` }
