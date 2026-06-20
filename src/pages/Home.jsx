@@ -67,6 +67,7 @@ function HomeEventRow({ event: initialEvent }) {
   const [saving, setSaving] = useState(false)
   const holdRef = useRef(null)
   const isHoldRef = useRef(false)
+  const isReadOnly = !!e._readOnly
 
   const isAllDay  = !!e.start?.date && !e.start?.dateTime
   const startTime = formatEventTime(e.start?.dateTime, e.start?.timeZone)
@@ -80,6 +81,7 @@ function HomeEventRow({ event: initialEvent }) {
   const rsvpColor = { accepted: 'text-green-700', declined: 'text-red-600', tentative: 'text-amber-600' }
 
   function handlePointerDown() {
+    if (isReadOnly) return
     isHoldRef.current = false
     holdRef.current = setTimeout(() => {
       isHoldRef.current = true
@@ -122,17 +124,20 @@ function HomeEventRow({ event: initialEvent }) {
           onPointerLeave={handlePointerUp}
           onClick={handleClick}
         >
-          <div className="w-10 h-10 rounded-xl bg-[#D3E4FF] flex-shrink-0 flex flex-col items-center justify-center">
+          <div className={`w-10 h-10 rounded-xl flex-shrink-0 flex flex-col items-center justify-center ${isReadOnly ? 'bg-[#E7E0EC]' : 'bg-[#D3E4FF]'}`}>
             {isAllDay
-              ? <span className="text-[10px] font-bold text-[#001D36] leading-tight text-center px-0.5">{day.slice(0,3)}</span>
+              ? <span className={`text-[10px] font-bold leading-tight text-center px-0.5 ${isReadOnly ? 'text-[#49454F]' : 'text-[#001D36]'}`}>{day.slice(0,3)}</span>
               : <>
-                  <span className="text-[10px] text-[#001D36] leading-none">{day.slice(0,3)}</span>
-                  <span className="text-xs font-bold text-[#001D36] leading-none">{startTime}</span>
+                  <span className={`text-[10px] leading-none ${isReadOnly ? 'text-[#79747E]' : 'text-[#001D36]'}`}>{day.slice(0,3)}</span>
+                  <span className={`text-xs font-bold leading-none ${isReadOnly ? 'text-[#79747E]' : 'text-[#001D36]'}`}>{startTime}</span>
                 </>}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-[#1C1B1F] leading-snug truncate">{e.summary}</p>
-            <p className="text-xs text-[#79747E]">{isAllDay ? `${day} · All day` : `${day}${duration ? ` · ${duration}` : ''}`}</p>
+            <p className={`text-sm leading-snug truncate ${isReadOnly ? 'text-[#79747E]' : 'text-sm font-medium text-[#1C1B1F]'}`}>{e.summary}</p>
+            <div className="flex items-center gap-1.5">
+              <p className="text-xs text-[#79747E]">{isAllDay ? `${day} · All day` : `${day}${duration ? ` · ${duration}` : ''}`}</p>
+              {isReadOnly && <span className="text-[10px] text-[#CAC4D0] uppercase tracking-wide">{e._calendarName}</span>}
+            </div>
           </div>
           <svg xmlns="http://www.w3.org/2000/svg" height="16" viewBox="0 -960 960 960" width="16" fill="#CAC4D0"
             className={`flex-shrink-0 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}>
@@ -169,12 +174,12 @@ function HomeEventRow({ event: initialEvent }) {
               </p>
             )}
             {description && <p className="text-xs text-[#49454F] leading-relaxed line-clamp-3">{description}</p>}
-            <p className="text-[10px] text-[#CAC4D0] mt-1">Hold to edit</p>
+            {!isReadOnly && <p className="text-[10px] text-[#CAC4D0] mt-1">Hold to edit</p>}
           </div>
         </div>
       </div>
 
-      <EditSheet open={editOpen} onClose={() => setEditOpen(false)} title="Edit event" onSave={handleSave} saving={saving}>
+      {!isReadOnly && <EditSheet open={editOpen} onClose={() => setEditOpen(false)} title="Edit event" onSave={handleSave} saving={saving}>
         <div className="space-y-1">
           <label className="text-xs font-medium text-[#49454F]">Title</label>
           <textarea
@@ -204,7 +209,7 @@ function HomeEventRow({ event: initialEvent }) {
             rows={3}
           />
         </div>
-      </EditSheet>
+      </EditSheet>}
     </>
   )
 }
@@ -781,6 +786,7 @@ export default function Home() {
     if (e.start?.dateTime) return new Date(e.start.dateTime).toLocaleDateString('en-CA') === todayStr
     return false
   })
+  const todayEventsActionable = todayEvents.filter((e) => !e._readOnly)
 
   return (
     <div className="flex flex-col h-full">
@@ -903,7 +909,7 @@ export default function Home() {
         <div className="grid grid-cols-4 gap-2 mb-4">
           {[
             { label: 'Today',    value: loading ? '…' : todayCount,   color: 'bg-[#EADDFF] text-[#21005D]' },
-            { label: 'Events',   value: eventsLoading ? '…' : todayEvents.length, color: 'bg-[#D3E4FF] text-[#001D36]' },
+            { label: 'Events',   value: eventsLoading ? '…' : todayEventsActionable.length, color: 'bg-[#D3E4FF] text-[#001D36]' },
             { label: 'P1',       value: loading ? '…' : p1Count,       color: 'bg-[#FFD8E4] text-[#31111D]' },
             { label: 'Overdue',  value: loading ? '…' : overdueCount,  color: overdueCount > 0 ? 'bg-red-100 text-red-900' : 'bg-[#C8F5E1] text-[#002115]' },
           ].map(({ label, value, color }, i) => (

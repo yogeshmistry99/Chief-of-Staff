@@ -69,23 +69,49 @@ export default async function handler(req, res) {
     } catch (err) { return res.status(500).json({ error: err.message }) }
   }
 
-  // Fetch events (GET)
+  // Fetch events (GET) — all enabled calendars
   const { start, end } = req.query
-  const url = new URL(BASE_CAL)
-  if (start) url.searchParams.set('timeMin', start)
-  if (end) url.searchParams.set('timeMax', end)
-  url.searchParams.set('singleEvents', 'true')
-  url.searchParams.set('orderBy', 'startTime')
-  url.searchParams.set('maxResults', '50')
 
   try {
-    const eventsRes = await fetch(url.toString(), {
+    // Get all calendars the user has enabled
+    const calListRes = await fetch('https://www.googleapis.com/calendar/v3/users/me/calendarList', {
       headers: { Authorization: `Bearer ${accessToken}` },
     })
-    const data = await eventsRes.json()
-    if (!eventsRes.ok) return res.status(eventsRes.status).json(data)
-    res.status(200).json(data.items ?? [])
+    const calList = await calListRes.json()
+    const calendars = (calList.items ?? []).filter((c) => c.selected !== false)
+
+    // Fetch events from each calendar concurrently
+    const results = await Promise.allSettled(
+      calendars.map(async (cal) => {
+        const url = new URL(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(cal.id)}/events`)
+        if (start) url.searchParams.set('timeMin', start)
+        if (end) url.searchParams.set('timeMax', end)
+        url.searchParams.set('singleEvents', 'true')
+        url.searchParams.set('orderBy', 'startTime')
+        url.searchParams.set('maxResults', '50')
+        const r = await fetch(url.toString(), { headers: { Authorization: `Bearer ${accessToken}` } })
+        if (!r.ok) return []
+        const data = await r.json()
+        const isReadOnly = cal.accessRole === 'reader'
+        const isHoliday = cal.id.includes('holiday') || cal.summary?.toLowerCase().includes('holiday')
+        return (data.items ?? []).map((e) => ({
+          ...e,
+          _calendarId: cal.id,
+          _calendarName: cal.summary,
+          _readOnly: isReadOnly,
+          _calendarType: isHoliday ? 'holiday' : isReadOnly ? 'subscribed' : 'personal',
+        }))
+      })
+    )
+
+    const allEvents = results.flatMap((r) => (r.status === 'fulfilled' ? r.value : []))
+    allEvents.sort((a, b) => {
+      const at = a.start?.dateTime ?? a.start?.date ?? ''
+      const bt = b.start?.dateTime ?? b.start?.date ?? ''
+      return at.localeCompare(bt)
+    })
+    return res.status(200).json(allEvents)
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    return res.status(500).json({ error: err.message })
   }
 }

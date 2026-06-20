@@ -56,6 +56,7 @@ function EventRow({ event: initialEvent }) {
   const [saving, setSaving] = useState(false)
   const holdRef = useRef(null)
   const isHoldRef = useRef(false)
+  const isReadOnly = !!e._readOnly
 
   const isAllDay  = !!e.start?.date && !e.start?.dateTime
   const startTime = formatTime(e.start?.dateTime, e.start?.timeZone)
@@ -68,6 +69,7 @@ function EventRow({ event: initialEvent }) {
   const rsvpColor = { accepted: 'text-green-700', declined: 'text-red-600', tentative: 'text-amber-600' }
 
   function handlePointerDown() {
+    if (isReadOnly) return
     isHoldRef.current = false
     holdRef.current = setTimeout(() => {
       isHoldRef.current = true
@@ -113,12 +115,15 @@ function EventRow({ event: initialEvent }) {
           <div className="w-10 flex-shrink-0 text-right">
             {isAllDay
               ? <span className="text-xs text-[#79747E]">All day</span>
-              : <span className="text-xs font-medium text-[#6750A4]">{startTime}</span>}
+              : <span className={`text-xs font-medium ${isReadOnly ? 'text-[#79747E]' : 'text-[#6750A4]'}`}>{startTime}</span>}
           </div>
-          <div className="flex-1 min-w-0 bg-[#F3EDF7] rounded-lg px-2.5 py-1.5">
-            <p className="text-sm font-medium text-[#1C1B1F] leading-snug truncate">{e.summary}</p>
+          <div className={`flex-1 min-w-0 rounded-lg px-2.5 py-1.5 ${isReadOnly ? 'bg-[#F3EDF7]/50' : 'bg-[#F3EDF7]'}`}>
+            <p className={`text-sm leading-snug truncate ${isReadOnly ? 'text-[#79747E]' : 'font-medium text-[#1C1B1F]'}`}>{e.summary}</p>
             {!isAllDay && endTime && !expanded && (
               <p className="text-xs text-[#79747E]">until {endTime}{duration ? ` · ${duration}` : ''}</p>
+            )}
+            {isReadOnly && !expanded && e._calendarName && (
+              <p className="text-[10px] text-[#CAC4D0] uppercase tracking-wide">{e._calendarName}</p>
             )}
           </div>
           <svg xmlns="http://www.w3.org/2000/svg" height="16" viewBox="0 -960 960 960" width="16" fill="#CAC4D0"
@@ -170,12 +175,12 @@ function EventRow({ event: initialEvent }) {
             {description && (
               <p className="text-xs text-[#49454F] leading-relaxed line-clamp-3">{description}</p>
             )}
-            <p className="text-[10px] text-[#CAC4D0]">Hold to edit</p>
+            {!isReadOnly && <p className="text-[10px] text-[#CAC4D0]">Hold to edit</p>}
           </div>
         </div>
       </div>
 
-      <EditSheet open={editOpen} onClose={() => setEditOpen(false)} title="Edit event" onSave={handleSave} saving={saving}>
+      {!isReadOnly && <EditSheet open={editOpen} onClose={() => setEditOpen(false)} title="Edit event" onSave={handleSave} saving={saving}>
         <div className="space-y-1">
           <label className="text-xs font-medium text-[#49454F]">Title</label>
           <textarea
@@ -205,7 +210,7 @@ function EventRow({ event: initialEvent }) {
             rows={3}
           />
         </div>
-      </EditSheet>
+      </EditSheet>}
     </>
   )
 }
