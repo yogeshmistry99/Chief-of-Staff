@@ -14,6 +14,7 @@ import ChatInput from '../components/ChatInput'
 import ImageLightbox from '../components/ImageLightbox'
 import { getDiscussions, deleteDiscussion, saveDiscussion, newDiscussion, findDiscussionByTask, archiveDiscussionsForTask, restoreDiscussionsForTask } from '../lib/discussions'
 import { archiveTask, restoreTask } from '../lib/taskCache'
+import { closeTask } from '../lib/todoist'
 
 function extractJSON(text) {
   // Try clean parse first
@@ -868,6 +869,7 @@ export default function BucketDetail() {
     setTasks((prev) => prev.map((t) =>
       t.id === id ? { ...t, is_completed: true, completed_at: new Date().toISOString() } : t
     ))
+    if (!id.startsWith('local_')) closeTask(id).catch(() => {})
   }
 
   function handleRestore(id) {

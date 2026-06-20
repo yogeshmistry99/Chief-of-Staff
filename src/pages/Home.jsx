@@ -13,6 +13,7 @@ import TaskEditSheet from '../components/TaskEditSheet'
 import QuickAdd from '../components/QuickAdd'
 import { getDiscussions, saveDiscussion, newDiscussion, findDiscussionByTask, archiveDiscussionsForTask } from '../lib/discussions'
 import { archiveTask } from '../lib/taskCache'
+import { closeTask } from '../lib/todoist'
 import { onSyncChange } from '../lib/sync'
 import { sendMessageStream, sendMessage, SYSTEM_PROMPTS, REFRESH_PROMPTS, onCalendarChange } from '../lib/claude'
 import { loadHeadConfig } from '../lib/headConfig'
@@ -264,6 +265,13 @@ function TaskRow({ task, onComplete, index = 0, allTasks = [] }) {
 
   function handleComplete(e) {
     e.stopPropagation()
+    const openSubs = allTasks.filter((t) => t.parent_id === localTask.id && !t.is_completed)
+    if (openSubs.length > 0) {
+      const msg = openSubs.length === 1
+        ? 'There is still 1 open step — complete and archive anyway?'
+        : `There are still ${openSubs.length} open steps — complete and archive anyway?`
+      if (!window.confirm(msg)) return
+    }
     haptic.success()
     haptic.fanfare()
     setCompletingAnim(true)
@@ -710,6 +718,8 @@ export default function Home() {
     setTasks((prev) => prev.map((t) =>
       t.id === id ? { ...t, is_completed: true, completed_at: new Date().toISOString() } : t
     ))
+    // Persist to Todoist so a sync never resurrects the task
+    if (!id.startsWith('local_')) closeTask(id).catch(() => {})
   }
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])

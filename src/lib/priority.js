@@ -78,9 +78,10 @@ export function scoreTask(task) {
   return { score, reasons, bucket, isOverdue, isToday, days }
 }
 
-// Sort tasks by score descending, exclude someday from main list
+// Sort tasks by score descending, exclude someday and completed from main list
 export function prioritise(tasks) {
-  const scored = tasks.map((t) => ({ ...t, _scored: scoreTask(t) }))
+  const open = tasks.filter((t) => !t.is_completed)
+  const scored = open.map((t) => ({ ...t, _scored: scoreTask(t) }))
   const active = scored
     .filter((t) => t._scored.score >= 0)
     .sort((a, b) => b._scored.score - a._scored.score)

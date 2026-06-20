@@ -148,6 +148,24 @@ async function executeTool(name, input, tasks) {
     if (!task) return { error: `Task not found: ${input.task_id}` }
     task.is_completed = true
     task.completed_at = new Date().toISOString()
+    // Persist to Todoist so the completion survives a sync
+    if (!input.task_id.startsWith('local_')) {
+      try {
+        const base = process.env.VERCEL_URL
+          ? `https://${process.env.VERCEL_URL}`
+          : 'http://localhost:3000'
+        const closeRes = await fetch(
+          `${base}/api/todoist?path=tasks/${encodeURIComponent(input.task_id)}/close`,
+          { method: 'POST', headers: { 'Content-Type': 'application/json' } }
+        )
+        if (!closeRes.ok) {
+          const detail = await closeRes.text().catch(() => '')
+          return { error: `Failed to close task in Todoist (${closeRes.status})${detail ? `: ${detail}` : ''}` }
+        }
+      } catch (err) {
+        return { error: `Todoist close failed: ${err.message}` }
+      }
+    }
     return { success: true, verified: { is_completed: true, content: task.content } }
   }
 

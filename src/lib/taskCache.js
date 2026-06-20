@@ -43,10 +43,20 @@ export function restoreTask(id) {
   return updated
 }
 
-// Merge incoming tasks with existing cache — deduplicate by id, prefer fresher data
+// Merge incoming tasks with existing cache — deduplicate by id, prefer fresher data.
+// If a task is locally marked completed but Todoist still shows it active, keep the
+// completed state so a sync never un-archives a task the user just completed.
 function mergeTasks(existing, incoming) {
   const map = new Map(existing.map((t) => [t.id, t]))
-  incoming.forEach((t) => map.set(t.id, t))
+  incoming.forEach((t) => {
+    const ex = map.get(t.id)
+    if (ex?.is_completed && !t.is_completed) {
+      // Local archive wins — Todoist hasn't synced the close yet
+      map.set(t.id, { ...t, is_completed: true, completed_at: ex.completed_at })
+    } else {
+      map.set(t.id, t)
+    }
+  })
   return Array.from(map.values())
 }
 
