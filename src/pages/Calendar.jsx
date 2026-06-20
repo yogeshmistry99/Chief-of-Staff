@@ -250,10 +250,50 @@ export default function Calendar() {
   const [selectedDate, setSelectedDate] = useState(isoDate(new Date()))
   const [monthOffset, setMonthOffset] = useState(0)
   const [weekOffset, setWeekOffset] = useState(0)
+  const stripRef = useRef(null)
   const stripSwipeRef = useRef({})
 
   const today = new Date()
   today.setHours(0, 0, 0, 0)
+
+  // Attach non-passive touch listeners so we can preventDefault on horizontal swipes
+  useEffect(() => {
+    const el = stripRef.current
+    if (!el) return
+    function onStart(e) {
+      const t = e.touches[0]
+      stripSwipeRef.current = { startX: t.clientX, startY: t.clientY, decided: false, horizontal: false }
+    }
+    function onMove(e) {
+      const s = stripSwipeRef.current
+      if (!s.startX) return
+      const dx = e.touches[0].clientX - s.startX
+      const dy = e.touches[0].clientY - s.startY
+      if (!s.decided && (Math.abs(dx) > 6 || Math.abs(dy) > 6)) {
+        s.decided = true
+        s.horizontal = Math.abs(dx) > Math.abs(dy)
+      }
+      if (s.horizontal) e.preventDefault()
+    }
+    function onEnd(e) {
+      const s = stripSwipeRef.current
+      if (!s.decided || !s.horizontal) return
+      const dx = e.changedTouches[0].clientX - s.startX
+      if (Math.abs(dx) > 40) {
+        haptic.light()
+        setWeekOffset((o) => (dx < 0 ? o + 1 : o - 1))
+      }
+      stripSwipeRef.current = {}
+    }
+    el.addEventListener('touchstart', onStart, { passive: true })
+    el.addEventListener('touchmove',  onMove,  { passive: false })
+    el.addEventListener('touchend',   onEnd,   { passive: true })
+    return () => {
+      el.removeEventListener('touchstart', onStart)
+      el.removeEventListener('touchmove',  onMove)
+      el.removeEventListener('touchend',   onEnd)
+    }
+  }, [])
 
   // Load tasks from cache
   useEffect(() => {
@@ -278,23 +318,6 @@ export default function Calendar() {
 
   useEffect(() => { loadEvents() }, [loadEvents])
   useEffect(() => onCalendarChange(loadEvents), [loadEvents])
-
-  // Weekly strip swipe handlers
-  function handleStripTouchStart(e) {
-    const t = e.touches[0]
-    stripSwipeRef.current = { startX: t.clientX, startY: t.clientY }
-  }
-  function handleStripTouchEnd(e) {
-    const { startX, startY } = stripSwipeRef.current
-    if (startX === undefined) return
-    const dx = e.changedTouches[0].clientX - startX
-    const dy = Math.abs(e.changedTouches[0].clientY - startY)
-    if (Math.abs(dx) > 40 && dy < 40) {
-      haptic.light()
-      if (dx < 0) setWeekOffset((o) => o + 1)
-      else         setWeekOffset((o) => o - 1)
-    }
-  }
 
   // Index tasks by due date
   const tasksByDate = {}
@@ -435,11 +458,7 @@ export default function Calendar() {
             </button>
           </div>
           {/* Swipeable day grid */}
-          <div
-            className="grid grid-cols-7 gap-1 touch-pan-y"
-            onTouchStart={handleStripTouchStart}
-            onTouchEnd={handleStripTouchEnd}
-          >
+          <div ref={stripRef} className="grid grid-cols-7 gap-1">
             {weekDays.map((d) => <DayCell key={isoDate(d)} d={d} />)}
           </div>
         </div>

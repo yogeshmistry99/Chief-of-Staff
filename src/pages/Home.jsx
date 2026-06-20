@@ -58,6 +58,19 @@ function formatDuration(start, end) {
   return m > 0 ? `${h}h ${m}m` : `${h}h`
 }
 
+function getEventAccent(e) {
+  const selfRsvp = e.attendees?.find((a) => a.self)?.responseStatus
+  if (selfRsvp === 'declined')  return { bg: 'bg-red-50',      bar: 'bg-red-300',    time: 'text-red-400',    label: 'text-red-400 opacity-60' }
+  if (selfRsvp === 'tentative') return { bg: 'bg-amber-50',    bar: 'bg-amber-300',  time: 'text-amber-600',  label: 'text-[#1C1B1F]' }
+  if (e._calendarType === 'holiday') return { bg: 'bg-[#E8F5E9]', bar: 'bg-[#81C784]', time: 'text-[#2E7D32]', label: 'text-[#2E7D32]' }
+  if (e._readOnly) return { bg: 'bg-[#F5F5F5]', bar: 'bg-[#BDBDBD]', time: 'text-[#9E9E9E]', label: 'text-[#757575]' }
+  const hasVideo     = !!(e.hangoutLink ?? e.conferenceData?.entryPoints?.find((ep) => ep.entryPointType === 'video'))
+  const hasAttendees = (e.attendees?.length ?? 0) > 0
+  if (hasVideo)      return { bg: 'bg-[#E0F7FA]', bar: 'bg-[#26C6DA]', time: 'text-[#00838F]', label: 'text-[#1C1B1F]' }
+  if (hasAttendees)  return { bg: 'bg-[#E3F2FD]', bar: 'bg-[#42A5F5]', time: 'text-[#0D47A1]', label: 'text-[#1C1B1F]' }
+  return               { bg: 'bg-[#EDE7F6]',       bar: 'bg-[#6750A4]', time: 'text-[#6750A4]', label: 'text-[#1C1B1F]' }
+}
+
 function HomeEventRow({ event: initialEvent }) {
   const [e, setE] = useState(initialEvent)
   const [expanded, setExpanded] = useState(false)
@@ -69,6 +82,7 @@ function HomeEventRow({ event: initialEvent }) {
   const holdRef = useRef(null)
   const isHoldRef = useRef(false)
   const isReadOnly = !!e._readOnly
+  const accent = getEventAccent(e)
 
   const isAllDay  = !!e.start?.date && !e.start?.dateTime
   const startTime = formatEventTime(e.start?.dateTime, e.start?.timeZone)
@@ -125,19 +139,24 @@ function HomeEventRow({ event: initialEvent }) {
           onPointerLeave={handlePointerUp}
           onClick={handleClick}
         >
-          <div className={`w-10 h-10 rounded-xl flex-shrink-0 flex flex-col items-center justify-center ${isReadOnly ? 'bg-[#E7E0EC]' : 'bg-[#D3E4FF]'}`}>
+          {/* Date tile */}
+          <div className={`w-10 h-10 rounded-xl flex-shrink-0 flex flex-col items-center justify-center ${accent.bg}`}>
             {isAllDay
-              ? <span className={`text-[10px] font-bold leading-tight text-center px-0.5 ${isReadOnly ? 'text-[#49454F]' : 'text-[#001D36]'}`}>{day.slice(0,3)}</span>
+              ? <span className={`text-[10px] font-bold leading-tight text-center px-0.5 ${accent.time}`}>{day.slice(0,3)}</span>
               : <>
-                  <span className={`text-[10px] leading-none ${isReadOnly ? 'text-[#79747E]' : 'text-[#001D36]'}`}>{day.slice(0,3)}</span>
-                  <span className={`text-xs font-bold leading-none ${isReadOnly ? 'text-[#79747E]' : 'text-[#001D36]'}`}>{startTime}</span>
+                  <span className={`text-[10px] leading-none ${accent.time}`}>{day.slice(0,3)}</span>
+                  <span className={`text-xs font-bold leading-none ${accent.time}`}>{startTime}</span>
                 </>}
           </div>
-          <div className="flex-1 min-w-0">
-            <p className={`text-sm leading-snug truncate ${isReadOnly ? 'text-[#79747E]' : 'text-sm font-medium text-[#1C1B1F]'}`}>{e.summary}</p>
-            <div className="flex items-center gap-1.5">
-              <p className="text-xs text-[#79747E]">{isAllDay ? `${day} · All day` : `${day}${duration ? ` · ${duration}` : ''}`}</p>
-              {isReadOnly && <span className="text-[10px] text-[#CAC4D0] uppercase tracking-wide">{e._calendarName}</span>}
+          {/* Coloured-bar bubble */}
+          <div className={`flex-1 min-w-0 rounded-lg overflow-hidden flex ${accent.bg}`}>
+            <div className={`w-1 flex-shrink-0 ${accent.bar}`} />
+            <div className="flex-1 min-w-0 px-2.5 py-1.5">
+              <p className={`text-sm font-medium leading-snug truncate ${accent.label}`}>{e.summary}</p>
+              <div className="flex items-center gap-1.5">
+                <p className="text-xs text-[#79747E]">{isAllDay ? `${day} · All day` : `${day}${duration ? ` · ${duration}` : ''}`}</p>
+                {isReadOnly && <span className="text-[10px] text-[#CAC4D0] uppercase tracking-wide">{e._calendarName}</span>}
+              </div>
             </div>
           </div>
           <svg xmlns="http://www.w3.org/2000/svg" height="16" viewBox="0 -960 960 960" width="16" fill="#CAC4D0"
