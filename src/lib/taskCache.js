@@ -34,6 +34,15 @@ export function archiveTask(id) {
   return updated
 }
 
+export function restoreTask(id) {
+  const all = getCachedTasks()
+  const updated = all.map((t) =>
+    t.id === id ? { ...t, is_completed: false, completed_at: null } : t
+  )
+  saveToCache(updated)
+  return updated
+}
+
 // Merge incoming tasks with existing cache — deduplicate by id, prefer fresher data
 function mergeTasks(existing, incoming) {
   const map = new Map(existing.map((t) => [t.id, t]))

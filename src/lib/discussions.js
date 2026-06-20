@@ -40,6 +40,15 @@ export function findDiscussionByTask(bucket, taskId) {
   return getDiscussions(bucket).find((d) => d.taskId === taskId) ?? null
 }
 
+export function restoreDiscussionsForTask(bucket, taskId) {
+  const all = getDiscussions(bucket)
+  const updated = all.map((d) =>
+    d.taskId === taskId ? { ...d, archived: false, archivedAt: null } : d
+  )
+  localStorage.setItem(KEY(bucket), JSON.stringify(updated))
+  _push(bucket)
+}
+
 export function archiveDiscussionsForTask(bucket, taskId) {
   const all = getDiscussions(bucket)
   const updated = all.map((d) =>

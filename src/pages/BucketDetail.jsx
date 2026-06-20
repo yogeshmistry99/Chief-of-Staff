@@ -12,8 +12,8 @@ import { haptic } from '../lib/haptic'
 import Markdown from '../components/Markdown'
 import ChatInput from '../components/ChatInput'
 import ImageLightbox from '../components/ImageLightbox'
-import { getDiscussions, deleteDiscussion, saveDiscussion, newDiscussion, findDiscussionByTask, archiveDiscussionsForTask } from '../lib/discussions'
-import { archiveTask } from '../lib/taskCache'
+import { getDiscussions, deleteDiscussion, saveDiscussion, newDiscussion, findDiscussionByTask, archiveDiscussionsForTask, restoreDiscussionsForTask } from '../lib/discussions'
+import { archiveTask, restoreTask } from '../lib/taskCache'
 
 function extractJSON(text) {
   // Try clean parse first
@@ -394,6 +394,13 @@ function TaskItem({ task: initialTask, onComplete, index = 0, allTasks = [], buc
 
   function handleComplete(e) {
     e.stopPropagation()
+    const openSubs = allTasks.filter((t) => t.parent_id === localTask.id && !t.is_completed)
+    if (openSubs.length > 0) {
+      const msg = openSubs.length === 1
+        ? 'There is still 1 open step — complete and archive anyway?'
+        : `There are still ${openSubs.length} open steps — complete and archive anyway?`
+      if (!window.confirm(msg)) return
+    }
     haptic.success()
     haptic.fanfare()
     setCompletingAnim(true)
@@ -652,9 +659,17 @@ function TaskItem({ task: initialTask, onComplete, index = 0, allTasks = [], buc
   )
 }
 
-function ArchivedSection({ tasks, bucket }) {
+function ArchivedSection({ tasks, allTasks, bucket, onRestore }) {
+  const navigate = useNavigate()
   const [open, setOpen] = useState(false)
-  const discussions = getDiscussions(bucket).filter((d) => d.archived)
+  const [search, setSearch] = useState('')
+  const [expandedId, setExpandedId] = useState(null)
+
+  const allDiscussions = getDiscussions(bucket)
+
+  const filtered = tasks.filter((t) =>
+    !search || t.content.toLowerCase().includes(search.toLowerCase())
+  )
 
   return (
     <div className="px-4 pb-6 mt-2">
@@ -673,35 +688,127 @@ function ArchivedSection({ tasks, bucket }) {
 
       <div style={{ display: 'grid', gridTemplateRows: open ? '1fr' : '0fr', transition: 'grid-template-rows 0.25s ease' }}>
         <div style={{ overflow: 'hidden' }}>
-          <div className="space-y-1 pt-1">
-            {tasks.map((t) => (
-              <div key={t.id} className="flex items-start gap-2 py-2 px-3 bg-white rounded-xl border border-[#F3EDF7] opacity-60">
-                <svg xmlns="http://www.w3.org/2000/svg" height="16" viewBox="0 -960 960 960" width="16" fill="#6750A4" className="flex-shrink-0 mt-0.5">
-                  <path d="M382-240 154-468l57-57 171 171 367-367 57 57-424 424Z"/>
-                </svg>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs text-[#49454F] line-through leading-snug">{t.content}</p>
-                  {t.completed_at && (
-                    <p className="text-[10px] text-[#79747E] mt-0.5">
-                      Completed {new Date(t.completed_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
-                    </p>
-                  )}
-                </div>
-              </div>
-            ))}
-            {discussions.length > 0 && (
-              <div className="mt-2">
-                <p className="text-[10px] text-[#79747E] uppercase tracking-wide mb-1 px-1">Archived discussions</p>
-                {discussions.map((d) => (
-                  <div key={d.id} className="flex items-center gap-2 py-1.5 px-3 bg-white rounded-xl border border-[#F3EDF7] opacity-60 mb-1">
-                    <svg xmlns="http://www.w3.org/2000/svg" height="13" viewBox="0 -960 960 960" width="13" fill="#79747E">
-                      <path d="M240-400h320v-80H240v80Zm0-120h480v-80H240v80Zm0-120h480v-80H240v80ZM80-80V-720q0-33 23.5-56.5T160-800h640q33 0 56.5 23.5T880-720v480q0 33-23.5 56.5T800-200H240L80-80Z"/>
-                    </svg>
-                    <p className="text-xs text-[#49454F] line-through truncate">{d.title}</p>
-                  </div>
-                ))}
-              </div>
+          {tasks.length > 3 && (
+            <div className="relative mb-2 mt-1">
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search archived…"
+                className="w-full rounded-xl border border-[#E7E0EC] bg-[#F3EDF7] px-3 py-1.5 text-xs text-[#1C1B1F] placeholder-[#79747E] focus:outline-none focus:border-[#6750A4]"
+              />
+              {search && (
+                <button onClick={() => setSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#79747E]">
+                  ×
+                </button>
+              )}
+            </div>
+          )}
+
+          <div className="space-y-1.5 pt-1">
+            {filtered.length === 0 && search && (
+              <p className="text-xs text-[#79747E] text-center py-2">No matches.</p>
             )}
+            {filtered.map((t) => {
+              const subtasks = allTasks.filter((s) => s.parent_id === t.id)
+              const discussion = allDiscussions.find((d) => d.taskId === t.id)
+              const isExpanded = expandedId === t.id
+
+              return (
+                <div key={t.id} className="bg-white border border-[#E7E0EC] rounded-2xl overflow-hidden">
+                  {/* Task row */}
+                  <button
+                    onClick={() => setExpandedId(isExpanded ? null : t.id)}
+                    className="w-full flex items-start gap-2.5 py-2.5 px-3 text-left"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" height="15" viewBox="0 -960 960 960" width="15" fill="#6750A4" className="flex-shrink-0 mt-0.5">
+                      <path d="M382-240 154-468l57-57 171 171 367-367 57 57-424 424Z"/>
+                    </svg>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs text-[#79747E] line-through leading-snug">{t.content}</p>
+                      <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                        {t.completed_at && (
+                          <span className="text-[10px] text-[#79747E]">
+                            {new Date(t.completed_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                          </span>
+                        )}
+                        {subtasks.length > 0 && (
+                          <span className="text-[10px] text-[#79747E]">{subtasks.length} step{subtasks.length !== 1 ? 's' : ''}</span>
+                        )}
+                        {discussion && (
+                          <svg xmlns="http://www.w3.org/2000/svg" height="10" viewBox="0 -960 960 960" width="10" fill="#6750A4">
+                            <path d="M240-400h320v-80H240v80Zm0-120h480v-80H240v80Zm0-120h480v-80H240v80ZM80-80v-720q0-33 23.5-56.5T160-880h640q33 0 56.5 23.5T880-800v480q0 33-23.5 56.5T800-240H240L80-80Z"/>
+                          </svg>
+                        )}
+                      </div>
+                    </div>
+                    <svg xmlns="http://www.w3.org/2000/svg" height="14" viewBox="0 -960 960 960" width="14" fill="#CAC4D0"
+                      className="flex-shrink-0 transition-transform duration-200"
+                      style={{ transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}>
+                      <path d="M480-345 240-585l56-56 184 184 184-184 56 56-240 240Z"/>
+                    </svg>
+                  </button>
+
+                  {/* Expanded detail */}
+                  <div style={{
+                    maxHeight: isExpanded ? '400px' : '0',
+                    overflow: 'hidden',
+                    transition: 'max-height 0.25s cubic-bezier(0.4,0,0.2,1)',
+                  }}>
+                    <div className="px-3 pb-3 space-y-2 border-t border-[#F3EDF7]">
+                      {t.description && (
+                        <p className="text-xs text-[#49454F] leading-relaxed pt-2">{t.description}</p>
+                      )}
+
+                      {subtasks.length > 0 && (
+                        <div className="pt-1">
+                          <p className="text-[10px] text-[#79747E] uppercase tracking-wide mb-1">Steps</p>
+                          <div className="space-y-0.5">
+                            {subtasks.map((s) => (
+                              <div key={s.id} className="flex items-center gap-1.5">
+                                <div className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center flex-shrink-0 ${s.is_completed ? 'border-[#6750A4] bg-[#6750A4]' : 'border-[#CAC4D0]'}`}>
+                                  {s.is_completed && (
+                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white" className="w-full h-full p-0.5">
+                                      <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+                                    </svg>
+                                  )}
+                                </div>
+                                <p className={`text-xs leading-snug ${s.is_completed ? 'text-[#79747E] line-through' : 'text-[#49454F]'}`}>{s.content}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {discussion && (
+                        <div className="pt-1">
+                          <p className="text-[10px] text-[#79747E] uppercase tracking-wide mb-1">Discussion</p>
+                          <button
+                            onClick={() => navigate(`/buckets/${bucket}/discussions/${discussion.id}`, { state: { from: `/buckets/${bucket}` } })}
+                            className="flex items-center gap-1.5 text-xs text-[#6750A4] font-medium"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" height="13" viewBox="0 -960 960 960" width="13" fill="currentColor">
+                              <path d="M240-400h320v-80H240v80Zm0-120h480v-80H240v80Zm0-120h480v-80H240v80ZM80-80v-720q0-33 23.5-56.5T160-880h640q33 0 56.5 23.5T880-800v480q0 33-23.5 56.5T800-240H240L80-80Z"/>
+                            </svg>
+                            {discussion.title} · {discussion.messages.length} message{discussion.messages.length !== 1 ? 's' : ''} →
+                          </button>
+                        </div>
+                      )}
+
+                      <button
+                        onClick={() => onRestore(t.id)}
+                        className="flex items-center gap-1 text-xs font-medium text-[#6750A4] bg-[#F3EDF7] hover:bg-[#EADDFF] px-3 py-1.5 rounded-full transition-colors mt-1"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" height="13" viewBox="0 -960 960 960" width="13" fill="currentColor">
+                          <path d="M440-122q-121-15-200.5-105.5T160-440q0-66 26-126t74-108l56 56q-38 36-57 84t-19 94q0 92 60 158t160 80v80Zm80 0v-80q100-14 160-80t60-158q0-100-70-170t-170-70h-3l44 44-56 56-140-140 140-140 56 56-44 44h3q134 0 227 93t93 227q0 121-79.5 211.5T520-122Z"/>
+                        </svg>
+                        Restore
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
           </div>
         </div>
       </div>
@@ -760,6 +867,14 @@ export default function BucketDetail() {
     archiveDiscussionsForTask(bucket, id)
     setTasks((prev) => prev.map((t) =>
       t.id === id ? { ...t, is_completed: true, completed_at: new Date().toISOString() } : t
+    ))
+  }
+
+  function handleRestore(id) {
+    restoreTask(id)
+    restoreDiscussionsForTask(bucket, id)
+    setTasks((prev) => prev.map((t) =>
+      t.id === id ? { ...t, is_completed: false, completed_at: null } : t
     ))
   }
 
@@ -879,7 +994,7 @@ export default function BucketDetail() {
             ? <p className="px-4 pt-6 text-sm text-red-500">Could not load tasks — {loadError}</p>
             : <>
                 <TasksTab tasks={open} sections={sections} loading={loading} onComplete={removeTask} allTasks={tasks} bucket={bucket} onRefresh={handleRefresh} refreshing={refreshing} onRespond={handleRespond} />
-                {archived.length > 0 && <ArchivedSection tasks={archived} bucket={bucket} />}
+                {archived.length > 0 && <ArchivedSection tasks={archived} allTasks={tasks} bucket={bucket} onRestore={handleRestore} />}
               </>}
         </div>
         <div className={`absolute inset-0 ${tab === 'head' ? '' : 'invisible pointer-events-none'}`}>
