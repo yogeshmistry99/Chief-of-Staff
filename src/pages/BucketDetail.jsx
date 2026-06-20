@@ -12,7 +12,8 @@ import { haptic } from '../lib/haptic'
 import Markdown from '../components/Markdown'
 import ChatInput from '../components/ChatInput'
 import ImageLightbox from '../components/ImageLightbox'
-import { getDiscussions, deleteDiscussion, saveDiscussion, newDiscussion, findDiscussionByTask } from '../lib/discussions'
+import { getDiscussions, deleteDiscussion, saveDiscussion, newDiscussion, findDiscussionByTask, archiveDiscussionsForTask } from '../lib/discussions'
+import { archiveTask } from '../lib/taskCache'
 
 function extractJSON(text) {
   // Try clean parse first
@@ -314,7 +315,7 @@ function TasksTab({ tasks, sections, loading, onComplete, allTasks, bucket = '',
   }
 
   return (
-    <div className="overflow-y-auto h-full">
+    <div>
       {/* Sort controls + Refresh */}
       <div className="flex items-center gap-2 px-4 pt-3 pb-2">
         {SORT_OPTIONS.map(({ id, label }) => (
@@ -651,6 +652,63 @@ function TaskItem({ task: initialTask, onComplete, index = 0, allTasks = [], buc
   )
 }
 
+function ArchivedSection({ tasks, bucket }) {
+  const [open, setOpen] = useState(false)
+  const discussions = getDiscussions(bucket).filter((d) => d.archived)
+
+  return (
+    <div className="px-4 pb-6 mt-2">
+      <button
+        onClick={() => setOpen((x) => !x)}
+        className="w-full flex items-center justify-between py-2 text-left"
+      >
+        <span className="text-xs font-semibold text-[#79747E] uppercase tracking-wide">
+          Archived ({tasks.length})
+        </span>
+        <svg xmlns="http://www.w3.org/2000/svg" height="16" viewBox="0 -960 960 960" width="16" fill="#79747E"
+          style={{ transform: open ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s ease' }}>
+          <path d="M480-345 240-585l56-56 184 184 184-184 56 56-240 240Z"/>
+        </svg>
+      </button>
+
+      <div style={{ display: 'grid', gridTemplateRows: open ? '1fr' : '0fr', transition: 'grid-template-rows 0.25s ease' }}>
+        <div style={{ overflow: 'hidden' }}>
+          <div className="space-y-1 pt-1">
+            {tasks.map((t) => (
+              <div key={t.id} className="flex items-start gap-2 py-2 px-3 bg-white rounded-xl border border-[#F3EDF7] opacity-60">
+                <svg xmlns="http://www.w3.org/2000/svg" height="16" viewBox="0 -960 960 960" width="16" fill="#6750A4" className="flex-shrink-0 mt-0.5">
+                  <path d="M382-240 154-468l57-57 171 171 367-367 57 57-424 424Z"/>
+                </svg>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-[#49454F] line-through leading-snug">{t.content}</p>
+                  {t.completed_at && (
+                    <p className="text-[10px] text-[#79747E] mt-0.5">
+                      Completed {new Date(t.completed_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                    </p>
+                  )}
+                </div>
+              </div>
+            ))}
+            {discussions.length > 0 && (
+              <div className="mt-2">
+                <p className="text-[10px] text-[#79747E] uppercase tracking-wide mb-1 px-1">Archived discussions</p>
+                {discussions.map((d) => (
+                  <div key={d.id} className="flex items-center gap-2 py-1.5 px-3 bg-white rounded-xl border border-[#F3EDF7] opacity-60 mb-1">
+                    <svg xmlns="http://www.w3.org/2000/svg" height="13" viewBox="0 -960 960 960" width="13" fill="#79747E">
+                      <path d="M240-400h320v-80H240v80Zm0-120h480v-80H240v80Zm0-120h480v-80H240v80ZM80-80V-720q0-33 23.5-56.5T160-800h640q33 0 56.5 23.5T880-720v480q0 33-23.5 56.5T800-200H240L80-80Z"/>
+                    </svg>
+                    <p className="text-xs text-[#49454F] line-through truncate">{d.title}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function BucketDetail() {
   const { bucket } = useParams()
   const navigate = useNavigate()
@@ -698,12 +756,11 @@ export default function BucketDetail() {
   }
 
   function removeTask(id) {
-    setTasks((prev) => {
-      const updated = prev.filter((t) => t.id !== id)
-      const allCached = getCachedTasks().filter((t) => t.id !== id)
-      saveToCache(allCached)
-      return updated
-    })
+    archiveTask(id)
+    archiveDiscussionsForTask(bucket, id)
+    setTasks((prev) => prev.map((t) =>
+      t.id === id ? { ...t, is_completed: true, completed_at: new Date().toISOString() } : t
+    ))
   }
 
   function handleRespond(notif) {
@@ -764,8 +821,9 @@ export default function BucketDetail() {
     }
   }
 
-  const open = tasks.filter((t) => !t.is_completed)
-  const overdue = open.filter((t) => scoreTask(t).isOverdue).length
+  const open     = tasks.filter((t) => !t.is_completed)
+  const archived = tasks.filter((t) => t.is_completed)
+  const overdue  = open.filter((t) => scoreTask(t).isOverdue).length
   const meta = BUCKET_META[bucket] ?? { emoji: '📁', bg: 'bg-[#E7E0EC]', text: 'text-[#49454F]' }
 
   return (
@@ -816,10 +874,13 @@ export default function BucketDetail() {
 
       {/* Tab content — all three stay mounted; only active one is visible */}
       <div className="flex-1 overflow-hidden relative">
-        <div className={`absolute inset-0 ${tab === 'tasks' ? '' : 'invisible pointer-events-none'}`}>
+        <div className={`absolute inset-0 overflow-y-auto ${tab === 'tasks' ? '' : 'invisible pointer-events-none'}`}>
           {loadError
             ? <p className="px-4 pt-6 text-sm text-red-500">Could not load tasks — {loadError}</p>
-            : <TasksTab tasks={tasks} sections={sections} loading={loading} onComplete={removeTask} allTasks={tasks} bucket={bucket} onRefresh={handleRefresh} refreshing={refreshing} onRespond={handleRespond} />}
+            : <>
+                <TasksTab tasks={open} sections={sections} loading={loading} onComplete={removeTask} allTasks={tasks} bucket={bucket} onRefresh={handleRefresh} refreshing={refreshing} onRespond={handleRespond} />
+                {archived.length > 0 && <ArchivedSection tasks={archived} bucket={bucket} />}
+              </>}
         </div>
         <div className={`absolute inset-0 ${tab === 'head' ? '' : 'invisible pointer-events-none'}`}>
           <HeadTab bucket={bucket} tasks={tasks} setTasks={setTasks} messages={headMessages} setMessages={setHeadMessages} />

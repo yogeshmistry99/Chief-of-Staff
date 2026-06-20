@@ -39,3 +39,12 @@ export function newDiscussion(title, taskId = null) {
 export function findDiscussionByTask(bucket, taskId) {
   return getDiscussions(bucket).find((d) => d.taskId === taskId) ?? null
 }
+
+export function archiveDiscussionsForTask(bucket, taskId) {
+  const all = getDiscussions(bucket)
+  const updated = all.map((d) =>
+    d.taskId === taskId ? { ...d, archived: true, archivedAt: new Date().toISOString() } : d
+  )
+  localStorage.setItem(KEY(bucket), JSON.stringify(updated))
+  _push(bucket)
+}

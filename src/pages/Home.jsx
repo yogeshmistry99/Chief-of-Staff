@@ -11,7 +11,8 @@ import ImageLightbox from '../components/ImageLightbox'
 import EditSheet from '../components/EditSheet'
 import TaskEditSheet from '../components/TaskEditSheet'
 import QuickAdd from '../components/QuickAdd'
-import { getDiscussions, saveDiscussion, newDiscussion, findDiscussionByTask } from '../lib/discussions'
+import { getDiscussions, saveDiscussion, newDiscussion, findDiscussionByTask, archiveDiscussionsForTask } from '../lib/discussions'
+import { archiveTask } from '../lib/taskCache'
 import { onSyncChange } from '../lib/sync'
 import { sendMessageStream, sendMessage, SYSTEM_PROMPTS, REFRESH_PROMPTS, onCalendarChange } from '../lib/claude'
 import { loadHeadConfig } from '../lib/headConfig'
@@ -698,11 +699,12 @@ export default function Home() {
   }, [])
 
   function removeTask(id) {
-    setTasks((prev) => {
-      const updated = prev.filter((t) => t.id !== id)
-      saveToCache(getCachedTasks().filter((t) => t.id !== id))
-      return updated
-    })
+    const task = tasks.find((t) => t.id === id)
+    archiveTask(id)
+    if (task?._projectName) archiveDiscussionsForTask(task._projectName, id)
+    setTasks((prev) => prev.map((t) =>
+      t.id === id ? { ...t, is_completed: true, completed_at: new Date().toISOString() } : t
+    ))
   }
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])

@@ -25,6 +25,15 @@ export function saveToCache(tasks) {
   pushToSupabase('todoist_task_cache', tasks).catch(() => {})
 }
 
+export function archiveTask(id) {
+  const all = getCachedTasks()
+  const updated = all.map((t) =>
+    t.id === id ? { ...t, is_completed: true, completed_at: new Date().toISOString() } : t
+  )
+  saveToCache(updated)
+  return updated
+}
+
 // Merge incoming tasks with existing cache — deduplicate by id, prefer fresher data
 function mergeTasks(existing, incoming) {
   const map = new Map(existing.map((t) => [t.id, t]))

@@ -144,10 +144,11 @@ async function executeTool(name, input, tasks) {
   }
 
   if (name === 'complete_task') {
-    const idx = tasks.findIndex((t) => t.id === input.task_id)
-    if (idx === -1) return { error: `Task not found: ${input.task_id}` }
-    tasks.splice(idx, 1)
-    return { success: true, message: 'Task completed and removed.' }
+    const task = tasks.find((t) => t.id === input.task_id)
+    if (!task) return { error: `Task not found: ${input.task_id}` }
+    task.is_completed = true
+    task.completed_at = new Date().toISOString()
+    return { success: true, verified: { is_completed: true, content: task.content } }
   }
 
   if (name === 'update_task') {
