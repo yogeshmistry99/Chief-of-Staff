@@ -247,7 +247,7 @@ export default async function handler(req, res) {
             'content-type': 'application/json',
           },
           body: JSON.stringify({
-            model: 'claude-sonnet-4-5',
+            model: requestedModel ?? 'claude-haiku-4-5-20251001',
             max_tokens: 4096,
             stream: true,
             ...(system ? { system } : {}),

@@ -67,6 +67,7 @@ export default function HeadConfig() {
   const defaultContext = initial.context || DEFAULT_CONTEXT[key] || ''
   const [instructions, setInstructions] = useState(defaultInstructions)
   const [context, setContext] = useState(defaultContext)
+  const [model, setModel] = useState(initial.model || '')
   const [files, setFiles] = useState(initial.files)
   const [saved, setSaved] = useState(false)
   const fileInputRef = useRef(null)
@@ -75,10 +76,10 @@ export default function HeadConfig() {
   // Track whether this is the first render so we don't auto-save on mount
   const isFirstRender = useRef(true)
 
-  function triggerSave(newInstructions, newContext, newFiles) {
+  function triggerSave(newInstructions, newContext, newFiles, newModel) {
     clearTimeout(saveTimerRef.current)
     saveTimerRef.current = setTimeout(() => {
-      saveHeadConfig(key, { instructions: newInstructions, context: newContext, files: newFiles })
+      saveHeadConfig(key, { instructions: newInstructions, context: newContext, files: newFiles, model: newModel })
       haptic.success()
       setSaved(true)
       clearTimeout(tickTimerRef.current)
@@ -88,8 +89,8 @@ export default function HeadConfig() {
 
   useEffect(() => {
     if (isFirstRender.current) { isFirstRender.current = false; return }
-    triggerSave(instructions, context, files)
-  }, [instructions, context, files])
+    triggerSave(instructions, context, files, model)
+  }, [instructions, context, files, model])
 
   // Reload when another device saves remotely
   useEffect(() => {
@@ -98,6 +99,7 @@ export default function HeadConfig() {
       const updated = loadHeadConfig(key)
       setInstructions(updated.instructions || DEFAULT_INSTRUCTIONS[key] || '')
       setContext(updated.context || DEFAULT_CONTEXT[key] || '')
+      setModel(updated.model || '')
       setFiles(updated.files)
     })
   }, [key])
@@ -150,6 +152,46 @@ export default function HeadConfig() {
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto px-4 py-5 space-y-6 pb-6">
+
+        {/* Model */}
+        <section>
+          <div className="mb-2">
+            <h2 className="text-sm font-semibold text-[#1C1B1F]">AI Model</h2>
+            <p className="text-xs text-[#79747E] mt-0.5">Choose which Claude model powers this chat. Faster models cost less; smarter models reason better.</p>
+          </div>
+          <div className="grid grid-cols-1 gap-2">
+            {[
+              { id: '',                          label: 'Default',        sub: 'Haiku 4.5 — fast & cheap',          badge: null },
+              { id: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5',     sub: 'Fastest · lowest cost',             badge: 'Fast' },
+              { id: 'claude-sonnet-4-5',         label: 'Sonnet 4.5',    sub: 'Balanced speed & intelligence',      badge: null },
+              { id: 'claude-sonnet-4-6',         label: 'Sonnet 4.6',    sub: 'Latest Sonnet · stronger reasoning', badge: 'Latest' },
+              { id: 'claude-opus-4-8',           label: 'Opus 4.8',      sub: 'Most powerful · slower & costlier',  badge: 'Smart' },
+            ].map(({ id, label, sub, badge }) => (
+              <button
+                key={id}
+                onClick={() => { setModel(id); setSaved(false) }}
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border text-left transition-colors ${
+                  model === id
+                    ? 'border-[#6750A4] bg-[#F3EDF7]'
+                    : 'border-[#CAC4D0] bg-white hover:bg-[#FAFAFA]'
+                }`}
+              >
+                <div className={`w-4 h-4 rounded-full border-2 flex-shrink-0 flex items-center justify-center ${
+                  model === id ? 'border-[#6750A4]' : 'border-[#CAC4D0]'
+                }`}>
+                  {model === id && <div className="w-2 h-2 rounded-full bg-[#6750A4]" />}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <span className={`text-sm font-medium ${model === id ? 'text-[#6750A4]' : 'text-[#1C1B1F]'}`}>{label}</span>
+                    {badge && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-[#EADDFF] text-[#6750A4]">{badge}</span>}
+                  </div>
+                  <p className="text-xs text-[#79747E]">{sub}</p>
+                </div>
+              </button>
+            ))}
+          </div>
+        </section>
 
         {/* Instructions */}
         <section>

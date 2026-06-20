@@ -31,11 +31,11 @@ export function getMonthlyUsage() {
 // Streams a response chunk-by-chunk, calling onChunk(text) for each piece.
 // onTasksUpdated(tasks) is called if the server mutated the task list.
 // Returns the full text when done.
-export async function sendMessageStream(messages, system, onChunk, tasks = null, onTasksUpdated = null) {
+export async function sendMessageStream(messages, system, onChunk, tasks = null, onTasksUpdated = null, model = null) {
   const res = await fetch('/api/claude?stream=1', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messages, system, tasks }),
+    body: JSON.stringify({ messages, system, tasks, model }),
   })
   if (!res.ok) throw new Error(`Claude API error: ${res.status}`)
 

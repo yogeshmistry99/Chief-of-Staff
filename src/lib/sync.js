@@ -31,6 +31,8 @@ function applyToLocalStorage(sbKey, value) {
         localStorage.setItem(`head_instructions_${k}`, value.instructions ?? '')
         localStorage.setItem(`head_context_${k}`, value.context ?? '')
         localStorage.setItem(`head_files_${k}`, JSON.stringify(value.files ?? []))
+        if (value.model) localStorage.setItem(`head_model_${k}`, value.model)
+        else localStorage.removeItem(`head_model_${k}`)
       }
     } else if (sbKey.startsWith('discussions_')) {
       const bucket = sbKey.replace('discussions_', '')

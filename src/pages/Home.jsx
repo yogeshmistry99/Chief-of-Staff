@@ -757,7 +757,7 @@ export default function Home() {
           if (!last?.streaming) return prev
           return [...prev.slice(0, -1), { ...last, content: last.content + chunk }]
         })
-      }, tasks, (updatedTasks) => { setTasks(updatedTasks); saveToCache(updatedTasks) })
+      }, tasks, (updatedTasks) => { setTasks(updatedTasks); saveToCache(updatedTasks) }, cfg.model || null)
       setMessages((prev) => {
         const last = prev[prev.length - 1]
         if (!last?.streaming) return prev

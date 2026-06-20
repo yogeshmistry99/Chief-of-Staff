@@ -74,7 +74,7 @@ function HeadTab({ bucket, tasks, setTasks, messages, setMessages }) {
       }, tasks, (updatedTasks) => {
         setTasks(updatedTasks)
         saveToCache(updatedTasks)
-      })
+      }, cfg.model || null)
       // Mark streaming done
       setMessages((prev) => {
         const last = prev[prev.length - 1]

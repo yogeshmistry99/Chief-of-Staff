@@ -114,7 +114,7 @@ export default function ChiefPage() {
       }, tasks, (updatedTasks) => {
         setTasks(updatedTasks)
         saveToCache(updatedTasks)
-      })
+      }, cfg.model || null)
       setMessages((prev) => {
         const last = prev[prev.length - 1]
         if (!last?.streaming) return prev
