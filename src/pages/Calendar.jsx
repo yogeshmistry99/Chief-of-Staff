@@ -18,6 +18,20 @@ const BUCKET_COLORS = {
   Systems:  'bg-[#EADDFF] text-[#21005D]',
 }
 
+// Colour coding: left-border bar + bubble bg based on event type & RSVP
+function getEventAccent(e) {
+  const selfRsvp = e.attendees?.find((a) => a.self)?.responseStatus
+  if (selfRsvp === 'declined')  return { bg: 'bg-red-50',      bar: 'bg-red-300',    time: 'text-red-400',    label: 'text-red-400 opacity-60' }
+  if (selfRsvp === 'tentative') return { bg: 'bg-amber-50',    bar: 'bg-amber-300',  time: 'text-amber-600',  label: 'text-[#1C1B1F]' }
+  if (e._calendarType === 'holiday') return { bg: 'bg-[#E8F5E9]', bar: 'bg-[#81C784]', time: 'text-[#2E7D32]', label: 'text-[#2E7D32]' }
+  if (e._readOnly) return { bg: 'bg-[#F5F5F5]',  bar: 'bg-[#BDBDBD]', time: 'text-[#9E9E9E]', label: 'text-[#757575]' }
+  const hasVideo     = !!(e.hangoutLink ?? e.conferenceData?.entryPoints?.find((ep) => ep.entryPointType === 'video'))
+  const hasAttendees = (e.attendees?.length ?? 0) > 0
+  if (hasVideo)      return { bg: 'bg-[#E0F7FA]', bar: 'bg-[#26C6DA]', time: 'text-[#00838F]', label: 'text-[#1C1B1F]' }
+  if (hasAttendees)  return { bg: 'bg-[#E3F2FD]', bar: 'bg-[#42A5F5]', time: 'text-[#0D47A1]', label: 'text-[#1C1B1F]' }
+  return               { bg: 'bg-[#EDE7F6]',       bar: 'bg-[#6750A4]', time: 'text-[#6750A4]', label: 'text-[#1C1B1F]' }
+}
+
 function isoDate(d) {
   const y = d.getFullYear()
   const m = String(d.getMonth() + 1).padStart(2, '0')
@@ -28,8 +42,7 @@ function addDays(d, n) { const r = new Date(d); r.setDate(r.getDate() + n); retu
 
 function startOfWeek(d) {
   const r = new Date(d)
-  const day = r.getDay()
-  r.setDate(r.getDate() - ((day + 6) % 7)) // Monday
+  r.setDate(r.getDate() - ((r.getDay() + 6) % 7)) // Monday
   return r
 }
 
@@ -58,7 +71,8 @@ function EventRow({ event: initialEvent }) {
   const isHoldRef = useRef(false)
   const isReadOnly = !!e._readOnly
 
-  const isAllDay  = !!e.start?.date && !e.start?.dateTime
+  const accent   = getEventAccent(e)
+  const isAllDay = !!e.start?.date && !e.start?.dateTime
   const startTime = formatTime(e.start?.dateTime, e.start?.timeZone)
   const endTime   = formatTime(e.end?.dateTime,   e.end?.timeZone)
   const duration  = formatDuration(e.start?.dateTime, e.end?.dateTime)
@@ -106,7 +120,7 @@ function EventRow({ event: initialEvent }) {
     <>
       <div className="border-b border-[#F3EDF7] last:border-0">
         <div
-          className="flex gap-3 items-center py-2.5 cursor-pointer select-none"
+          className="flex gap-3 items-center py-2 cursor-pointer select-none"
           onPointerDown={handlePointerDown}
           onPointerUp={handlePointerUp}
           onPointerLeave={handlePointerUp}
@@ -115,16 +129,20 @@ function EventRow({ event: initialEvent }) {
           <div className="w-10 flex-shrink-0 text-right">
             {isAllDay
               ? <span className="text-xs text-[#79747E]">All day</span>
-              : <span className={`text-xs font-medium ${isReadOnly ? 'text-[#79747E]' : 'text-[#6750A4]'}`}>{startTime}</span>}
+              : <span className={`text-xs font-medium ${accent.time}`}>{startTime}</span>}
           </div>
-          <div className={`flex-1 min-w-0 rounded-lg px-2.5 py-1.5 ${isReadOnly ? 'bg-[#F3EDF7]/50' : 'bg-[#F3EDF7]'}`}>
-            <p className={`text-sm leading-snug truncate ${isReadOnly ? 'text-[#79747E]' : 'font-medium text-[#1C1B1F]'}`}>{e.summary}</p>
-            {!isAllDay && endTime && !expanded && (
-              <p className="text-xs text-[#79747E]">until {endTime}{duration ? ` · ${duration}` : ''}</p>
-            )}
-            {isReadOnly && !expanded && e._calendarName && (
-              <p className="text-[10px] text-[#CAC4D0] uppercase tracking-wide">{e._calendarName}</p>
-            )}
+          {/* Coloured-bar bubble */}
+          <div className={`flex-1 min-w-0 rounded-lg overflow-hidden flex ${accent.bg}`}>
+            <div className={`w-1 flex-shrink-0 ${accent.bar}`} />
+            <div className="flex-1 min-w-0 px-2.5 py-1.5">
+              <p className={`text-sm leading-snug truncate font-medium ${accent.label}`}>{e.summary}</p>
+              {!isAllDay && endTime && !expanded && (
+                <p className="text-xs text-[#79747E]">until {endTime}{duration ? ` · ${duration}` : ''}</p>
+              )}
+              {isReadOnly && !expanded && e._calendarName && (
+                <p className="text-[10px] text-[#CAC4D0] uppercase tracking-wide">{e._calendarName}</p>
+              )}
+            </div>
           </div>
           <svg xmlns="http://www.w3.org/2000/svg" height="16" viewBox="0 -960 960 960" width="16" fill="#CAC4D0"
             className={`flex-shrink-0 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}>
@@ -161,7 +179,7 @@ function EventRow({ event: initialEvent }) {
               </a>
             )}
             {selfRsvp && (
-              <p className={`text-xs font-medium capitalize ${rsvpColor[selfRsvp] ?? 'text-[#79747E]'}`}>
+              <p className={`text-xs font-medium ${rsvpColor[selfRsvp] ?? 'text-[#79747E]'}`}>
                 {selfRsvp === 'needsAction' ? 'Not responded' : selfRsvp === 'accepted' ? '✓ Accepted' : selfRsvp === 'declined' ? '✗ Declined' : '~ Tentative'}
               </p>
             )}
@@ -231,29 +249,52 @@ export default function Calendar() {
   const [loading, setLoading] = useState(true)
   const [selectedDate, setSelectedDate] = useState(isoDate(new Date()))
   const [monthOffset, setMonthOffset] = useState(0)
+  const [weekOffset, setWeekOffset] = useState(0)
+  const stripSwipeRef = useRef({})
 
   const today = new Date()
   today.setHours(0, 0, 0, 0)
 
-  // Load tasks from cache (fast, no API calls needed for calendar dots)
+  // Load tasks from cache
   useEffect(() => {
     const cached = getCachedTasks()
-    setTasks(cached.map((t) => ({ ...t, _bucket: PROJECT_NAMES[t.project_id] ?? t._projectName })))
+    setTasks(cached.filter((t) => !t.is_completed).map((t) => ({ ...t, _bucket: PROJECT_NAMES[t.project_id] ?? t._projectName })))
     setLoading(false)
   }, [])
 
-  // Load calendar events — fetch a wide window covering this month ± 1
+  // Load events — window covers both month view and week view
   const loadEvents = useCallback(() => {
     setCalendarError(null)
-    const start = new Date(today.getFullYear(), today.getMonth() + monthOffset - 1, 1).toISOString()
-    const end = new Date(today.getFullYear(), today.getMonth() + monthOffset + 2, 1).toISOString()
+    const weekViewStart = startOfWeek(addDays(today, weekOffset * 7))
+    const weekViewEnd   = addDays(weekViewStart, 7)
+    const monthViewStart = new Date(today.getFullYear(), today.getMonth() + monthOffset - 1, 1)
+    const monthViewEnd   = new Date(today.getFullYear(), today.getMonth() + monthOffset + 2, 1)
+    const start = new Date(Math.min(weekViewStart.getTime(), monthViewStart.getTime())).toISOString()
+    const end   = new Date(Math.max(weekViewEnd.getTime(),   monthViewEnd.getTime())).toISOString()
     fetchEvents(start, end)
       .then(setEvents)
       .catch((e) => setCalendarError(e.message))
-  }, [monthOffset])
+  }, [monthOffset, weekOffset])
 
   useEffect(() => { loadEvents() }, [loadEvents])
   useEffect(() => onCalendarChange(loadEvents), [loadEvents])
+
+  // Weekly strip swipe handlers
+  function handleStripTouchStart(e) {
+    const t = e.touches[0]
+    stripSwipeRef.current = { startX: t.clientX, startY: t.clientY }
+  }
+  function handleStripTouchEnd(e) {
+    const { startX, startY } = stripSwipeRef.current
+    if (startX === undefined) return
+    const dx = e.changedTouches[0].clientX - startX
+    const dy = Math.abs(e.changedTouches[0].clientY - startY)
+    if (Math.abs(dx) > 40 && dy < 40) {
+      haptic.light()
+      if (dx < 0) setWeekOffset((o) => o + 1)
+      else         setWeekOffset((o) => o - 1)
+    }
+  }
 
   // Index tasks by due date
   const tasksByDate = {}
@@ -273,19 +314,28 @@ export default function Calendar() {
     eventsByDate[dateStr].push(e)
   })
 
-  // --- Weekly strip ---
-  const weekStart = startOfWeek(today)
-  const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i))
+  // Weekly strip
+  const weekStart = startOfWeek(addDays(today, weekOffset * 7))
+  const weekDays  = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i))
+  const weekEnd   = addDays(weekStart, 6)
 
-  // --- Monthly grid ---
-  const viewMonth = new Date(today.getFullYear(), today.getMonth() + monthOffset, 1)
-  const totalDays = new Date(viewMonth.getFullYear(), viewMonth.getMonth() + 1, 0).getDate()
-  const firstDow = (viewMonth.getDay() + 6) % 7 // Mon=0
+  function weekLabel() {
+    if (weekOffset === 0) return 'This week'
+    if (weekOffset === 1) return 'Next week'
+    if (weekOffset === -1) return 'Last week'
+    const fmt = (d) => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+    return `${fmt(weekStart)} – ${fmt(weekEnd)}`
+  }
+
+  // Monthly grid
+  const viewMonth  = new Date(today.getFullYear(), today.getMonth() + monthOffset, 1)
+  const totalDays  = new Date(viewMonth.getFullYear(), viewMonth.getMonth() + 1, 0).getDate()
+  const firstDow   = (viewMonth.getDay() + 6) % 7
   const totalCells = Math.ceil((firstDow + totalDays) / 7) * 7
   const monthLabel = viewMonth.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
 
   // Selected day content
-  const selectedTasks = tasksByDate[selectedDate] ?? []
+  const selectedTasks  = tasksByDate[selectedDate] ?? []
   const selectedEvents = (eventsByDate[selectedDate] ?? []).sort((a, b) => {
     const at = a.start?.dateTime ?? a.start?.date ?? ''
     const bt = b.start?.dateTime ?? b.start?.date ?? ''
@@ -293,21 +343,22 @@ export default function Calendar() {
   })
 
   function DayCell({ d, compact = false }) {
-    const iso = isoDate(d)
-    const isToday = iso === isoDate(today)
+    const iso       = isoDate(d)
+    const isToday   = iso === isoDate(today)
     const isSelected = iso === selectedDate
-    const isPast = d < today && !isToday
+    const isPast    = d < today && !isToday
     const taskCount = tasksByDate[iso]?.length ?? 0
-    const hasP1 = tasksByDate[iso]?.some((t) => t.priority === 4)
-    const eventCount = eventsByDate[iso]?.length ?? 0
+    const hasP1     = tasksByDate[iso]?.some((t) => t.priority === 4)
+    const eventsHere = eventsByDate[iso] ?? []
+    const personalEvents = eventsHere.filter((e) => !e._readOnly)
+    const hasVideo  = personalEvents.some((e) => !!(e.hangoutLink ?? e.conferenceData?.entryPoints?.find((ep) => ep.entryPointType === 'video')))
+    const hasMeeting = personalEvents.some((e) => (e.attendees?.length ?? 0) > 0)
 
     return (
       <button
         onClick={() => setSelectedDate(iso)}
         className={`flex flex-col items-center rounded-xl transition-colors ${compact ? 'py-1' : 'py-2'} ${
-          isSelected ? 'bg-[#6750A4]' :
-          isToday ? 'bg-[#EADDFF]' :
-          'hover:bg-[#F3EDF7]'
+          isSelected ? 'bg-[#6750A4]' : isToday ? 'bg-[#EADDFF]' : 'hover:bg-[#F3EDF7]'
         }`}
       >
         {!compact && (
@@ -324,8 +375,14 @@ export default function Calendar() {
           {taskCount > 0 && (
             <span className={`w-1.5 h-1.5 rounded-full ${isSelected ? 'bg-white' : hasP1 ? 'bg-red-400' : 'bg-[#6750A4]'}`} />
           )}
-          {eventCount > 0 && (
-            <span className={`w-1.5 h-1.5 rounded-full ${isSelected ? 'bg-white/60' : 'bg-[#49454F]'}`} />
+          {hasVideo && (
+            <span className={`w-1.5 h-1.5 rounded-full ${isSelected ? 'bg-white/70' : 'bg-[#26C6DA]'}`} />
+          )}
+          {!hasVideo && hasMeeting && (
+            <span className={`w-1.5 h-1.5 rounded-full ${isSelected ? 'bg-white/70' : 'bg-[#42A5F5]'}`} />
+          )}
+          {!hasVideo && !hasMeeting && personalEvents.length > 0 && (
+            <span className={`w-1.5 h-1.5 rounded-full ${isSelected ? 'bg-white/60' : 'bg-[#9E9E9E]'}`} />
           )}
         </div>
       </button>
@@ -346,19 +403,43 @@ export default function Calendar() {
                 The Google refresh token has expired. Go to Vercel → Environment Variables and update <code className="bg-red-100 px-1 rounded">GOOGLE_REFRESH_TOKEN</code> with a new token from the OAuth Playground.
               </p>
             )}
-            <button
-              onClick={loadEvents}
-              className="mt-2 text-xs font-medium text-red-700 underline"
-            >
-              Retry
-            </button>
+            <button onClick={loadEvents} className="mt-2 text-xs font-medium text-red-700 underline">Retry</button>
           </div>
         )}
 
         {/* Weekly strip */}
         <div className="mb-5">
-          <p className="text-xs text-[#79747E] mb-2 font-medium uppercase tracking-wide">This week</p>
-          <div className="grid grid-cols-7 gap-1">
+          {/* Strip header: label + nav */}
+          <div className="flex items-center justify-between mb-2">
+            <button
+              onClick={() => { haptic.light(); setWeekOffset((o) => o - 1) }}
+              className="p-1 text-[#79747E] hover:text-[#6750A4] hover:bg-[#EADDFF] rounded-full transition-colors"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" height="16" viewBox="0 -960 960 960" width="16" fill="currentColor">
+                <path d="M560-240 320-480l240-240 56 56-184 184 184 184-56 56Z"/>
+              </svg>
+            </button>
+            <button
+              onClick={() => { if (weekOffset !== 0) { haptic.light(); setWeekOffset(0) } }}
+              className="text-xs font-medium uppercase tracking-wide text-[#79747E] hover:text-[#6750A4] transition-colors px-2 py-0.5 rounded-full hover:bg-[#F3EDF7]"
+            >
+              {weekLabel()}
+            </button>
+            <button
+              onClick={() => { haptic.light(); setWeekOffset((o) => o + 1) }}
+              className="p-1 text-[#79747E] hover:text-[#6750A4] hover:bg-[#EADDFF] rounded-full transition-colors"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" height="16" viewBox="0 -960 960 960" width="16" fill="currentColor">
+                <path d="M400-240 640-480 400-720l-56 56 184 184-184 184 56 56Z"/>
+              </svg>
+            </button>
+          </div>
+          {/* Swipeable day grid */}
+          <div
+            className="grid grid-cols-7 gap-1 touch-pan-y"
+            onTouchStart={handleStripTouchStart}
+            onTouchEnd={handleStripTouchEnd}
+          >
             {weekDays.map((d) => <DayCell key={isoDate(d)} d={d} />)}
           </div>
         </div>
@@ -369,14 +450,12 @@ export default function Calendar() {
             {new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'long', day: '2-digit', month: '2-digit', year: '2-digit' })}
           </p>
 
-          {/* Events */}
           {selectedEvents.length > 0 && (
             <div className="mb-3">
               {selectedEvents.map((e) => <EventRow key={e.id} event={e} />)}
             </div>
           )}
 
-          {/* Tasks */}
           {selectedTasks.length > 0 && (
             <div className="space-y-0">
               {selectedTasks.map((t) => {
@@ -409,13 +488,13 @@ export default function Calendar() {
           <div className="flex items-center justify-between mb-3">
             <button onClick={() => setMonthOffset((o) => o - 1)} className="p-1 text-[#6750A4] hover:bg-[#EADDFF] rounded-full transition-colors">
               <svg xmlns="http://www.w3.org/2000/svg" height="20" viewBox="0 -960 960 960" width="20" fill="currentColor">
-                <path d="M560-240 320-480l240-240 56 56-184 184 184 184-56 56Z" />
+                <path d="M560-240 320-480l240-240 56 56-184 184 184 184-56 56Z"/>
               </svg>
             </button>
             <p className="text-sm font-semibold text-[#1C1B1F]">{monthLabel}</p>
             <button onClick={() => setMonthOffset((o) => o + 1)} className="p-1 text-[#6750A4] hover:bg-[#EADDFF] rounded-full transition-colors">
               <svg xmlns="http://www.w3.org/2000/svg" height="20" viewBox="0 -960 960 960" width="20" fill="currentColor">
-                <path d="M400-240 640-480 400-720l-56 56 184 184-184 184 56 56Z" />
+                <path d="M400-240 640-480 400-720l-56 56 184 184-184 184 56 56Z"/>
               </svg>
             </button>
           </div>
@@ -433,19 +512,46 @@ export default function Calendar() {
             })}
           </div>
 
-          <div className="flex items-center gap-4 mt-3">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 mt-3">
             <div className="flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-[#6750A4]" />
               <span className="text-xs text-[#79747E]">Tasks</span>
             </div>
             <div className="flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-red-400" />
-              <span className="text-xs text-[#79747E]">P1 tasks</span>
+              <span className="text-xs text-[#79747E]">P1</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-[#49454F]" />
-              <span className="text-xs text-[#79747E]">Events</span>
+              <span className="w-2 h-2 rounded-full bg-[#26C6DA]" />
+              <span className="text-xs text-[#79747E]">Video call</span>
             </div>
+            <div className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-[#42A5F5]" />
+              <span className="text-xs text-[#79747E]">Meeting</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-[#9E9E9E]" />
+              <span className="text-xs text-[#79747E]">Event</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Colour legend for event bubbles */}
+        <div className="mt-3 px-1">
+          <div className="flex flex-wrap gap-x-3 gap-y-1">
+            {[
+              { bar: 'bg-[#6750A4]', label: 'Personal' },
+              { bar: 'bg-[#42A5F5]', label: 'Meeting' },
+              { bar: 'bg-[#26C6DA]', label: 'Video call' },
+              { bar: 'bg-[#81C784]', label: 'Holiday' },
+              { bar: 'bg-amber-300',  label: 'Tentative' },
+              { bar: 'bg-red-300',    label: 'Declined' },
+            ].map(({ bar, label }) => (
+              <div key={label} className="flex items-center gap-1">
+                <span className={`w-2 h-3 rounded-sm flex-shrink-0 ${bar}`} />
+                <span className="text-[10px] text-[#79747E]">{label}</span>
+              </div>
+            ))}
           </div>
         </div>
 
