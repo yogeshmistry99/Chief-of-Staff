@@ -796,7 +796,16 @@ export default function Home() {
 
       {/* Chief of Staff chat tab */}
       <div className={`flex-1 overflow-hidden flex-col ${tab === 'chief' ? 'flex' : 'hidden'}`}>
-        <div className="flex justify-end px-4 pt-2 flex-shrink-0">
+        <div className="flex items-center justify-between px-4 pt-2 flex-shrink-0">
+          <button
+            onClick={() => navigate('/chief/config')}
+            className="flex items-center gap-1 text-xs font-medium text-[#6750A4] py-1.5 px-3 rounded-full bg-[#F3EDF7] hover:bg-[#EADDFF] transition-colors"
+          >
+            {loadHeadConfig('chief').instructions || loadHeadConfig('chief').context ? (
+              <span className="w-1.5 h-1.5 rounded-full bg-[#6750A4]" />
+            ) : null}
+            Knowledge
+          </button>
           <button
             onClick={handleCosRefresh}
             disabled={cosRefreshing}
