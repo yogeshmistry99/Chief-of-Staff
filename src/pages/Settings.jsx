@@ -38,6 +38,39 @@ function IntegrationCard({ icon, name, description, connected, detail, url }) {
   )
 }
 
+function CollapsibleSection({ title, subtitle, children, defaultOpen = false }) {
+  const [open, setOpen] = useState(defaultOpen)
+  return (
+    <div className="mb-4">
+      <button
+        onClick={() => setOpen((x) => !x)}
+        className="w-full flex items-center justify-between mb-1 group"
+      >
+        <div className="text-left">
+          <p className="text-sm font-semibold text-[#1C1B1F]">{title}</p>
+          {subtitle && <p className="text-xs text-[#79747E]">{subtitle}</p>}
+        </div>
+        <svg
+          xmlns="http://www.w3.org/2000/svg" height="20" viewBox="0 -960 960 960" width="20"
+          fill="#79747E"
+          style={{ transform: open ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s ease', flexShrink: 0 }}
+        >
+          <path d="M480-345 240-585l56-56 184 184 184-184 56 56-240 240Z"/>
+        </svg>
+      </button>
+      <div style={{
+        display: 'grid',
+        gridTemplateRows: open ? '1fr' : '0fr',
+        transition: 'grid-template-rows 0.25s ease',
+      }}>
+        <div style={{ overflow: 'hidden' }}>
+          {children}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function Settings() {
   const [usage, setUsage] = useState({})
   const [resetDone, setResetDone] = useState(false)
@@ -229,23 +262,19 @@ export default function Settings() {
       </div>
 
       {/* Integrations */}
-      <div className="mb-4">
-        <h2 className="text-sm font-semibold text-[#1C1B1F] mb-0.5">How this app is built</h2>
-        <p className="text-xs text-[#79747E] mb-3">Life OS connects these services to work. Tap any card to manage that integration.</p>
-        <div className="space-y-2">
+      <CollapsibleSection title="How this app is built" subtitle="Life OS connects these services to work. Tap any card to manage.">
+        <div className="space-y-2 pt-2">
           {integrations.map((item) => <IntegrationCard key={item.name} {...item} />)}
         </div>
-      </div>
-
-      {/* Setup instructions */}
-      <div className="bg-[#EADDFF] rounded-2xl p-4 mb-4">
-        <h2 className="text-sm font-semibold text-[#21005D] mb-2">How to connect</h2>
-        <ol className="text-xs text-[#21005D] space-y-1.5 list-decimal list-inside">
-          <li>Copy <code className="bg-white/60 px-1 rounded">.env.example</code> to <code className="bg-white/60 px-1 rounded">.env</code></li>
-          <li>Fill in each API key from the respective developer consoles</li>
-          <li>Redeploy on Vercel — environment variables update automatically</li>
-        </ol>
-      </div>
+        <div className="bg-[#EADDFF] rounded-2xl p-4 mt-2">
+          <h2 className="text-sm font-semibold text-[#21005D] mb-2">How to connect</h2>
+          <ol className="text-xs text-[#21005D] space-y-1.5 list-decimal list-inside">
+            <li>Copy <code className="bg-white/60 px-1 rounded">.env.example</code> to <code className="bg-white/60 px-1 rounded">.env</code></li>
+            <li>Fill in each API key from the respective developer consoles</li>
+            <li>Redeploy on Vercel — environment variables update automatically</li>
+          </ol>
+        </div>
+      </CollapsibleSection>
 
       {/* App info */}
       <div className="bg-white border border-[#CAC4D0] rounded-2xl px-4 py-3 mb-4">
@@ -306,71 +335,73 @@ export default function Settings() {
       </div>
 
       {/* Backups */}
-      <div className="bg-white border border-[#CAC4D0] rounded-2xl px-4 py-3 mb-4">
-        <div className="flex items-center justify-between mb-1">
-          <h2 className="text-xs font-semibold text-[#49454F] uppercase tracking-wide">Backups</h2>
-          <button
-            onClick={handleBackupNow}
-            disabled={backupState === 'saving' || !supabase}
-            className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
-              backupState === 'done'  ? 'bg-green-500 text-white' :
-              backupState === 'error' ? 'bg-red-500 text-white' :
-              backupState === 'saving'? 'bg-[#F3EDF7] text-[#79747E]' :
-                                        'bg-[#6750A4] text-white hover:bg-[#7965AF]'
-            }`}
-          >
-            {backupState === 'saving' ? 'Saving…' : backupState === 'done' ? '✓ Saved' : backupState === 'error' ? '✗ Failed' : 'Back up now'}
-          </button>
-        </div>
-        <p className="text-xs text-[#79747E] mb-3">Weekly snapshots every Sunday at 8am. Last 12 kept.</p>
-
-        {restoreState === 'done' && (
-          <p className="text-xs text-green-600 font-medium mb-2">✓ Tasks restored successfully.</p>
-        )}
-        {restoreState === 'error' && (
-          <p className="text-xs text-red-500 mb-2">Restore failed. Try again.</p>
-        )}
-
-        {/* Restore confirmation dialog */}
-        {restoreTarget && (
-          <div className="bg-[#FFF8E1] border border-[#FFE082] rounded-xl p-3 mb-3">
-            <p className="text-xs font-semibold text-[#5D4037] mb-1">Restore from this snapshot?</p>
-            <p className="text-xs text-[#795548] mb-2">
-              This will replace your current tasks with the snapshot from <strong>{fmtBackupDate(restoreTarget.created_at)}</strong> ({restoreTarget.task_count} tasks).
-              Your current tasks will be saved as a recovery point first.
-            </p>
-            <div className="flex gap-2">
-              <button onClick={() => setRestoreTarget(null)} className="flex-1 py-1.5 rounded-full text-xs font-semibold bg-white border border-[#CAC4D0] text-[#49454F]">Cancel</button>
-              <button onClick={confirmRestore} disabled={restoreState === 'restoring'} className="flex-1 py-1.5 rounded-full text-xs font-semibold bg-[#6750A4] text-white">
-                {restoreState === 'restoring' ? 'Restoring…' : 'Continue'}
-              </button>
-            </div>
+      <CollapsibleSection title="Backups" subtitle={`Weekly snapshots · ${backups.length} saved`}>
+        <div className="bg-white border border-[#CAC4D0] rounded-2xl px-4 py-3 mt-2">
+          <div className="flex items-center justify-between mb-1">
+            <p className="text-xs text-[#79747E]">Weekly snapshots every Sunday. Last 12 kept.</p>
+            <button
+              onClick={handleBackupNow}
+              disabled={backupState === 'saving' || !supabase}
+              className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors flex-shrink-0 ml-2 ${
+                backupState === 'done'  ? 'bg-green-500 text-white' :
+                backupState === 'error' ? 'bg-red-500 text-white' :
+                backupState === 'saving'? 'bg-[#F3EDF7] text-[#79747E]' :
+                                          'bg-[#6750A4] text-white hover:bg-[#7965AF]'
+              }`}
+            >
+              {backupState === 'saving' ? 'Saving…' : backupState === 'done' ? '✓ Saved' : backupState === 'error' ? '✗ Failed' : 'Back up now'}
+            </button>
           </div>
-        )}
 
-        {!supabase ? (
-          <p className="text-xs text-[#79747E] py-2">Connect Supabase to enable backups.</p>
-        ) : backups.length === 0 ? (
-          <p className="text-xs text-[#79747E] py-2">No backups yet. Tap "Back up now" to create one.</p>
-        ) : (
-          <div className="space-y-0 divide-y divide-[#F3EDF7]">
-            {backups.map((b) => (
-              <div key={b.id} className="flex items-center justify-between py-2.5 gap-2">
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-medium text-[#1C1B1F] truncate">{b.label}</p>
-                  <p className="text-[11px] text-[#79747E]">{fmtBackupDate(b.created_at)} · {b.task_count} tasks</p>
-                </div>
-                <button
-                  onClick={() => handleRestore(b)}
-                  className="px-3 py-1 rounded-full text-xs font-semibold bg-[#F3EDF7] text-[#6750A4] hover:bg-[#EADDFF] flex-shrink-0"
-                >
-                  Restore
+          {restoreState === 'done' && (
+            <p className="text-xs text-green-600 font-medium mt-2">✓ Tasks restored successfully.</p>
+          )}
+          {restoreState === 'error' && (
+            <p className="text-xs text-red-500 mt-2">Restore failed. Try again.</p>
+          )}
+
+          {restoreTarget && (
+            <div className="bg-[#FFF8E1] border border-[#FFE082] rounded-xl p-3 mt-3">
+              <p className="text-xs font-semibold text-[#5D4037] mb-1">Restore from this snapshot?</p>
+              <p className="text-xs text-[#795548] mb-2">
+                This will replace your current tasks with the snapshot from <strong>{fmtBackupDate(restoreTarget.created_at)}</strong> ({restoreTarget.task_count} tasks).
+                Your current tasks will be saved as a recovery point first.
+              </p>
+              <div className="flex gap-2">
+                <button onClick={() => setRestoreTarget(null)} className="flex-1 py-1.5 rounded-full text-xs font-semibold bg-white border border-[#CAC4D0] text-[#49454F]">Cancel</button>
+                <button onClick={confirmRestore} disabled={restoreState === 'restoring'} className="flex-1 py-1.5 rounded-full text-xs font-semibold bg-[#6750A4] text-white">
+                  {restoreState === 'restoring' ? 'Restoring…' : 'Continue'}
                 </button>
               </div>
-            ))}
+            </div>
+          )}
+
+          <div className="mt-3">
+            {!supabase ? (
+              <p className="text-xs text-[#79747E] py-2">Connect Supabase to enable backups.</p>
+            ) : backups.length === 0 ? (
+              <p className="text-xs text-[#79747E] py-2">No backups yet. Tap "Back up now" to create one.</p>
+            ) : (
+              <div className="divide-y divide-[#F3EDF7]">
+                {backups.map((b) => (
+                  <div key={b.id} className="flex items-center justify-between py-2.5 gap-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium text-[#1C1B1F] truncate">{b.label}</p>
+                      <p className="text-[11px] text-[#79747E]">{fmtBackupDate(b.created_at)} · {b.task_count} tasks</p>
+                    </div>
+                    <button
+                      onClick={() => handleRestore(b)}
+                      className="px-3 py-1 rounded-full text-xs font-semibold bg-[#F3EDF7] text-[#6750A4] hover:bg-[#EADDFF] flex-shrink-0"
+                    >
+                      Restore
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        </div>
+      </CollapsibleSection>
 
       {/* Hard refresh */}
       <button
