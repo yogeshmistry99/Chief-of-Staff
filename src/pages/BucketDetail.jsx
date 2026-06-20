@@ -279,8 +279,17 @@ function TaskCard({ title, tasks, onComplete, indexOffset = 0, allTasks = [], bu
 
 function TasksTab({ tasks, sections, loading, onComplete, allTasks, bucket = '', onRefresh, refreshing, onRespond }) {
   const [sort, setSort] = useState('category')
+  const [commentsOnly, setCommentsOnly] = useState(false)
 
-  const allScored = tasks.map((t) => ({ ...t, _scored: scoreTask(t) }))
+  // Tasks with pending notifications from the last refresh
+  const tasksWithNotifs = new Set(
+    getNotifications().filter((n) => n.source === bucket && n.status === 'pending').map((n) => n.taskId)
+  )
+  const notifCount = tasksWithNotifs.size
+
+  const filtered = commentsOnly ? tasks.filter((t) => tasksWithNotifs.has(t.id)) : tasks
+
+  const allScored = filtered.map((t) => ({ ...t, _scored: scoreTask(t) }))
   const active  = allScored.filter((t) => t._scored.score >= 0)
   const someday = allScored.filter((t) => t._scored.score === -1)
 
@@ -297,7 +306,9 @@ function TasksTab({ tasks, sections, loading, onComplete, allTasks, bucket = '',
 
   if (!active.length && !someday.length) return (
     <div className="text-center py-10">
-      <p className="text-sm text-[#49454F]">No tasks in this bucket.</p>
+      {commentsOnly
+        ? <p className="text-sm text-[#49454F]">No tasks with comments from last refresh.</p>
+        : <p className="text-sm text-[#49454F]">No tasks in this bucket.</p>}
     </div>
   )
 
@@ -329,6 +340,21 @@ function TasksTab({ tasks, sections, loading, onComplete, allTasks, bucket = '',
             {label}
           </button>
         ))}
+        {notifCount > 0 && (
+          <button
+            onClick={() => setCommentsOnly((x) => !x)}
+            className={`relative flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold transition-colors ${
+              commentsOnly
+                ? 'bg-amber-500 text-white'
+                : 'bg-[#FFF0C8] text-amber-800 hover:bg-amber-100'
+            }`}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" height="11" viewBox="0 -960 960 960" width="11" fill="currentColor">
+              <path d="M240-400h320v-80H240v80Zm0-120h480v-80H240v80Zm0-120h480v-80H240v80ZM80-80v-720q0-33 23.5-56.5T160-880h640q33 0 56.5 23.5T880-800v480q0 33-23.5 56.5T800-240H240L80-80Z"/>
+            </svg>
+            {notifCount}
+          </button>
+        )}
         <div className="flex-1" />
         <button
           onClick={onRefresh}
