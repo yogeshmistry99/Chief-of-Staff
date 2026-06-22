@@ -15,6 +15,7 @@ import ImageLightbox from '../components/ImageLightbox'
 import { getDiscussions, deleteDiscussion, saveDiscussion, newDiscussion, findDiscussionByTask, archiveDiscussionsForTask, restoreDiscussionsForTask } from '../lib/discussions'
 import { archiveTask, restoreTask } from '../lib/taskCache'
 import { closeTask } from '../lib/todoist'
+import { BUCKET_META } from '../lib/bucketConfig'
 
 function extractJSON(text) {
   // Try clean parse first
@@ -36,16 +37,6 @@ const BUCKET_DESCRIPTIONS = {
   Home:     'Property, maintenance, renovations, and household ops.',
   Personal: 'Personal growth, hobbies, learning, and interests.',
   Systems:  'Tools, automations, life OS, and productivity systems.',
-}
-
-const BUCKET_META = {
-  Finance:  { emoji: '💰', bg: 'bg-[#C8F5E1]', text: 'text-[#002115]' },
-  Health:   { emoji: '🏃', bg: 'bg-[#FFD8E4]', text: 'text-[#31111D]' },
-  Home:     { emoji: '🏠', bg: 'bg-[#FFF0C8]', text: 'text-[#261900]' },
-  Work:     { emoji: '💼', bg: 'bg-[#D3E4FF]', text: 'text-[#001D36]' },
-  Family:   { emoji: '👨‍👩‍👧', bg: 'bg-[#FFE4F3]', text: 'text-[#31001D]' },
-  Personal: { emoji: '✨', bg: 'bg-[#E8F5E9]', text: 'text-[#1B5E20]' },
-  Systems:  { emoji: '⚙️', bg: 'bg-[#EADDFF]', text: 'text-[#21005D]' },
 }
 
 // HeadTab receives messages/setMessages from parent so state survives tab switches

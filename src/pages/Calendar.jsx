@@ -5,59 +5,10 @@ import { getCachedTasks } from '../lib/taskCache'
 import { haptic } from '../lib/haptic'
 import EditSheet from '../components/EditSheet'
 import { onCalendarChange } from '../lib/claude'
+import { isoDate, addDays, startOfWeek, formatTime, formatDuration, getEventAccent } from '../lib/calendarUtils'
+import { BUCKET_META } from '../lib/bucketConfig'
 
 const PROJECT_NAMES = Object.fromEntries(Object.entries(PROJECTS).map(([name, id]) => [id, name]))
-
-const BUCKET_COLORS = {
-  Finance:  'bg-[#C8F5E1] text-[#002115]',
-  Health:   'bg-[#FFD8E4] text-[#31111D]',
-  Home:     'bg-[#FFF0C8] text-[#261900]',
-  Work:     'bg-[#D3E4FF] text-[#001D36]',
-  Family:   'bg-[#FFE4F3] text-[#31001D]',
-  Personal: 'bg-[#E8F5E9] text-[#1B5E20]',
-  Systems:  'bg-[#EADDFF] text-[#21005D]',
-}
-
-// Colour coding: left-border bar + bubble bg based on event type & RSVP
-function getEventAccent(e) {
-  const selfRsvp = e.attendees?.find((a) => a.self)?.responseStatus
-  if (selfRsvp === 'declined')  return { bg: 'bg-red-50',      bar: 'bg-red-300',    time: 'text-red-400',    label: 'text-red-400 opacity-60' }
-  if (selfRsvp === 'tentative') return { bg: 'bg-amber-50',    bar: 'bg-amber-300',  time: 'text-amber-600',  label: 'text-[#1C1B1F]' }
-  if (e._calendarType === 'holiday') return { bg: 'bg-[#E8F5E9]', bar: 'bg-[#81C784]', time: 'text-[#2E7D32]', label: 'text-[#2E7D32]' }
-  if (e._readOnly) return { bg: 'bg-[#F5F5F5]',  bar: 'bg-[#BDBDBD]', time: 'text-[#9E9E9E]', label: 'text-[#757575]' }
-  const hasVideo     = !!(e.hangoutLink ?? e.conferenceData?.entryPoints?.find((ep) => ep.entryPointType === 'video'))
-  const hasAttendees = (e.attendees?.length ?? 0) > 0
-  if (hasVideo)      return { bg: 'bg-[#E0F7FA]', bar: 'bg-[#26C6DA]', time: 'text-[#00838F]', label: 'text-[#1C1B1F]' }
-  if (hasAttendees)  return { bg: 'bg-[#E3F2FD]', bar: 'bg-[#42A5F5]', time: 'text-[#0D47A1]', label: 'text-[#1C1B1F]' }
-  return               { bg: 'bg-[#EDE7F6]',       bar: 'bg-[#6750A4]', time: 'text-[#6750A4]', label: 'text-[#1C1B1F]' }
-}
-
-function isoDate(d) {
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
-}
-function addDays(d, n) { const r = new Date(d); r.setDate(r.getDate() + n); return r }
-
-function startOfWeek(d) {
-  const r = new Date(d)
-  r.setDate(r.getDate() - ((r.getDay() + 6) % 7)) // Monday
-  return r
-}
-
-function formatTime(dateTime, timeZone) {
-  if (!dateTime) return null
-  return new Date(dateTime).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone })
-}
-
-function formatDuration(start, end) {
-  if (!start || !end) return null
-  const mins = Math.round((new Date(end) - new Date(start)) / 60000)
-  if (mins < 60) return `${mins}m`
-  const h = Math.floor(mins / 60), m = mins % 60
-  return m > 0 ? `${h}h ${m}m` : `${h}h`
-}
 
 function EventRow({ event: initialEvent }) {
   const [e, setE] = useState(initialEvent)
@@ -478,7 +429,7 @@ export default function Calendar() {
           {selectedTasks.length > 0 && (
             <div className="space-y-0">
               {selectedTasks.map((t) => {
-                const color = BUCKET_COLORS[t._bucket] ?? 'bg-[#E7E0EC] text-[#49454F]'
+                const m = BUCKET_META[t._bucket]
                 return (
                   <div key={t.id} className="flex items-start gap-2 py-2 border-b border-[#F3EDF7] last:border-0">
                     <div className="w-10 flex-shrink-0 text-right">
@@ -487,7 +438,7 @@ export default function Calendar() {
                     <div className="flex-1 min-w-0">
                       <p className="text-sm text-[#1C1B1F] leading-snug">{t.content}</p>
                       <div className="flex gap-1 mt-0.5">
-                        {t._bucket && <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${color}`}>{t._bucket}</span>}
+                        {t._bucket && m && <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${m.bg} ${m.text}`}>{t._bucket}</span>}
                         {t.priority === 4 && <span className="text-xs font-semibold text-red-700 bg-[#FFD8E4] px-1.5 py-0.5 rounded">P1</span>}
                       </div>
                     </div>

@@ -4,21 +4,11 @@ import { PROJECTS } from '../lib/todoist'
 import { scoreTask, BUCKET_WEIGHTS } from '../lib/priority'
 import { getCachedTasks } from '../lib/taskCache'
 import { getNotifications } from '../lib/notifications'
-
-const BUCKET_META = {
-  Finance:  { emoji: '💰', color: 'bg-[#C8F5E1]', text: 'text-[#002115]' },
-  Health:   { emoji: '🏃', color: 'bg-[#FFD8E4]', text: 'text-[#31111D]' },
-  Home:     { emoji: '🏠', color: 'bg-[#FFF0C8]', text: 'text-[#261900]' },
-  Work:     { emoji: '💼', color: 'bg-[#D3E4FF]', text: 'text-[#001D36]' },
-  Family:   { emoji: '👨‍👩‍👧', color: 'bg-[#FFE4F3]', text: 'text-[#31001D]' },
-  Personal: { emoji: '✨', color: 'bg-[#E8F5E9]', text: 'text-[#1B5E20]' },
-  Systems:  { emoji: '⚙️', color: 'bg-[#EADDFF]', text: 'text-[#21005D]' },
-}
-
+import { BUCKET_META } from '../lib/bucketConfig'
 
 export default function Buckets() {
   const navigate = useNavigate()
-  const [tasks] = useState(() => getCachedTasks())
+  const tasks = getCachedTasks()
   const [search, setSearch] = useState('')
 
   const allNotifs = getNotifications().filter((n) => n.status === 'pending')
@@ -27,7 +17,8 @@ export default function Buckets() {
     const p1Count = bt.filter((t) => t.priority === 4).length
     const overdueCount = bt.filter((t) => scoreTask(t).isOverdue).length
     const notifCount = allNotifs.filter((n) => n.source === name).length
-    return { name, count: bt.length, p1Count, overdueCount, notifCount, ...BUCKET_META[name] }
+    const { emoji, bg, text } = BUCKET_META[name] ?? {}
+    return { name, emoji, bg, text, count: bt.length, p1Count, overdueCount, notifCount }
   }).sort((a, b) => (BUCKET_WEIGHTS[b.name] ?? 0) - (BUCKET_WEIGHTS[a.name] ?? 0))
 
   const query = search.trim().toLowerCase()
@@ -105,11 +96,11 @@ export default function Buckets() {
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-3">
-          {buckets.map(({ name, emoji, color, text, count, p1Count, overdueCount, notifCount }) => (
+          {buckets.map(({ name, emoji, bg, text, count, p1Count, overdueCount, notifCount }) => (
             <button
               key={name}
               onClick={() => navigate(`/buckets/${name}`)}
-              className={`relative ${color} ${text} rounded-2xl p-4 text-left active:scale-95 transition-transform shadow-sm`}
+              className={`relative ${bg} ${text} rounded-2xl p-4 text-left active:scale-95 transition-transform shadow-sm`}
             >
               {notifCount > 0 && (
                 <span className="absolute top-2.5 right-2.5 min-w-[18px] h-[18px] bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center px-1">

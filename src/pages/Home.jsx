@@ -14,6 +14,7 @@ import QuickAdd from '../components/QuickAdd'
 import { getDiscussions, saveDiscussion, newDiscussion, findDiscussionByTask, archiveDiscussionsForTask } from '../lib/discussions'
 import { archiveTask } from '../lib/taskCache'
 import { closeTask } from '../lib/todoist'
+import { isoDate, formatTime as fmtTime, formatDuration, getEventAccent } from '../lib/calendarUtils'
 import { onSyncChange } from '../lib/sync'
 import { sendMessageStream, sendMessage, SYSTEM_PROMPTS, REFRESH_PROMPTS, onCalendarChange } from '../lib/claude'
 import { loadHeadConfig } from '../lib/headConfig'
@@ -31,44 +32,17 @@ async function fetchUpcomingEvents() {
   return data
 }
 
-function formatEventTime(dateTime, timeZone) {
-  if (!dateTime) return null
-  return new Date(dateTime).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone })
-}
-
 function formatEventDay(event) {
   const dt = event.start?.dateTime ?? event.start?.date
   if (!dt) return ''
   const d = new Date(event.start?.dateTime ? dt : dt + 'T00:00:00')
-  const now = new Date()
-  const todayStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`
-  const tomorrow = new Date(now); tomorrow.setDate(tomorrow.getDate() + 1)
-  const tomorrowStr = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth()+1).padStart(2,'0')}-${String(tomorrow.getDate()).padStart(2,'0')}`
-  const dStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
-  if (dStr === todayStr) return 'Today'
+  const todayStr    = isoDate(new Date())
+  const tomorrow    = new Date(); tomorrow.setDate(tomorrow.getDate() + 1)
+  const tomorrowStr = isoDate(tomorrow)
+  const dStr = isoDate(d)
+  if (dStr === todayStr)    return 'Today'
   if (dStr === tomorrowStr) return 'Tomorrow'
   return d.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: '2-digit' })
-}
-
-function formatDuration(start, end) {
-  if (!start || !end) return null
-  const mins = Math.round((new Date(end) - new Date(start)) / 60000)
-  if (mins < 60) return `${mins}m`
-  const h = Math.floor(mins / 60), m = mins % 60
-  return m > 0 ? `${h}h ${m}m` : `${h}h`
-}
-
-function getEventAccent(e) {
-  const selfRsvp = e.attendees?.find((a) => a.self)?.responseStatus
-  if (selfRsvp === 'declined')  return { bg: 'bg-red-50',      bar: 'bg-red-300',    time: 'text-red-400',    label: 'text-red-400 opacity-60' }
-  if (selfRsvp === 'tentative') return { bg: 'bg-amber-50',    bar: 'bg-amber-300',  time: 'text-amber-600',  label: 'text-[#1C1B1F]' }
-  if (e._calendarType === 'holiday') return { bg: 'bg-[#E8F5E9]', bar: 'bg-[#81C784]', time: 'text-[#2E7D32]', label: 'text-[#2E7D32]' }
-  if (e._readOnly) return { bg: 'bg-[#F5F5F5]', bar: 'bg-[#BDBDBD]', time: 'text-[#9E9E9E]', label: 'text-[#757575]' }
-  const hasVideo     = !!(e.hangoutLink ?? e.conferenceData?.entryPoints?.find((ep) => ep.entryPointType === 'video'))
-  const hasAttendees = (e.attendees?.length ?? 0) > 0
-  if (hasVideo)      return { bg: 'bg-[#E0F7FA]', bar: 'bg-[#26C6DA]', time: 'text-[#00838F]', label: 'text-[#1C1B1F]' }
-  if (hasAttendees)  return { bg: 'bg-[#E3F2FD]', bar: 'bg-[#42A5F5]', time: 'text-[#0D47A1]', label: 'text-[#1C1B1F]' }
-  return               { bg: 'bg-[#EDE7F6]',       bar: 'bg-[#6750A4]', time: 'text-[#6750A4]', label: 'text-[#1C1B1F]' }
 }
 
 function HomeEventRow({ event: initialEvent }) {
@@ -85,8 +59,8 @@ function HomeEventRow({ event: initialEvent }) {
   const accent = getEventAccent(e)
 
   const isAllDay  = !!e.start?.date && !e.start?.dateTime
-  const startTime = formatEventTime(e.start?.dateTime, e.start?.timeZone)
-  const endTime   = formatEventTime(e.end?.dateTime,   e.end?.timeZone)
+  const startTime = fmtTime(e.start?.dateTime, e.start?.timeZone)
+  const endTime   = fmtTime(e.end?.dateTime,   e.end?.timeZone)
   const duration  = formatDuration(e.start?.dateTime, e.end?.dateTime)
   const day       = formatEventDay(e)
   const attendees = e.attendees ?? []
@@ -805,7 +779,7 @@ export default function Home() {
   }
 
   const { active, someday } = prioritise(tasks)
-  const todayStr = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` })()
+  const todayStr = isoDate(new Date())
   const todayCount   = tasks.filter((t) => t.due?.date?.slice(0, 10) === todayStr).length
   const p1Count      = tasks.filter((t) => t.priority === 4).length
   const overdueCount = active.filter((t) => scoreTask(t).isOverdue).length
