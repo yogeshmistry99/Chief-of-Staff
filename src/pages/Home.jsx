@@ -422,7 +422,7 @@ function TaskRow({ task, onComplete, index = 0, allTasks = [] }) {
         </button>
 
         <div className="flex-1 min-w-0">
-          <p className={`text-sm leading-snug ${pendingComplete ? 'line-through text-[#79747E]' : isOverdue ? 'text-red-900' : 'text-[#1C1B1F]'}`}>
+          <p className={`text-sm leading-snug select-text ${pendingComplete ? 'line-through text-[#79747E]' : isOverdue ? 'text-red-900' : 'text-[#1C1B1F]'}`}>
             {localTask.content}
           </p>
           <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">

@@ -59,7 +59,7 @@ export default function CalendarEvent() {
             <path d="M560-240 320-480l240-240 56 56-184 184 184 184-56 56Z" />
           </svg>
         </button>
-        <h1 className="text-lg font-semibold text-[#001D36] leading-snug">{event.summary ?? 'Untitled event'}</h1>
+        <h1 className="text-lg font-semibold text-[#001D36] leading-snug select-text">{event.summary ?? 'Untitled event'}</h1>
         {event.calendarId && event.calendarId !== 'primary' && (
           <p className="text-xs text-[#001D36] opacity-60 mt-1">{event.calendarId}</p>
         )}
@@ -99,7 +99,7 @@ export default function CalendarEvent() {
                 <path d="M480-480q33 0 56.5-23.5T560-560q0-33-23.5-56.5T480-640q-33 0-56.5 23.5T400-560q0 33 23.5 56.5T480-480Zm0 294q122-112 181-203.5T720-560q0-117-74.5-188.5T480-820q-91 0-165.5 71.5T240-560q0 75 59 166.5T480-186Zm0 106Q319-217 239.5-334.5T160-560q0-150 96.5-245T480-900q127 0 223.5 95T800-560q0 112-79.5 229.5T480-80Zm0-480Z"/>
               </svg>
             }>
-              <p className="text-sm text-[#1C1B1F]">{event.location}</p>
+              <p className="text-sm text-[#1C1B1F] select-text">{event.location}</p>
             </Section>
           )}
 
@@ -190,7 +190,7 @@ export default function CalendarEvent() {
                 <path d="M320-240h320v-80H320v80Zm0-160h320v-80H320v80ZM240-80q-33 0-56.5-23.5T160-160v-640q0-33 23.5-56.5T240-880h320l240 240v480q0 33-23.5 56.5T720-80H240Z"/>
               </svg>
             }>
-              <p className="text-sm text-[#1C1B1F] whitespace-pre-wrap leading-relaxed">{description}</p>
+              <p className="text-sm text-[#1C1B1F] whitespace-pre-wrap leading-relaxed select-text">{description}</p>
             </Section>
           )}
         </div>

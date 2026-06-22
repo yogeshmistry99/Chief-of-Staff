@@ -86,7 +86,7 @@ function EventRow({ event: initialEvent }) {
           <div className={`flex-1 min-w-0 rounded-lg overflow-hidden flex ${accent.bg}`}>
             <div className={`w-1 flex-shrink-0 ${accent.bar}`} />
             <div className="flex-1 min-w-0 px-2.5 py-1.5">
-              <p className={`text-sm leading-snug truncate font-medium ${accent.label}`}>{e.summary}</p>
+              <p className={`text-sm leading-snug truncate font-medium select-text ${accent.label}`}>{e.summary}</p>
               {!isAllDay && endTime && !expanded && (
                 <p className="text-xs text-[#79747E]">until {endTime}{duration ? ` · ${duration}` : ''}</p>
               )}
