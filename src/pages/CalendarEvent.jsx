@@ -1,24 +1,10 @@
 import { useLocation, useNavigate } from 'react-router-dom'
+import { formatTime, formatDuration } from '../lib/calendarUtils'
 
 function formatDate(dateStr) {
   if (!dateStr) return null
   const d = new Date(dateStr)
   return d.toLocaleDateString('en-GB', { weekday: 'long', day: '2-digit', month: '2-digit', year: '2-digit' })
-}
-
-function formatTime(dateTimeStr, timeZone) {
-  if (!dateTimeStr) return null
-  return new Date(dateTimeStr).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone })
-}
-
-function formatDuration(start, end) {
-  if (!start || !end) return null
-  const ms = new Date(end) - new Date(start)
-  const mins = Math.round(ms / 60000)
-  if (mins < 60) return `${mins}m`
-  const h = Math.floor(mins / 60)
-  const m = mins % 60
-  return m > 0 ? `${h}h ${m}m` : `${h}h`
 }
 
 function Section({ icon, children }) {

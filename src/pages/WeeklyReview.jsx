@@ -6,20 +6,12 @@ import { scoreTask } from '../lib/priority'
 import { sendMessageStream, SYSTEM_PROMPTS } from '../lib/claude'
 import { loadHeadConfig } from '../lib/headConfig'
 import { haptic } from '../lib/haptic'
+import { BUCKET_META } from '../lib/bucketConfig'
 import QuickAdd from '../components/QuickAdd'
 import Markdown from '../components/Markdown'
 
 const BUCKETS = ['Finance', 'Health', 'Work', 'Family', 'Home', 'Personal', 'Systems']
 
-const BUCKET_META = {
-  Finance:  { emoji: '💰', accent: 'bg-[#C8F5E1]', text: 'text-[#002115]' },
-  Health:   { emoji: '🏃', accent: 'bg-[#FFD8E4]', text: 'text-[#31111D]' },
-  Work:     { emoji: '💼', accent: 'bg-[#D3E4FF]', text: 'text-[#001D36]' },
-  Family:   { emoji: '👨‍👩‍👧', accent: 'bg-[#FFE4F3]', text: 'text-[#31001D]' },
-  Home:     { emoji: '🏠', accent: 'bg-[#FFF0C8]', text: 'text-[#261900]' },
-  Personal: { emoji: '✨', accent: 'bg-[#E8F5E9]', text: 'text-[#1B5E20]' },
-  Systems:  { emoji: '⚙️', accent: 'bg-[#EADDFF]', text: 'text-[#21005D]' },
-}
 
 const PROJECT_NAMES = Object.fromEntries(Object.entries(PROJECTS).map(([name, id]) => [id, name]))
 
@@ -116,7 +108,7 @@ function BucketStep({ bucket, allTasks, onNext, reviewTextsRef, tasksAdded, setT
 
   return (
     <div className="flex flex-col h-full">
-      <div className={`${meta.accent} px-6 pt-4 pb-4 flex-shrink-0`}>
+      <div className={`${meta.bg} px-6 pt-4 pb-4 flex-shrink-0`}>
         <div className="max-w-lg mx-auto flex items-center gap-3">
           <span className="text-2xl">{meta.emoji}</span>
           <div>
