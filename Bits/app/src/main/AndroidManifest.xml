@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <application
+        android:name=".BitsApplication"
+        android:allowBackup="true"
+        android:icon="@drawable/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@drawable/ic_launcher"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.Bits">
+
+        <activity
+            android:name=".ui.MainActivity"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:theme="@style/Theme.Bits">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".ui.AnimationActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Bits.Transparent"
+            android:windowSoftInputMode="adjustNothing" />
+
+        <!-- Widget -->
+        <receiver
+            android:name=".widget.BitsWidgetReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/bits_widget_info" />
+        </receiver>
+
+        <!-- Widget habit completion handler -->
+        <receiver
+            android:name=".widget.WidgetCompletionReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.bits.app.COMPLETE_HABIT" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Midnight reset -->
+        <receiver
+            android:name=".util.MidnightResetReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.DATE_CHANGED" />
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.TIME_SET" />
+            </intent-filter>
+        </receiver>
+
+    </application>
+
+</manifest>
