@@ -236,6 +236,36 @@ CONFIRMATION RULES — follow exactly after any write action (create, update, co
   },
 }
 
+export async function rankPriorities(tasks, calendarEvents, cfg) {
+  const today = todayISO()
+  const openTasks = tasks.filter((t) => !t.is_completed)
+  const userContent = `Rank the top 10 most important tasks from the list below. Apply the bucket weighting framework, bucket priority order, and any personal instructions or context from your knowledge block.
+
+Return ONLY valid JSON — no markdown, no explanation, no code fences:
+{ "rankedTaskIds": ["id1", "id2", "..."] }
+
+Up to 10 IDs, highest priority first.
+
+Today: ${today}
+
+Tasks:
+${formatTasksForPrompt(openTasks)}
+
+Calendar — today + 14 days:
+${formatCalendarForPrompt(calendarEvents)}`
+
+  const system = buildKnowledgeSystemBlocks(cfg)
+  const { content } = await sendMessage(
+    [{ role: 'user', content: userContent }],
+    system.length ? system : null,
+    null,
+    { model: 'claude-sonnet-4-6' }
+  )
+  const match = content.match(/\{[\s\S]*\}/)
+  const parsed = JSON.parse(match ? match[0] : content.trim())
+  return Array.isArray(parsed.rankedTaskIds) ? parsed.rankedTaskIds : []
+}
+
 function refreshTaskList(tasks) {
   if (!tasks?.length) return 'No tasks loaded.'
   return tasks.map((t) => {

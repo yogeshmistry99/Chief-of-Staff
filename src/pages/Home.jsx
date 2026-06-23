@@ -16,20 +16,32 @@ import { archiveTask } from '../lib/taskCache'
 import { closeTask } from '../lib/todoist'
 import { isoDate, formatTime as fmtTime, formatDuration, getEventAccent } from '../lib/calendarUtils'
 import { onSyncChange } from '../lib/sync'
-import { sendMessageStream, sendMessage, SYSTEM_PROMPTS, REFRESH_PROMPTS, onCalendarChange } from '../lib/claude'
+import { sendMessageStream, SYSTEM_PROMPTS, onCalendarChange, rankPriorities } from '../lib/claude'
 import { loadHeadConfig } from '../lib/headConfig'
 import Markdown from '../components/Markdown'
 
-async function fetchUpcomingEvents() {
+async function fetchCalendarRange(days) {
   const now = new Date()
-  // Start from midnight local time so already-started today events are included
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0)
-  const end = new Date(startOfToday); end.setDate(end.getDate() + 7)
+  const end = new Date(startOfToday); end.setDate(end.getDate() + days)
   const url = `/api/calendar?start=${encodeURIComponent(startOfToday.toISOString())}&end=${encodeURIComponent(end.toISOString())}`
   const res = await fetch(url)
   const data = await res.json()
   if (!res.ok) throw new Error(data.error ?? 'Calendar error')
   return data
+}
+
+function formatRefreshTime(date) {
+  if (!date) return null
+  const now = new Date()
+  const todayStr = isoDate(now)
+  const yest = new Date(now); yest.setDate(yest.getDate() - 1)
+  const yesterdayStr = isoDate(yest)
+  const dateStr = isoDate(date)
+  const time = date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+  if (dateStr === todayStr) return `${time} today`
+  if (dateStr === yesterdayStr) return `yesterday ${time}`
+  return `${date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} ${time}`
 }
 
 function formatEventDay(event) {
@@ -622,11 +634,8 @@ export default function Home() {
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
 
   const [tab, setTab]                 = useState('priorities')
-  const [tasks, setTasks]             = useState([])
-  const [loading, setLoading]         = useState(true)
-  const [refreshing, setRefreshing]   = useState(false)
-  const [error, setError]             = useState(null)
-  const [lastRefreshed, setLastRefreshed] = useState(null)
+  const [tasks, setTasks]             = useState(() => getCachedTasks())
+  const [error]                        = useState(null)
   const [lastWeeklyReview, setLastWeeklyReview] = useState(() => {
     try { const s = localStorage.getItem('lastWeeklyReview'); return s ? new Date(s) : null } catch { return null }
   })
@@ -636,31 +645,24 @@ export default function Home() {
   const [messages, setMessages]       = useState(() => {
     try { return JSON.parse(localStorage.getItem('cos_home_messages') ?? '[]') } catch { return [] }
   })
-  const [cosRefreshing, setCosRefreshing] = useState(false)
   const [lightboxSrc, setLightboxSrc] = useState(null)
+  const [priorityList, setPriorityList] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('cos_priority_list') ?? 'null') } catch { return null }
+  })
+  const [priorityRefreshing, setPriorityRefreshing] = useState(false)
+  const [priorityError, setPriorityError] = useState(false)
+  const [priorityLastRefreshed, setPriorityLastRefreshed] = useState(() => {
+    const s = localStorage.getItem('cos_priority_last_refreshed')
+    return s ? new Date(s) : null
+  })
   const inputRef = useRef(null)
   const scrollRef = useRef(null)
   const chatEndRef = useRef(null)
-  const pullRef = useRef({ startY: 0, pulling: false, dist: 0 })
-  const [pullDistance, setPullDistance] = useState(0)
   const inputHoldRef = useRef(null)
 
-  function loadTasks(showRefreshing = false) {
-    if (showRefreshing) setRefreshing(true)
-    const cached = getCachedTasks()
-    setTasks(cached)
-    setLastRefreshed(new Date())
-    setLoading(false)
-    setRefreshing(false)
-  }
-
   useEffect(() => {
-    loadTasks()
-    // Silently pull live tasks from Todoist so the CoS always has fresh data
-    pullAndCacheTasks().then(({ tasks: fresh }) => {
-      setTasks(fresh)
-      setLastRefreshed(new Date())
-    }).catch(() => {})
+    // Silently pull live tasks on mount so the CoS always has fresh data
+    pullAndCacheTasks().then(({ tasks: fresh }) => setTasks(fresh)).catch(() => {})
   }, [])
   useEffect(() => {
     return onSyncChange('last_weekly_review', () => {
@@ -668,48 +670,33 @@ export default function Home() {
     })
   }, [])
   useEffect(() => {
-    const load = () => fetchUpcomingEvents().then(setEvents).catch(() => {}).finally(() => setEventsLoading(false))
+    const load = () => fetchCalendarRange(7).then(setEvents).catch(() => {}).finally(() => setEventsLoading(false))
     load()
     return onCalendarChange(load)
   }, [])
 
-  // Pull-to-refresh
-  useEffect(() => {
-    const el = scrollRef.current
-    if (!el) return
-    function onTouchStart(e) {
-      if (el.scrollTop === 0) {
-        pullRef.current = { startY: e.touches[0].clientY, pulling: true, dist: 0 }
-      }
+  async function handleRefreshPriorities() {
+    setPriorityRefreshing(true)
+    setPriorityError(false)
+    try {
+      const [{ tasks: liveTasks }, calEvents] = await Promise.all([
+        pullAndCacheTasks(),
+        fetchCalendarRange(14),
+      ])
+      setTasks(liveTasks)
+      const cfg = loadHeadConfig('chief')
+      const ranked = await rankPriorities(liveTasks, calEvents, cfg)
+      const now = new Date()
+      setPriorityList(ranked)
+      setPriorityLastRefreshed(now)
+      localStorage.setItem('cos_priority_list', JSON.stringify(ranked))
+      localStorage.setItem('cos_priority_last_refreshed', now.toISOString())
+    } catch {
+      setPriorityError(true)
+    } finally {
+      setPriorityRefreshing(false)
     }
-    function onTouchMove(e) {
-      if (!pullRef.current.pulling) return
-      const dy = e.touches[0].clientY - pullRef.current.startY
-      if (dy > 0) {
-        e.preventDefault()
-        pullRef.current.dist = Math.min(dy * 0.5, 60)
-        setPullDistance(pullRef.current.dist)
-      } else {
-        pullRef.current.pulling = false
-        setPullDistance(0)
-      }
-    }
-    function onTouchEnd() {
-      if (pullRef.current.pulling && pullRef.current.dist > 40) {
-        loadTasks(true)
-      }
-      pullRef.current = { startY: 0, pulling: false, dist: 0 }
-      setPullDistance(0)
-    }
-    el.addEventListener('touchstart', onTouchStart, { passive: true })
-    el.addEventListener('touchmove', onTouchMove, { passive: false })
-    el.addEventListener('touchend', onTouchEnd, { passive: true })
-    return () => {
-      el.removeEventListener('touchstart', onTouchStart)
-      el.removeEventListener('touchmove', onTouchMove)
-      el.removeEventListener('touchend', onTouchEnd)
-    }
-  }, [])
+  }
 
   function removeTask(id) {
     const task = tasks.find((t) => t.id === id)
@@ -727,40 +714,6 @@ export default function Home() {
     const toSave = messages.filter((m) => !m.streaming)
     localStorage.setItem('cos_home_messages', JSON.stringify(toSave))
   }, [messages])
-
-  async function handleCosRefresh() {
-    setCosRefreshing(true)
-    try {
-      const cfg = loadHeadConfig('chief')
-      const allTasks = getCachedTasks()
-      const system = REFRESH_PROMPTS.cos(allTasks, cfg)
-      const { content } = await sendMessage(
-        [{ role: 'user', content: 'Run the priority refresh now.' }],
-        system,
-        null,
-        { model: 'claude-sonnet-4-6' }
-      )
-      const match = content.match(/\{[\s\S]*\}/)
-      const result = JSON.parse(match ? match[0] : content.trim())
-      if (result.priorityUpdates?.length) {
-        const updated = getCachedTasks().map((t) => {
-          const upd = result.priorityUpdates.find((u) => u.taskId === t.id)
-          return upd ? { ...t, priority: upd.priority } : t
-        })
-        saveToCache(updated)
-        setTasks(updated)
-      }
-      if (result.summary) {
-        setMessages((prev) => [...prev, { role: 'assistant', content: result.summary }])
-        setTab('chief')
-      }
-    } catch (e) {
-      setMessages((prev) => [...prev, { role: 'assistant', content: `Refresh failed: ${e.message}` }])
-      setTab('chief')
-    } finally {
-      setCosRefreshing(false)
-    }
-  }
 
   async function handleSend(content, attachmentName, attachmentPreview) {
     const userMsg = { role: 'user', content, attachmentName, attachmentPreview }
@@ -785,12 +738,15 @@ export default function Home() {
     }
   }
 
-  const { active, someday } = prioritise(tasks)
+  const { active } = prioritise(tasks)
+  const openTasks = tasks.filter((t) => !t.is_completed)
   const todayStr = isoDate(new Date())
   const todayCount   = tasks.filter((t) => t.due?.date?.slice(0, 10) === todayStr).length
   const p1Count      = tasks.filter((t) => t.priority === 4).length
   const overdueCount = active.filter((t) => scoreTask(t).isOverdue).length
-  const focusList    = active.slice(0, 8)
+  const focusList = priorityList?.length
+    ? priorityList.map((id) => openTasks.find((t) => t.id === id)).filter(Boolean).slice(0, 10)
+    : active.slice(0, 8)
   const todayEvents  = events.filter((e) => {
     if (e.start?.date) return e.start.date === todayStr
     if (e.start?.dateTime) return new Date(e.start.dateTime).toLocaleDateString('en-CA') === todayStr
@@ -823,17 +779,6 @@ export default function Home() {
               <span className="w-1.5 h-1.5 rounded-full bg-[#6750A4]" />
             ) : null}
             Knowledge
-          </button>
-          <button
-            onClick={handleCosRefresh}
-            disabled={cosRefreshing}
-            className="flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold bg-[#F3EDF7] text-[#6750A4] hover:bg-[#EADDFF] transition-colors disabled:opacity-50"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" height="12" viewBox="0 -960 960 960" width="12" fill="currentColor"
-              style={cosRefreshing ? { animation: 'spin 1s linear infinite' } : undefined}>
-              <path d="M480-160q-134 0-227-93t-93-227q0-134 93-227t227-93q69 0 132 28.5T720-690v-110h80v280H520v-80h168q-32-56-87.5-88T480-720q-100 0-170 70t-70 170q0 100 70 170t170 70q77 0 139-44t87-116h84q-28 106-114 173t-196 67Z"/>
-            </svg>
-            {cosRefreshing ? 'Refreshing…' : 'Refresh priorities'}
           </button>
         </div>
         <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
@@ -877,12 +822,6 @@ export default function Home() {
 
       {/* Priorities tab */}
       <div className={`flex-1 overflow-hidden flex-col ${tab === 'priorities' ? 'flex' : 'hidden'}`}>
-      {/* Pull-to-refresh indicator */}
-      {pullDistance > 0 && (
-        <div className="flex justify-center py-1" style={{ height: pullDistance, transition: 'height 0.1s', overflow: 'hidden' }}>
-          <div className={`w-6 h-6 rounded-full border-2 border-[#6750A4] border-t-transparent ${pullDistance > 40 ? 'animate-spin' : ''}`} style={{ marginTop: Math.max(pullDistance - 28, 0) }} />
-        </div>
-      )}
       {/* Scrollable content */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 pt-5 pb-2 max-w-lg mx-auto w-full">
 
@@ -893,16 +832,6 @@ export default function Home() {
             <h1 className="text-xl font-semibold text-[#1C1B1F]">{greeting}, Yogesh</h1>
           </div>
           <div className="flex flex-col gap-1.5 items-end mt-1">
-            <button
-              onClick={() => loadTasks(true)}
-              disabled={refreshing}
-              className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full bg-[#EADDFF] text-[#6750A4] hover:bg-[#D8CBFF] transition-colors disabled:opacity-50"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" height="14" viewBox="0 -960 960 960" width="14" fill="currentColor" className={refreshing ? 'animate-spin' : ''}>
-                <path d="M480-160q-134 0-227-93t-93-227q0-134 93-227t227-93q69 0 132 28.5T720-690v-110h80v280H520v-80h168q-32-56-87.5-88T480-720q-100 0-170 70t-70 170q0 100 70 170t170 70q77 0 139-44t87-116h84q-28 106-114 173t-196 67Z" />
-              </svg>
-              {refreshing ? 'Refreshing…' : 'Refresh all'}
-            </button>
             <button
               onClick={() => navigate('/weekly-review')}
               className="flex items-center gap-1 text-xs font-medium px-3 py-1.5 rounded-full bg-[#F3EDF7] text-[#6750A4] hover:bg-[#EADDFF] transition-colors"
@@ -918,10 +847,10 @@ export default function Home() {
         {/* Stats */}
         <div className="grid grid-cols-4 gap-2 mb-4">
           {[
-            { label: 'Today',    value: loading ? '…' : todayCount,   color: 'bg-[#EADDFF] text-[#21005D]' },
+            { label: 'Today',    value: todayCount,   color: 'bg-[#EADDFF] text-[#21005D]' },
             { label: 'Events',   value: eventsLoading ? '…' : todayEventsActionable.length, color: 'bg-[#D3E4FF] text-[#001D36]' },
-            { label: 'P1',       value: loading ? '…' : p1Count,       color: 'bg-[#FFD8E4] text-[#31111D]' },
-            { label: 'Overdue',  value: loading ? '…' : overdueCount,  color: overdueCount > 0 ? 'bg-red-100 text-red-900' : 'bg-[#C8F5E1] text-[#002115]' },
+            { label: 'P1',       value: p1Count,       color: 'bg-[#FFD8E4] text-[#31111D]' },
+            { label: 'Overdue',  value: overdueCount,  color: overdueCount > 0 ? 'bg-red-100 text-red-900' : 'bg-[#C8F5E1] text-[#002115]' },
           ].map(({ label, value, color }, i) => (
             <div key={label} className={`rounded-xl p-3 ${color}`}
               style={{ animation: `fade-up 0.5s cubic-bezier(0.22,1,0.36,1) ${0.18 + i * 0.08}s both` }}>
@@ -933,40 +862,43 @@ export default function Home() {
 
         {/* Priority list */}
         <div className="bg-white border border-[#CAC4D0] rounded-2xl p-4 mb-3 shadow-sm">
-          <div className="mb-2">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-[#1C1B1F]">Priority list</h2>
-              {lastRefreshed && (
-                <span className="text-[11px] text-[#CAC4D0]">
-                  Updated {lastRefreshed.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}, {lastRefreshed.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
-                </span>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-semibold text-[#1C1B1F]">Priority list</h2>
+            <div className="flex items-center gap-2">
+              {priorityLastRefreshed && !priorityRefreshing && (
+                <span className="text-[11px] text-[#CAC4D0]">{formatRefreshTime(priorityLastRefreshed)}</span>
               )}
+              <button
+                onClick={handleRefreshPriorities}
+                disabled={priorityRefreshing}
+                className={`flex items-center gap-1 text-[11px] font-medium px-2.5 py-1 rounded-full transition-colors disabled:opacity-60 ${
+                  priorityError
+                    ? 'bg-red-50 text-red-600'
+                    : 'bg-[#EADDFF] text-[#6750A4] hover:bg-[#D8CBFF]'
+                }`}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" height="11" viewBox="0 -960 960 960" width="11" fill="currentColor"
+                  className={priorityRefreshing ? 'animate-spin' : ''}>
+                  <path d="M480-160q-134 0-227-93t-93-227q0-134 93-227t227-93q69 0 132 28.5T720-690v-110h80v280H520v-80h168q-32-56-87.5-88T480-720q-100 0-170 70t-70 170q0 100 70 170t170 70q77 0 139-44t87-116h84q-28 106-114 173t-196 67Z"/>
+                </svg>
+                {priorityRefreshing ? 'Thinking…' : priorityError ? 'Retry' : 'Refresh'}
+              </button>
             </div>
-            {lastWeeklyReview && (
-              <p className="text-[11px] text-[#CAC4D0] mt-0.5">
-                Last reviewed: {lastWeeklyReview.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short' })}, {lastWeeklyReview.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
-              </p>
-            )}
           </div>
 
-          {loading && (
-            <div className="space-y-3">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="flex items-center gap-3 animate-pulse">
-                  <div className="w-5 h-5 rounded-full bg-[#E7E0EC] flex-shrink-0" />
-                  <div className="h-4 bg-[#E7E0EC] rounded-full flex-1" />
-                </div>
-              ))}
-            </div>
+          {lastWeeklyReview && (
+            <p className="text-[11px] text-[#CAC4D0] -mt-1 mb-2">
+              Last reviewed: {lastWeeklyReview.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short' })}, {lastWeeklyReview.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+            </p>
           )}
 
           {error && <p className="text-xs text-red-500">Could not load tasks — check TODOIST_API_KEY in Vercel.</p>}
 
-          {!loading && !error && focusList.length === 0 && (
-            <p className="text-sm text-[#79747E]">Nothing active.</p>
+          {focusList.length === 0 && !error && (
+            <p className="text-sm text-[#79747E]">Nothing active. Tap Refresh to generate your priority list.</p>
           )}
 
-          {!loading && !error && focusList.map((task, i) => (
+          {focusList.map((task, i) => (
             <TaskRow key={task.id} task={task} onComplete={removeTask} index={i} allTasks={tasks} />
           ))}
         </div>
