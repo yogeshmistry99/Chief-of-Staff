@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { PROJECTS } from '../lib/todoist'
-import { getCachedTasks, saveToCache, pullAndCacheTasks } from '../lib/taskCache'
+import { getCachedTasks, saveToCache, pullAndCacheTasks, readTasksFromSupabase } from '../lib/taskCache'
 import { getNotificationsForTask, dismissNotification, acceptNotification } from '../lib/notifications'
 import NotificationCard, { notifDotClass } from '../components/NotificationCard'
 import { prioritise, scoreTask } from '../lib/priority'
@@ -661,7 +661,8 @@ export default function Home() {
   const inputHoldRef = useRef(null)
 
   useEffect(() => {
-    // Silently pull live tasks on mount so the CoS always has fresh data
+    // Read from Supabase first (source of truth), then pull fresh from Todoist
+    readTasksFromSupabase().then((t) => { if (t) setTasks(t) }).catch(() => {})
     pullAndCacheTasks().then(({ tasks: fresh }) => setTasks(fresh)).catch(() => {})
   }, [])
   useEffect(() => {
@@ -679,10 +680,11 @@ export default function Home() {
     setPriorityRefreshing(true)
     setPriorityError(false)
     try {
-      const [{ tasks: liveTasks }, calEvents] = await Promise.all([
-        pullAndCacheTasks(),
+      const [sbTasks, calEvents] = await Promise.all([
+        readTasksFromSupabase(),
         fetchCalendarRange(14),
       ])
+      const liveTasks = sbTasks ?? getCachedTasks()
       setTasks(liveTasks)
       const cfg = loadHeadConfig('chief')
       const ranked = await rankPriorities(liveTasks, calEvents, cfg)
@@ -700,12 +702,11 @@ export default function Home() {
 
   function removeTask(id) {
     const task = tasks.find((t) => t.id === id)
-    archiveTask(id)
-    if (task?._projectName) archiveDiscussionsForTask(task._projectName, id)
     setTasks((prev) => prev.map((t) =>
       t.id === id ? { ...t, is_completed: true, completed_at: new Date().toISOString() } : t
     ))
-    // Persist to Todoist so a sync never resurrects the task
+    archiveTask(id).catch(() => {})
+    if (task?._projectName) archiveDiscussionsForTask(task._projectName, id)
     if (!id.startsWith('local_')) closeTask(id).catch(() => {})
   }
 
@@ -727,7 +728,7 @@ export default function Home() {
           if (!last?.streaming) return prev
           return [...prev.slice(0, -1), { ...last, content: last.content + chunk }]
         })
-      }, tasks, (updatedTasks) => { setTasks(updatedTasks); saveToCache(updatedTasks) }, cfg.model || null)
+      }, tasks, (updatedTasks) => { setTasks(updatedTasks); saveToCache(updatedTasks).catch(() => {}) }, cfg.model || null)
       setMessages((prev) => {
         const last = prev[prev.length - 1]
         if (!last?.streaming) return prev

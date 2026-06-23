@@ -62,6 +62,17 @@ export async function pushToSupabase(sbKey, value) {
   }
 }
 
+// ─── Read ─────────────────────────────────────────────────────────────────────
+
+export async function readFromSupabase(key) {
+  if (!supabase) return null
+  try {
+    const { data, error } = await supabase.from('app_data').select('value').eq('key', key).single()
+    if (error || !data) return null
+    return data.value
+  } catch { return null }
+}
+
 // ─── Pull + hydrate ───────────────────────────────────────────────────────────
 
 export async function hydrateFromSupabase() {

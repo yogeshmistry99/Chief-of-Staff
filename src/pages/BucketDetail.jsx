@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import TaskEditSheet from '../components/TaskEditSheet'
 import { useParams, useNavigate } from 'react-router-dom'
 import { getProjectSections, PROJECTS } from '../lib/todoist'
-import { getCachedTasks, saveToCache } from '../lib/taskCache'
+import { getCachedTasks, saveToCache, readTasksFromSupabase } from '../lib/taskCache'
 import { scoreTask, BUCKET_WEIGHTS } from '../lib/priority'
 import { sendMessageStream, sendMessage, SYSTEM_PROMPTS, REFRESH_PROMPTS } from '../lib/claude'
 import { loadHeadConfig } from '../lib/headConfig'
@@ -66,7 +66,7 @@ function HeadTab({ bucket, tasks, setTasks, messages, setMessages }) {
         endRef.current?.scrollIntoView({ behavior: 'smooth' })
       }, tasks, (updatedTasks) => {
         setTasks(updatedTasks)
-        saveToCache(updatedTasks)
+        saveToCache(updatedTasks).catch(() => {})
       }, cfg.model || null)
       // Mark streaming done
       setMessages((prev) => {
@@ -858,10 +858,18 @@ export default function BucketDetail() {
 
   useEffect(() => {
     if (!projectId) return
-    // Load from cache immediately
+    // Load from cache immediately for instant display
     const cached = getCachedTasks().filter((t) => t._projectName === bucket)
     if (cached.length) { setTasks(cached); setLoading(false) }
-    // Still fetch sections from Todoist for display grouping
+    // Replace with Supabase data (source of truth)
+    readTasksFromSupabase().then((all) => {
+      if (all) {
+        const bucketTasks = all.filter((t) => t._projectName === bucket)
+        if (bucketTasks.length) setTasks(bucketTasks)
+        setLoading(false)
+      }
+    }).catch(() => {})
+    // Fetch sections from Todoist for display grouping
     getProjectSections(projectId)
       .then((sectionData) => {
         const sections = Array.isArray(sectionData) ? sectionData : []
@@ -881,20 +889,20 @@ export default function BucketDetail() {
   }
 
   function removeTask(id) {
-    archiveTask(id)
-    archiveDiscussionsForTask(bucket, id)
     setTasks((prev) => prev.map((t) =>
       t.id === id ? { ...t, is_completed: true, completed_at: new Date().toISOString() } : t
     ))
+    archiveTask(id).catch(() => {})
+    archiveDiscussionsForTask(bucket, id)
     if (!id.startsWith('local_')) closeTask(id).catch(() => {})
   }
 
   function handleRestore(id) {
-    restoreTask(id)
-    restoreDiscussionsForTask(bucket, id)
     setTasks((prev) => prev.map((t) =>
       t.id === id ? { ...t, is_completed: false, completed_at: null } : t
     ))
+    restoreTask(id).catch(() => {})
+    restoreDiscussionsForTask(bucket, id)
   }
 
   function handleRespond(notif) {

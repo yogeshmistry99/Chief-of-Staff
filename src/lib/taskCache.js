@@ -1,5 +1,5 @@
 import { getAllTasks, PROJECTS } from './todoist'
-import { pushToSupabase } from './sync'
+import { pushToSupabase, readFromSupabase } from './sync'
 
 const CACHE_KEY = 'todoist_task_cache'
 const LAST_PULL_KEY = 'todoist_last_pull'
@@ -9,7 +9,6 @@ const PROJECT_NAMES = Object.fromEntries(Object.entries(PROJECTS).map(([name, id
 export function getCachedTasks() {
   try {
     const tasks = JSON.parse(localStorage.getItem(CACHE_KEY) ?? '[]')
-    // Ensure _projectName is always populated
     return tasks.map((t) => ({ ...t, _projectName: t._projectName ?? PROJECT_NAMES[t.project_id] ?? null }))
   } catch {
     return []
@@ -20,27 +19,33 @@ export function getLastPullTime() {
   return localStorage.getItem(LAST_PULL_KEY) ?? null
 }
 
-export function saveToCache(tasks) {
+export async function saveToCache(tasks) {
   localStorage.setItem(CACHE_KEY, JSON.stringify(tasks))
-  pushToSupabase('todoist_task_cache', tasks).catch(() => {})
+  await pushToSupabase('todoist_task_cache', tasks)
 }
 
-export function archiveTask(id) {
+export async function archiveTask(id) {
   const all = getCachedTasks()
   const updated = all.map((t) =>
     t.id === id ? { ...t, is_completed: true, completed_at: new Date().toISOString() } : t
   )
-  saveToCache(updated)
+  await saveToCache(updated)
   return updated
 }
 
-export function restoreTask(id) {
+export async function restoreTask(id) {
   const all = getCachedTasks()
   const updated = all.map((t) =>
     t.id === id ? { ...t, is_completed: false, completed_at: null } : t
   )
-  saveToCache(updated)
+  await saveToCache(updated)
   return updated
+}
+
+export async function readTasksFromSupabase() {
+  const raw = await readFromSupabase('todoist_task_cache')
+  if (!Array.isArray(raw)) return null
+  return raw.map((t) => ({ ...t, _projectName: t._projectName ?? PROJECT_NAMES[t.project_id] ?? null }))
 }
 
 // Merge incoming tasks with existing cache — deduplicate by id, prefer fresher data.
@@ -51,7 +56,6 @@ function mergeTasks(existing, incoming) {
   incoming.forEach((t) => {
     const ex = map.get(t.id)
     if (ex?.is_completed && !t.is_completed) {
-      // Local archive wins — Todoist hasn't synced the close yet
       map.set(t.id, { ...t, is_completed: true, completed_at: ex.completed_at })
     } else {
       map.set(t.id, t)
@@ -70,8 +74,8 @@ export async function pullAndCacheTasks() {
   localStorage.setItem(CACHE_KEY, JSON.stringify(merged))
   localStorage.setItem(LAST_PULL_KEY, now)
 
-  pushToSupabase('todoist_task_cache', merged).catch(() => {})
-  pushToSupabase('todoist_last_pull', now).catch(() => {})
+  await pushToSupabase('todoist_task_cache', merged)
+  await pushToSupabase('todoist_last_pull', now)
 
   return { tasks: merged, pulledCount: fresh.length }
 }

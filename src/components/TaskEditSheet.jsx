@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { haptic } from '../lib/haptic'
+import { getCachedTasks, saveToCache } from '../lib/taskCache'
 
 const P_META = {
   4: { label: 'P1', color: '#DC2626', bg: '#FEF2F2' },
@@ -244,7 +245,12 @@ export default function TaskEditSheet({ open, onClose, task, allTasks = [], task
       })
       if (!res.ok) throw new Error()
       haptic.success()
-      onSaved?.({ ...task, content, priority, description, due: due ? { date: due } : task.due })
+      const savedTask = { ...task, content, priority, description, due: due ? { date: due } : task.due }
+      onSaved?.(savedTask)
+      // Update the task cache so edits persist to Supabase immediately
+      const cached = getCachedTasks()
+      const updated = cached.map((t) => t.id === task.id ? { ...t, content, priority, description, due: due ? { date: due } : task.due } : t)
+      saveToCache(updated).catch(() => {})
       if (closeAfter) dismiss()
       else {
         setAutoSaved(true)
