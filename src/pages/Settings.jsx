@@ -417,7 +417,7 @@ export default function Settings() {
       >
         {refreshDone ? '✓ Refreshing…' : 'Hard refresh (clear cache)'}
       </button>
-      <p className="text-center text-[10px] text-[#CAC4D0] mb-3">build d877411-new</p>
+      <p className="text-center text-[10px] text-[#CAC4D0] mb-3">build 39617cf</p>
 
       {/* Reset */}
       <button
