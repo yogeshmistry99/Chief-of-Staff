@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { PROJECTS } from '../lib/todoist'
-import { getCachedTasks, saveToCache } from '../lib/taskCache'
+import { getCachedTasks, saveToCache, pullAndCacheTasks } from '../lib/taskCache'
 import { getNotificationsForTask, dismissNotification, acceptNotification } from '../lib/notifications'
 import NotificationCard, { notifDotClass } from '../components/NotificationCard'
 import { prioritise, scoreTask } from '../lib/priority'
@@ -654,7 +654,14 @@ export default function Home() {
     setRefreshing(false)
   }
 
-  useEffect(() => { loadTasks() }, [])
+  useEffect(() => {
+    loadTasks()
+    // Silently pull live tasks from Todoist so the CoS always has fresh data
+    pullAndCacheTasks().then(({ tasks: fresh }) => {
+      setTasks(fresh)
+      setLastRefreshed(new Date())
+    }).catch(() => {})
+  }, [])
   useEffect(() => {
     return onSyncChange('last_weekly_review', () => {
       try { const s = localStorage.getItem('lastWeeklyReview'); setLastWeeklyReview(s ? new Date(s) : null) } catch {}
@@ -761,7 +768,7 @@ export default function Home() {
     const cfg = loadHeadConfig('chief')
     try {
       const history = [...messages, userMsg].filter((m) => !m.streaming).map(({ role, content }) => ({ role, content }))
-      await sendMessageStream(history, SYSTEM_PROMPTS.cos(tasks, cfg), (chunk) => {
+      await sendMessageStream(history, SYSTEM_PROMPTS.cos(tasks, cfg, events), (chunk) => {
         setMessages((prev) => {
           const last = prev[prev.length - 1]
           if (!last?.streaming) return prev

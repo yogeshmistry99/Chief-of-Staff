@@ -301,7 +301,7 @@ export default async function handler(req, res) {
           headers: {
             'x-api-key': apiKey,
             'anthropic-version': '2023-06-01',
-
+            'anthropic-beta': 'prompt-caching-2024-07-31',
             'content-type': 'application/json',
           },
           body: JSON.stringify({
@@ -423,12 +423,13 @@ export default async function handler(req, res) {
         headers: {
           'x-api-key': apiKey,
           'anthropic-version': '2023-06-01',
+          'anthropic-beta': 'prompt-caching-2024-07-31',
           'content-type': 'application/json',
         },
         body: JSON.stringify({
           model: requestedModel ?? 'claude-haiku-4-5-20251001',
           max_tokens: 4096,
-          ...(system ? { system: Array.isArray(system) ? system.map(({ cache_control, ...b }) => b) : system } : {}),
+          ...(system ? { system } : {}),
           messages: currentMessages,
           tools: TOOLS,
         }),

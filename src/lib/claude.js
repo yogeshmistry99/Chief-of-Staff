@@ -116,18 +116,57 @@ function todayISO() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
+function formatCalendarForPrompt(events) {
+  if (!events?.length) return 'No events in the next 7 days.'
+  const byDate = {}
+  events.forEach((e) => {
+    const date = e.start?.date ?? e.start?.dateTime?.slice(0, 10)
+    if (!date) return
+    if (!byDate[date]) byDate[date] = []
+    byDate[date].push(e)
+  })
+  const today = todayISO()
+  const d2 = new Date(); d2.setDate(d2.getDate() + 1)
+  const tomorrow = `${d2.getFullYear()}-${String(d2.getMonth() + 1).padStart(2, '0')}-${String(d2.getDate()).padStart(2, '0')}`
+  return Object.entries(byDate).sort(([a], [b]) => a.localeCompare(b)).map(([date, evs]) => {
+    const d = new Date(date + 'T00:00:00')
+    const label = date === today ? 'Today' : date === tomorrow ? 'Tomorrow'
+      : d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
+    const lines = evs.map((e) => {
+      const isAllDay = !!e.start?.date && !e.start?.dateTime
+      const start = e.start?.dateTime ? new Date(e.start.dateTime).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : null
+      const end   = e.end?.dateTime   ? new Date(e.end.dateTime).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })   : null
+      const time  = isAllDay ? 'All day' : (start && end ? `${start}–${end}` : start ?? 'All day')
+      const flags = []
+      if (e.hangoutLink || e.conferenceData?.entryPoints?.length) flags.push('video')
+      if (e._calendarType === 'holiday') flags.push('holiday')
+      return `  ${time} — ${e.summary ?? '(No title)'}${flags.length ? ` [${flags.join(', ')}]` : ''}`
+    })
+    return `${label} (${date}):\n${lines.join('\n')}`
+  }).join('\n')
+}
+
 export const SYSTEM_PROMPTS = {
-  cos: (tasks, cfg) => {
+  cos: (tasks, cfg, calendarEvents = null) => {
     const today = todayISO()
+    const calendarSection = calendarEvents !== null
+      ? `\nUpcoming calendar (today + 7 days):\n${formatCalendarForPrompt(calendarEvents)}\n`
+      : ''
     const base = { type: 'text', text: `You are the Chief of Staff for Yogesh Mistry, an architect at Gensler. Today is ${today}.
 
 You oversee all areas of his life organised into seven buckets: Finance, Health, Work, Family, Home, Personal, and Systems.
 
 Your role is to help him manage priorities, make decisions, and take action. Be concise, direct, and conversational — write in plain prose, no markdown, no bold text, no headers. Just clear sentences.
 
-Here is his current task list:
-${formatTasksForPrompt(tasks)}
+PRIORITY FRAMEWORK — apply this reasoning in every response that touches priorities or decisions:
+- Consequence: which tasks have the highest real-world impact if done or left undone?
+- Irreversibility: which tasks close off future options if delayed (deadlines, financial, health, legal)?
+- Compounding value: which tasks create leverage — making other things easier or unlocking future progress?
+Bucket priority order when breaking ties: Finance > Health > Work > Family > Home > Personal > Systems.
 
+Current task list:
+${formatTasksForPrompt(tasks)}
+${calendarSection}
 When he asks about existing tasks, check the list above. When he adds a new task, acknowledge it and suggest which bucket and priority it belongs in. When he pastes an email, extract actionable tasks. Keep responses short unless depth is needed.
 
 CONFIRMATION RULES — follow exactly after any write action (create, update, complete, delete on a task or calendar event):
