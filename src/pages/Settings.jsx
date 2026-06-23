@@ -209,15 +209,15 @@ export default function Settings() {
     {
       icon: '✅',
       name: 'Todoist',
-      description: 'Task sync — all 7 buckets mirror your Todoist projects.',
+      description: 'Task import — bring tasks from Todoist into the app when onboarding or catching up.',
       connected: 'todoist' in status ? status.todoist : null,
-      detail: lastPull ? `Last synced ${formatTime(lastPull)} · ${cachedCount} tasks cached` : null,
+      detail: lastPull ? `Last imported ${formatTime(lastPull)} · ${cachedCount} tasks` : null,
       url: 'https://todoist.com',
     },
     {
       icon: '🗄️',
       name: 'Supabase',
-      description: 'Persistent database — stores tasks, knowledge and settings across all devices.',
+      description: 'Source of truth — all tasks, knowledge, settings and backups live here, synced across devices.',
       connected: supabaseOk,
       detail: lastSync ? `Last sync ${formatTime(lastSync)}` : null,
       url: 'https://supabase.com',
@@ -273,6 +273,7 @@ export default function Settings() {
             <li>Fill in each API key from the respective developer consoles</li>
             <li>Redeploy on Vercel — environment variables update automatically</li>
           </ol>
+          <p className="text-[11px] text-[#21005D] opacity-70 mt-3">Tasks live in Supabase. Todoist is used for one-off imports only. Google Calendar is read-only.</p>
         </div>
       </CollapsibleSection>
 
@@ -291,27 +292,31 @@ export default function Settings() {
           <span className="text-[#49454F]">Platform</span>
           <span className="font-medium text-[#1C1B1F]">PWA · Vite · React</span>
         </div>
+        <div className="flex justify-between text-sm mt-1.5">
+          <span className="text-[#49454F]">AI</span>
+          <span className="font-medium text-[#1C1B1F]">Claude Sonnet (CoS) · Haiku (Heads)</span>
+        </div>
       </div>
 
-      {/* Todoist task cache */}
+      {/* Todoist import */}
       <div className="bg-white border border-[#CAC4D0] rounded-2xl px-4 py-3 mb-4">
-        <h2 className="text-xs font-semibold text-[#49454F] uppercase tracking-wide mb-3">Todoist Task Cache</h2>
+        <h2 className="text-xs font-semibold text-[#49454F] uppercase tracking-wide mb-3">Import from Todoist</h2>
         <p className="text-xs text-[#79747E] mb-3">
-          Pulls all tasks from Todoist into local storage so they're available offline and to the AI heads. Merges without duplicates.
+          Imports tasks from Todoist into Supabase. Use this when onboarding or to bring in a fresh batch of tasks. The app reads from Supabase during normal use.
         </p>
         <div className="flex items-center justify-between mb-3">
           <div>
-            <p className="text-sm text-[#1C1B1F]">{cachedCount > 0 ? `${cachedCount} tasks cached` : 'No cache yet'}</p>
-            {lastPull && <p className="text-xs text-[#79747E]">Last pulled {formatTime(lastPull)}</p>}
+            <p className="text-sm text-[#1C1B1F]">{cachedCount > 0 ? `${cachedCount} tasks in Supabase` : 'No tasks yet'}</p>
+            {lastPull && <p className="text-xs text-[#79747E]">Last imported {formatTime(lastPull)}</p>}
           </div>
           {pullState === 'confirm' ? (
             <div className="flex items-center gap-2">
-              <span className="text-xs text-[#49454F]">Overwrite cache?</span>
+              <span className="text-xs text-[#49454F]">Import from Todoist?</span>
               <button onClick={() => setPullState('idle')} className="px-3 py-1.5 rounded-full text-sm font-semibold bg-[#F3EDF7] text-[#49454F]">
                 Cancel
               </button>
               <button onClick={handlePullTasks} className="px-3 py-1.5 rounded-full text-sm font-semibold bg-[#6750A4] text-white hover:bg-[#7965AF]">
-                Yes, pull
+                Import
               </button>
             </div>
           ) : (
@@ -325,10 +330,10 @@ export default function Settings() {
                                          'bg-[#6750A4] text-white hover:bg-[#7965AF]'
               }`}
             >
-              {pullState === 'pulling' ? '⏳ Pulling…' :
+              {pullState === 'pulling' ? '⏳ Importing…' :
                pullState === 'done'    ? '✓ Done' :
                pullState === 'error'   ? '✗ Failed' :
-                                         'Pull tasks'}
+                                         'Import tasks'}
             </button>
           )}
         </div>
