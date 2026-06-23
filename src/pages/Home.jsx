@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { PROJECTS } from '../lib/todoist'
-import { getCachedTasks, saveToCache, pullAndCacheTasks, readTasksFromSupabase } from '../lib/taskCache'
+import { getCachedTasks, saveToCache, readTasksFromSupabase } from '../lib/taskCache'
 import { getNotificationsForTask, dismissNotification, acceptNotification } from '../lib/notifications'
 import NotificationCard, { notifDotClass } from '../components/NotificationCard'
 import { prioritise, scoreTask } from '../lib/priority'
@@ -661,9 +661,7 @@ export default function Home() {
   const inputHoldRef = useRef(null)
 
   useEffect(() => {
-    // Read from Supabase first (source of truth), then pull fresh from Todoist
     readTasksFromSupabase().then((t) => { if (t) setTasks(t) }).catch(() => {})
-    pullAndCacheTasks().then(({ tasks: fresh }) => setTasks(fresh)).catch(() => {})
   }, [])
   useEffect(() => {
     return onSyncChange('last_weekly_review', () => {
