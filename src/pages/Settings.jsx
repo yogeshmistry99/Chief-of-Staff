@@ -355,66 +355,68 @@ export default function Settings() {
       </CollapsibleSection>
 
       {/* App info */}
-      <div className="bg-white border border-[#CAC4D0] rounded-2xl px-4 py-3 mb-4">
-        <h2 className="text-xs font-semibold text-[#49454F] uppercase tracking-wide mb-2">About</h2>
-        <div className="flex justify-between text-sm">
-          <span className="text-[#49454F]">App name</span>
-          <span className="font-medium text-[#1C1B1F]">Life OS</span>
+      <CollapsibleSection title="About" subtitle="Life OS · v0.1.7 · PWA">
+        <div className="bg-white border border-[#CAC4D0] rounded-2xl px-4 py-3 mt-2">
+          <div className="flex justify-between text-sm">
+            <span className="text-[#49454F]">App name</span>
+            <span className="font-medium text-[#1C1B1F]">Life OS</span>
+          </div>
+          <div className="flex justify-between text-sm mt-1.5">
+            <span className="text-[#49454F]">Version</span>
+            <span className="font-medium text-[#1C1B1F]">0.1.7</span>
+          </div>
+          <div className="flex justify-between text-sm mt-1.5">
+            <span className="text-[#49454F]">Platform</span>
+            <span className="font-medium text-[#1C1B1F]">PWA · Vite · React</span>
+          </div>
+          <div className="flex justify-between text-sm mt-1.5">
+            <span className="text-[#49454F]">AI</span>
+            <span className="font-medium text-[#1C1B1F]">Claude Sonnet (CoS) · Haiku (Heads)</span>
+          </div>
         </div>
-        <div className="flex justify-between text-sm mt-1.5">
-          <span className="text-[#49454F]">Version</span>
-          <span className="font-medium text-[#1C1B1F]">0.1.7</span>
-        </div>
-        <div className="flex justify-between text-sm mt-1.5">
-          <span className="text-[#49454F]">Platform</span>
-          <span className="font-medium text-[#1C1B1F]">PWA · Vite · React</span>
-        </div>
-        <div className="flex justify-between text-sm mt-1.5">
-          <span className="text-[#49454F]">AI</span>
-          <span className="font-medium text-[#1C1B1F]">Claude Sonnet (CoS) · Haiku (Heads)</span>
-        </div>
-      </div>
+      </CollapsibleSection>
 
       {/* Todoist import */}
-      <div className="bg-white border border-[#CAC4D0] rounded-2xl px-4 py-3 mb-4">
-        <h2 className="text-xs font-semibold text-[#49454F] uppercase tracking-wide mb-3">Import from Todoist</h2>
-        <p className="text-xs text-[#79747E] mb-3">
-          Imports tasks from Todoist into Supabase. Use this when onboarding or to bring in a fresh batch of tasks. The app reads from Supabase during normal use.
-        </p>
-        <div className="flex items-center justify-between mb-3">
-          <div>
-            <p className="text-sm text-[#1C1B1F]">{cachedCount > 0 ? `${cachedCount} tasks in Supabase` : 'No tasks yet'}</p>
-            {lastPull && <p className="text-xs text-[#79747E]">Last imported {formatTime(lastPull)}</p>}
-          </div>
-          {pullState === 'confirm' ? (
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-[#49454F]">Import from Todoist?</span>
-              <button onClick={() => setPullState('idle')} className="px-3 py-1.5 rounded-full text-sm font-semibold bg-[#F3EDF7] text-[#49454F]">
-                Cancel
-              </button>
-              <button onClick={handlePullTasks} className="px-3 py-1.5 rounded-full text-sm font-semibold bg-[#6750A4] text-white hover:bg-[#7965AF]">
-                Import
-              </button>
+      <CollapsibleSection title="Import from Todoist" subtitle={cachedCount > 0 ? `${cachedCount} tasks in Supabase` : 'One-off import'}>
+        <div className="bg-white border border-[#CAC4D0] rounded-2xl px-4 py-3 mt-2">
+          <p className="text-xs text-[#79747E] mb-3">
+            Imports tasks from Todoist into Supabase. Use this when onboarding or to bring in a fresh batch of tasks. The app reads from Supabase during normal use.
+          </p>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-[#1C1B1F]">{cachedCount > 0 ? `${cachedCount} tasks in Supabase` : 'No tasks yet'}</p>
+              {lastPull && <p className="text-xs text-[#79747E]">Last imported {formatTime(lastPull)}</p>}
             </div>
-          ) : (
-            <button
-              onClick={handlePullTasks}
-              disabled={pullState === 'pulling'}
-              className={`px-4 py-2 rounded-full text-sm font-semibold transition-colors flex-shrink-0 ${
-                pullState === 'done'    ? 'bg-green-500 text-white' :
-                pullState === 'error'  ? 'bg-red-500 text-white' :
-                pullState === 'pulling'? 'bg-[#F3EDF7] text-[#79747E]' :
-                                         'bg-[#6750A4] text-white hover:bg-[#7965AF]'
-              }`}
-            >
-              {pullState === 'pulling' ? '⏳ Importing…' :
-               pullState === 'done'    ? '✓ Done' :
-               pullState === 'error'   ? '✗ Failed' :
-                                         'Import tasks'}
-            </button>
-          )}
+            {pullState === 'confirm' ? (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-[#49454F]">Import from Todoist?</span>
+                <button onClick={() => setPullState('idle')} className="px-3 py-1.5 rounded-full text-sm font-semibold bg-[#F3EDF7] text-[#49454F]">
+                  Cancel
+                </button>
+                <button onClick={handlePullTasks} className="px-3 py-1.5 rounded-full text-sm font-semibold bg-[#6750A4] text-white hover:bg-[#7965AF]">
+                  Import
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={handlePullTasks}
+                disabled={pullState === 'pulling'}
+                className={`px-4 py-2 rounded-full text-sm font-semibold transition-colors flex-shrink-0 ${
+                  pullState === 'done'    ? 'bg-green-500 text-white' :
+                  pullState === 'error'  ? 'bg-red-500 text-white' :
+                  pullState === 'pulling'? 'bg-[#F3EDF7] text-[#79747E]' :
+                                           'bg-[#6750A4] text-white hover:bg-[#7965AF]'
+                }`}
+              >
+                {pullState === 'pulling' ? '⏳ Importing…' :
+                 pullState === 'done'    ? '✓ Done' :
+                 pullState === 'error'   ? '✗ Failed' :
+                                           'Import tasks'}
+              </button>
+            )}
+          </div>
         </div>
-      </div>
+      </CollapsibleSection>
 
       {/* Backups */}
       <CollapsibleSection title="Backups" subtitle={`Weekly snapshots · ${backups.length} saved`}>
