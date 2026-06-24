@@ -75,7 +75,8 @@ function HeadTab({ bucket, tasks, setTasks, messages, setMessages }) {
         return [...prev.slice(0, -1), { ...last, streaming: false }]
       })
     } catch (err) {
-      setMessages((prev) => [...prev.slice(0, -1), { role: 'assistant', content: `Error: ${err.message}` }])
+      const msg = err.message?.includes('fetch') ? 'Connection error — please try again.' : `Error: ${err.message}`
+      setMessages((prev) => [...prev.slice(0, -1), { role: 'assistant', content: msg }])
     }
   }
 
