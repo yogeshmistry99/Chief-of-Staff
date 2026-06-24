@@ -673,6 +673,11 @@ export default function Home() {
     load()
     return onCalendarChange(load)
   }, [])
+  useEffect(() => {
+    const handler = () => setTab('priorities')
+    window.addEventListener('cos-reset-tab', handler)
+    return () => window.removeEventListener('cos-reset-tab', handler)
+  }, [])
 
   async function handleRefreshPriorities() {
     setPriorityRefreshing(true)
