@@ -71,9 +71,17 @@ function CollapsibleSection({ title, subtitle, children, defaultOpen = false }) 
   )
 }
 
+const SPEND_LIMIT_KEY = 'cos_monthly_spend_limit'
+
 export default function Settings() {
   const [usage, setUsage] = useState({})
   const [resetDone, setResetDone] = useState(false)
+  const [spendLimit, setSpendLimit] = useState(() => {
+    const v = parseFloat(localStorage.getItem(SPEND_LIMIT_KEY))
+    return isNaN(v) ? 20 : v
+  })
+  const [editingLimit, setEditingLimit] = useState(false)
+  const [limitDraft, setLimitDraft] = useState('')
   const [status, setStatus] = useState({})
   const [supabaseOk, setSupabaseOk] = useState(null)
   const [lastSync, setLastSync] = useState(null)
@@ -186,8 +194,22 @@ export default function Settings() {
     setTimeout(() => setResetDone(false), 2000)
   }
 
+  function saveSpendLimit(val) {
+    const n = parseFloat(val)
+    if (!isNaN(n) && n > 0) {
+      localStorage.setItem(SPEND_LIMIT_KEY, String(n))
+      setSpendLimit(n)
+    }
+    setEditingLimit(false)
+  }
+
   const cost = calcCost(usage)
   const monthLabel = new Date().toLocaleString('default', { month: 'long', year: 'numeric' })
+  const pct = spendLimit > 0 ? Math.min(100, (cost / spendLimit) * 100) : 0
+  const resetDate = (() => {
+    const n = new Date()
+    return new Date(n.getFullYear(), n.getMonth() + 1, 1).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+  })()
 
   const integrations = [
     {
@@ -248,18 +270,73 @@ export default function Settings() {
         <p className="text-sm text-[#49454F] mt-1">Manage your integrations and preferences.</p>
       </div>
 
-      {/* Monthly cost card */}
-      <div className="bg-white border border-[#CAC4D0] rounded-2xl px-4 py-3 mb-4">
-        <h2 className="text-xs font-semibold text-[#49454F] uppercase tracking-wide mb-3">AI Usage · {monthLabel}</h2>
-        <div className="flex items-end justify-between mb-2">
-          <span className="text-3xl font-semibold text-[#1C1B1F]">${cost.toFixed(4)}</span>
-          <span className="text-xs text-[#79747E] mb-1">{usage.calls ?? 0} {usage.calls === 1 ? 'conversation' : 'conversations'}</span>
+      {/* AI Spend */}
+      <CollapsibleSection
+        title="AI Spend"
+        subtitle={`${monthLabel} · $${cost.toFixed(2)} of $${spendLimit.toFixed(0)}`}
+        defaultOpen={false}
+      >
+        <div className="bg-white border border-[#CAC4D0] rounded-2xl px-4 py-4 mt-2">
+          {/* Big cost + calls */}
+          <div className="flex items-end justify-between mb-3">
+            <div>
+              <span className="text-3xl font-bold text-[#1C1B1F]">${cost.toFixed(2)}</span>
+              <span className="text-sm text-[#79747E] ml-1">/ ${spendLimit.toFixed(0)}</span>
+            </div>
+            <span className="text-xs text-[#79747E]">{usage.calls ?? 0} {usage.calls === 1 ? 'call' : 'calls'}</span>
+          </div>
+
+          {/* Progress bar */}
+          <div className="h-2 rounded-full bg-[#F3EDF7] overflow-hidden mb-1">
+            <div
+              className="h-full rounded-full transition-all duration-500"
+              style={{
+                width: `${pct}%`,
+                backgroundColor: pct >= 90 ? '#B3261E' : pct >= 70 ? '#E8A000' : '#6750A4',
+              }}
+            />
+          </div>
+          <div className="flex justify-between text-[11px] text-[#79747E] mb-4">
+            <span>{pct.toFixed(0)}% used</span>
+            <span>Resets {resetDate}</span>
+          </div>
+
+          {/* Token breakdown */}
+          <div className="flex gap-4 text-xs text-[#49454F] mb-4">
+            <span>{(usage.input_tokens ?? 0).toLocaleString()} input</span>
+            <span>{(usage.output_tokens ?? 0).toLocaleString()} output</span>
+          </div>
+
+          {/* Spend limit editor */}
+          <div className="border-t border-[#F3EDF7] pt-3">
+            <p className="text-xs text-[#79747E] mb-2">Monthly spend limit</p>
+            {editingLimit ? (
+              <div className="flex gap-2">
+                <input
+                  autoFocus
+                  type="number"
+                  min="1"
+                  value={limitDraft}
+                  onChange={(e) => setLimitDraft(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') saveSpendLimit(limitDraft); if (e.key === 'Escape') setEditingLimit(false) }}
+                  className="flex-1 text-sm border border-[#CAC4D0] rounded-xl px-3 py-1.5 outline-none focus:border-[#6750A4]"
+                  placeholder="e.g. 20"
+                />
+                <button onClick={() => saveSpendLimit(limitDraft)} className="text-sm font-medium text-[#6750A4] px-3">Save</button>
+                <button onClick={() => setEditingLimit(false)} className="text-sm text-[#79747E] px-2">Cancel</button>
+              </div>
+            ) : (
+              <button
+                onClick={() => { setLimitDraft(String(spendLimit)); setEditingLimit(true) }}
+                className="text-sm font-medium text-[#6750A4]"
+              >
+                ${spendLimit.toFixed(0)} / month — tap to change
+              </button>
+            )}
+          </div>
+          <p className="text-[10px] text-[#79747E] mt-3 opacity-60">Estimated from local token counts. Check console.anthropic.com for exact billing.</p>
         </div>
-        <div className="flex gap-4 text-xs text-[#49454F]">
-          <span>{(usage.input_tokens ?? 0).toLocaleString()} input tokens</span>
-          <span>{(usage.output_tokens ?? 0).toLocaleString()} output tokens</span>
-        </div>
-      </div>
+      </CollapsibleSection>
 
       {/* Integrations */}
       <CollapsibleSection title="How this app is built" subtitle="Life OS connects these services to work. Tap any card to manage.">
