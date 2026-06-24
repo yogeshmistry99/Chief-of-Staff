@@ -4,9 +4,15 @@ import { pullAndCacheTasks, getLastPullTime, getCachedTasks } from '../lib/taskC
 import { supabase } from '../lib/supabase'
 import { listBackups, createBackup, restoreBackup, fmtBackupDate, fmtLabel } from '../lib/backups'
 
-// Haiku 4.5 pricing: $0.80/MTok input, $4.00/MTok output
-function calcCost({ input_tokens = 0, output_tokens = 0 }) {
-  return (input_tokens / 1_000_000) * 0.80 + (output_tokens / 1_000_000) * 4.00
+// Sonnet 4.6: $3/MTok input, $15/MTok output
+// Haiku 4.5:  $0.80/MTok input, $4.00/MTok output
+function calcCost(usage) {
+  const si = usage.sonnet_input  ?? 0
+  const so = usage.sonnet_output ?? 0
+  const hi = usage.haiku_input   ?? (usage.input_tokens  ?? 0) - si
+  const ho = usage.haiku_output  ?? (usage.output_tokens ?? 0) - so
+  return (si / 1_000_000) * 3.00 + (so / 1_000_000) * 15.00
+       + (hi / 1_000_000) * 0.80 + (ho / 1_000_000) *  4.00
 }
 
 function StatusPill({ connected }) {
@@ -263,21 +269,28 @@ export default function Settings() {
   ]
 
   return (
-    <div className="px-4 pt-6 pb-4 max-w-lg mx-auto">
+    <div className="px-4 pt-6 pb-6 max-w-lg mx-auto">
       {/* Header */}
-      <div className="mb-6">
+      <div className="mb-4">
         <h1 className="text-2xl font-semibold text-[#1C1B1F]">Settings</h1>
-        <p className="text-sm text-[#49454F] mt-1">Manage your integrations and preferences.</p>
       </div>
+
+      {/* Hard refresh — top utility action */}
+      <button
+        onClick={handleRefresh}
+        className={`w-full py-2.5 rounded-full text-sm font-semibold transition-colors mb-4 ${
+          refreshDone ? 'bg-green-500 text-white' : 'bg-[#F3EDF7] text-[#6750A4] hover:bg-[#EADDFF]'
+        }`}
+      >
+        {refreshDone ? '✓ Refreshing…' : 'Hard refresh (clear cache)'}
+      </button>
 
       {/* AI Spend */}
       <CollapsibleSection
         title="AI Spend"
         subtitle={`${monthLabel} · $${cost.toFixed(2)} of $${spendLimit.toFixed(0)}`}
-        defaultOpen={false}
       >
         <div className="bg-white border border-[#CAC4D0] rounded-2xl px-4 py-4 mt-2">
-          {/* Big cost + calls */}
           <div className="flex items-end justify-between mb-3">
             <div>
               <span className="text-3xl font-bold text-[#1C1B1F]">${cost.toFixed(2)}</span>
@@ -286,14 +299,10 @@ export default function Settings() {
             <span className="text-xs text-[#79747E]">{usage.calls ?? 0} {usage.calls === 1 ? 'call' : 'calls'}</span>
           </div>
 
-          {/* Progress bar */}
           <div className="h-2 rounded-full bg-[#F3EDF7] overflow-hidden mb-1">
             <div
               className="h-full rounded-full transition-all duration-500"
-              style={{
-                width: `${pct}%`,
-                backgroundColor: pct >= 90 ? '#B3261E' : pct >= 70 ? '#E8A000' : '#6750A4',
-              }}
+              style={{ width: `${pct}%`, backgroundColor: pct >= 90 ? '#B3261E' : pct >= 70 ? '#E8A000' : '#6750A4' }}
             />
           </div>
           <div className="flex justify-between text-[11px] text-[#79747E] mb-4">
@@ -301,22 +310,34 @@ export default function Settings() {
             <span>Resets {resetDate}</span>
           </div>
 
-          {/* Token breakdown */}
           <div className="flex gap-4 text-xs text-[#49454F] mb-4">
-            <span>{(usage.input_tokens ?? 0).toLocaleString()} input</span>
-            <span>{(usage.output_tokens ?? 0).toLocaleString()} output</span>
+            <span>{(usage.sonnet_input ?? 0).toLocaleString()} Sonnet in</span>
+            <span>{(usage.haiku_input ?? 0).toLocaleString()} Haiku in</span>
           </div>
 
-          {/* Spend limit editor */}
+          <div className="flex gap-2 mb-4">
+            <a
+              href="https://console.anthropic.com/settings/billing"
+              target="_blank" rel="noopener noreferrer"
+              className="flex-1 py-2 rounded-full text-sm font-semibold text-center bg-[#6750A4] text-white hover:bg-[#5B4397]"
+            >
+              Buy credits
+            </a>
+            <a
+              href="https://console.anthropic.com/settings/cost"
+              target="_blank" rel="noopener noreferrer"
+              className="flex-1 py-2 rounded-full text-sm font-semibold text-center bg-[#F3EDF7] text-[#6750A4] hover:bg-[#EADDFF]"
+            >
+              View usage
+            </a>
+          </div>
+
           <div className="border-t border-[#F3EDF7] pt-3">
             <p className="text-xs text-[#79747E] mb-2">Monthly spend limit</p>
             {editingLimit ? (
               <div className="flex gap-2">
                 <input
-                  autoFocus
-                  type="number"
-                  min="1"
-                  value={limitDraft}
+                  autoFocus type="number" min="1" value={limitDraft}
                   onChange={(e) => setLimitDraft(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter') saveSpendLimit(limitDraft); if (e.key === 'Escape') setEditingLimit(false) }}
                   className="flex-1 text-sm border border-[#CAC4D0] rounded-xl px-3 py-1.5 outline-none focus:border-[#6750A4]"
@@ -326,20 +347,17 @@ export default function Settings() {
                 <button onClick={() => setEditingLimit(false)} className="text-sm text-[#79747E] px-2">Cancel</button>
               </div>
             ) : (
-              <button
-                onClick={() => { setLimitDraft(String(spendLimit)); setEditingLimit(true) }}
-                className="text-sm font-medium text-[#6750A4]"
-              >
+              <button onClick={() => { setLimitDraft(String(spendLimit)); setEditingLimit(true) }} className="text-sm font-medium text-[#6750A4]">
                 ${spendLimit.toFixed(0)} / month — tap to change
               </button>
             )}
           </div>
-          <p className="text-[10px] text-[#79747E] mt-3 opacity-60">Estimated from local token counts. Check console.anthropic.com for exact billing.</p>
+          <p className="text-[10px] text-[#79747E] mt-3 opacity-60">Estimated from local token counts. Check Anthropic console for exact billing.</p>
         </div>
       </CollapsibleSection>
 
       {/* Integrations */}
-      <CollapsibleSection title="How this app is built" subtitle="Life OS connects these services to work. Tap any card to manage.">
+      <CollapsibleSection title="How this app is built" subtitle="Tap any card to manage the connection.">
         <div className="space-y-2 pt-2">
           {integrations.map((item) => <IntegrationCard key={item.name} {...item} />)}
         </div>
@@ -354,48 +372,21 @@ export default function Settings() {
         </div>
       </CollapsibleSection>
 
-      {/* App info */}
-      <CollapsibleSection title="About" subtitle="Life OS · v0.1.7 · PWA">
-        <div className="bg-white border border-[#CAC4D0] rounded-2xl px-4 py-3 mt-2">
-          <div className="flex justify-between text-sm">
-            <span className="text-[#49454F]">App name</span>
-            <span className="font-medium text-[#1C1B1F]">Life OS</span>
-          </div>
-          <div className="flex justify-between text-sm mt-1.5">
-            <span className="text-[#49454F]">Version</span>
-            <span className="font-medium text-[#1C1B1F]">0.1.7</span>
-          </div>
-          <div className="flex justify-between text-sm mt-1.5">
-            <span className="text-[#49454F]">Platform</span>
-            <span className="font-medium text-[#1C1B1F]">PWA · Vite · React</span>
-          </div>
-          <div className="flex justify-between text-sm mt-1.5">
-            <span className="text-[#49454F]">AI</span>
-            <span className="font-medium text-[#1C1B1F]">Claude Sonnet (CoS) · Haiku (Heads)</span>
-          </div>
-        </div>
-      </CollapsibleSection>
-
       {/* Todoist import */}
       <CollapsibleSection title="Import from Todoist" subtitle={cachedCount > 0 ? `${cachedCount} tasks in Supabase` : 'One-off import'}>
         <div className="bg-white border border-[#CAC4D0] rounded-2xl px-4 py-3 mt-2">
           <p className="text-xs text-[#79747E] mb-3">
-            Imports tasks from Todoist into Supabase. Use this when onboarding or to bring in a fresh batch of tasks. The app reads from Supabase during normal use.
+            Imports tasks from Todoist into Supabase. Use this when onboarding or to bring in a fresh batch of tasks.
           </p>
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-[#1C1B1F]">{cachedCount > 0 ? `${cachedCount} tasks in Supabase` : 'No tasks yet'}</p>
+              <p className="text-sm text-[#1C1B1F]">{cachedCount > 0 ? `${cachedCount} tasks` : 'No tasks yet'}</p>
               {lastPull && <p className="text-xs text-[#79747E]">Last imported {formatTime(lastPull)}</p>}
             </div>
             {pullState === 'confirm' ? (
               <div className="flex items-center gap-2">
-                <span className="text-xs text-[#49454F]">Import from Todoist?</span>
-                <button onClick={() => setPullState('idle')} className="px-3 py-1.5 rounded-full text-sm font-semibold bg-[#F3EDF7] text-[#49454F]">
-                  Cancel
-                </button>
-                <button onClick={handlePullTasks} className="px-3 py-1.5 rounded-full text-sm font-semibold bg-[#6750A4] text-white hover:bg-[#7965AF]">
-                  Import
-                </button>
+                <button onClick={() => setPullState('idle')} className="px-3 py-1.5 rounded-full text-sm font-semibold bg-[#F3EDF7] text-[#49454F]">Cancel</button>
+                <button onClick={handlePullTasks} className="px-3 py-1.5 rounded-full text-sm font-semibold bg-[#6750A4] text-white">Import</button>
               </div>
             ) : (
               <button
@@ -408,10 +399,7 @@ export default function Settings() {
                                            'bg-[#6750A4] text-white hover:bg-[#7965AF]'
                 }`}
               >
-                {pullState === 'pulling' ? '⏳ Importing…' :
-                 pullState === 'done'    ? '✓ Done' :
-                 pullState === 'error'   ? '✗ Failed' :
-                                           'Import tasks'}
+                {pullState === 'pulling' ? '⏳ Importing…' : pullState === 'done' ? '✓ Done' : pullState === 'error' ? '✗ Failed' : 'Import tasks'}
               </button>
             )}
           </div>
@@ -437,12 +425,8 @@ export default function Settings() {
             </button>
           </div>
 
-          {restoreState === 'done' && (
-            <p className="text-xs text-green-600 font-medium mt-2">✓ Tasks restored successfully.</p>
-          )}
-          {restoreState === 'error' && (
-            <p className="text-xs text-red-500 mt-2">Restore failed. Try again.</p>
-          )}
+          {restoreState === 'done' && <p className="text-xs text-green-600 font-medium mt-2">✓ Tasks restored successfully.</p>}
+          {restoreState === 'error' && <p className="text-xs text-red-500 mt-2">Restore failed. Try again.</p>}
 
           {restoreTarget && (
             <div className="bg-[#FFF8E1] border border-[#FFE082] rounded-xl p-3 mt-3">
@@ -473,10 +457,7 @@ export default function Settings() {
                       <p className="text-xs font-medium text-[#1C1B1F] truncate">{b.label}</p>
                       <p className="text-[11px] text-[#79747E]">{fmtBackupDate(b.created_at)} · {b.task_count} tasks</p>
                     </div>
-                    <button
-                      onClick={() => handleRestore(b)}
-                      className="px-3 py-1 rounded-full text-xs font-semibold bg-[#F3EDF7] text-[#6750A4] hover:bg-[#EADDFF] flex-shrink-0"
-                    >
+                    <button onClick={() => handleRestore(b)} className="px-3 py-1 rounded-full text-xs font-semibold bg-[#F3EDF7] text-[#6750A4] hover:bg-[#EADDFF] flex-shrink-0">
                       Restore
                     </button>
                   </div>
@@ -487,21 +468,28 @@ export default function Settings() {
         </div>
       </CollapsibleSection>
 
-      {/* Hard refresh */}
-      <button
-        onClick={handleRefresh}
-        className={`w-full py-3 rounded-full text-sm font-semibold transition-colors mb-3 ${
-          refreshDone ? 'bg-green-500 text-white' : 'bg-[#F3EDF7] text-[#6750A4] hover:bg-[#EADDFF]'
-        }`}
-      >
-        {refreshDone ? '✓ Refreshing…' : 'Hard refresh (clear cache)'}
-      </button>
-      <p className="text-center text-[10px] text-[#CAC4D0] mb-3">build 39617cf</p>
+      {/* About — bottom of list */}
+      <CollapsibleSection title="About" subtitle="Life OS · v0.1.7 · PWA">
+        <div className="bg-white border border-[#CAC4D0] rounded-2xl px-4 py-3 mt-2">
+          {[
+            ['App', 'Life OS'],
+            ['Version', '0.1.7'],
+            ['Platform', 'PWA · Vite · React'],
+            ['AI', 'Claude Sonnet (CoS) · Haiku (Heads)'],
+            ['Build', '969b717'],
+          ].map(([label, value]) => (
+            <div key={label} className="flex justify-between text-sm mt-1.5 first:mt-0">
+              <span className="text-[#49454F]">{label}</span>
+              <span className="font-medium text-[#1C1B1F]">{value}</span>
+            </div>
+          ))}
+        </div>
+      </CollapsibleSection>
 
-      {/* Reset */}
+      {/* Reset — danger zone at bottom */}
       <button
         onClick={handleReset}
-        className={`w-full py-3 rounded-full text-sm font-semibold transition-colors ${
+        className={`w-full mt-2 py-2.5 rounded-full text-sm font-semibold transition-colors ${
           resetDone ? 'bg-green-500 text-white' : 'bg-[#F3EDF7] text-[#B3261E] hover:bg-[#FCDAD7]'
         }`}
       >

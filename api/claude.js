@@ -401,7 +401,7 @@ export default async function handler(req, res) {
         break // end_turn or max_tokens — done
       }
 
-      res.write(`data: ${JSON.stringify({ usage: { input_tokens: totalInputTokens, output_tokens: totalOutputTokens } })}\n\n`)
+      res.write(`data: ${JSON.stringify({ usage: { input_tokens: totalInputTokens, output_tokens: totalOutputTokens, model: requestedModel ?? 'claude-haiku-4-5-20251001' } })}\n\n`)
       if (initialTasks) res.write(`data: ${JSON.stringify({ tasks_updated: tasks })}\n\n`)
       res.write('data: [DONE]\n\n')
       res.end()
