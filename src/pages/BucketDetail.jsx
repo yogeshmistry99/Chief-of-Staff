@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import TaskEditSheet from '../components/TaskEditSheet'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { getProjectSections, PROJECTS } from '../lib/todoist'
 import { getCachedTasks, saveToCache, readTasksFromSupabase } from '../lib/taskCache'
 import { scoreTask, BUCKET_WEIGHTS } from '../lib/priority'
@@ -182,7 +182,7 @@ function DiscussionsTab({ bucket }) {
               <div key={d.id} className="bg-white border border-[#CAC4D0] rounded-2xl overflow-hidden">
                 <div className="flex items-start">
                   <button
-                    onClick={() => navigate(`/buckets/${bucket}/discussions/${d.id}`, { state: { from: `/buckets/${bucket}` } })}
+                    onClick={() => navigate(`/buckets/${bucket}/discussions/${d.id}`, { state: { from: `/buckets/${bucket}`, tab: 'discussions' } })}
                     className="flex-1 min-w-0 text-left p-4 pr-2"
                   >
                     <p className="text-sm font-medium text-[#1C1B1F] leading-snug break-words">{d.title}</p>
@@ -208,7 +208,7 @@ function DiscussionsTab({ bucket }) {
       </div>
       <div className="px-4 pb-4 pt-2 border-t border-[#CAC4D0] bg-white">
         <button
-          onClick={() => navigate(`/buckets/${bucket}/discussions/new`, { state: { from: `/buckets/${bucket}` } })}
+          onClick={() => navigate(`/buckets/${bucket}/discussions/new`, { state: { from: `/buckets/${bucket}`, tab: 'discussions' } })}
           className="w-full py-2.5 rounded-full bg-[#6750A4] text-white text-sm font-medium hover:bg-[#5B4397] transition-colors"
         >
           + New discussion
@@ -842,7 +842,8 @@ function ArchivedSection({ tasks, allTasks, bucket, onRestore }) {
 export default function BucketDetail() {
   const { bucket } = useParams()
   const navigate = useNavigate()
-  const [tab, setTab] = useState('tasks')
+  const location = useLocation()
+  const [tab, setTab] = useState(location.state?.tab ?? 'tasks')
   const [tasks, setTasks] = useState([])
   const [sections, setSections] = useState([])
   const [loading, setLoading] = useState(true)
