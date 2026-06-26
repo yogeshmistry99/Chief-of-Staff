@@ -158,7 +158,6 @@ function HeadTab({ bucket, tasks, setTasks, messages, setMessages }) {
 function DiscussionsTab({ bucket }) {
   const navigate = useNavigate()
   const [discussions, setDiscussions] = useState(() => getDiscussions(bucket))
-  const [expanded, setExpanded] = useState(null)
 
   useEffect(() => { setDiscussions(getDiscussions(bucket)) }, [bucket])
 
@@ -167,7 +166,6 @@ function DiscussionsTab({ bucket }) {
     if (!confirm('Delete this discussion?')) return
     deleteDiscussion(bucket, id)
     setDiscussions(getDiscussions(bucket))
-    if (expanded === id) setExpanded(null)
   }
 
   return (
@@ -180,59 +178,31 @@ function DiscussionsTab({ bucket }) {
           </div>
         ) : (
           <div className="space-y-2">
-            {discussions.map((d) => {
-              const isOpen = expanded === d.id
-              const preview = d.messages[0]?.content ?? null
-              return (
-                <div key={d.id} className="bg-white border border-[#CAC4D0] rounded-2xl overflow-hidden">
-                  <div className="flex items-start">
+            {discussions.map((d) => (
+              <div key={d.id} className="bg-white border border-[#CAC4D0] rounded-2xl overflow-hidden">
+                <div className="flex items-start">
+                  <button
+                    onClick={() => navigate(`/buckets/${bucket}/discussions/${d.id}`, { state: { from: `/buckets/${bucket}` } })}
+                    className="flex-1 min-w-0 text-left p-4 pr-2"
+                  >
+                    <p className="text-sm font-medium text-[#1C1B1F] leading-snug break-words">{d.title}</p>
+                    <p className="text-xs text-[#79747E] mt-0.5">
+                      {d.messages.length} message{d.messages.length !== 1 ? 's' : ''} · {new Date(d.updatedAt).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: '2-digit' })}
+                    </p>
+                  </button>
+                  <div className="flex items-center pr-2 pt-3">
                     <button
-                      onClick={() => setExpanded(isOpen ? null : d.id)}
-                      className="flex-1 text-left p-4 pr-2"
+                      onClick={(e) => handleDelete(e, d.id)}
+                      className="text-[#CAC4D0] hover:text-red-400 p-1 transition-colors"
                     >
-                      <p className="text-sm font-medium text-[#1C1B1F] leading-snug">{d.title}</p>
-                      <p className="text-xs text-[#79747E] mt-0.5">
-                        {d.messages.length} message{d.messages.length !== 1 ? 's' : ''} · {new Date(d.updatedAt).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: '2-digit' })}
-                      </p>
+                      <svg xmlns="http://www.w3.org/2000/svg" height="18" viewBox="0 -960 960 960" width="18" fill="currentColor">
+                        <path d="M280-120q-33 0-56.5-23.5T200-200v-520h-40v-80h200v-40h240v40h200v80h-40v520q0 33-23.5 56.5T680-120H280Zm400-600H280v520h400v-520ZM360-280h80v-360h-80v360Zm160 0h80v-360h-80v360ZM280-720v520-520Z"/>
+                      </svg>
                     </button>
-                    <div className="flex items-center pr-2 pt-3">
-                      <button
-                        onClick={() => setExpanded(isOpen ? null : d.id)}
-                        className="text-[#79747E] p-1 transition-transform duration-200"
-                        style={{ transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}
-                      >
-                        <svg xmlns="http://www.w3.org/2000/svg" height="18" viewBox="0 -960 960 960" width="18" fill="currentColor">
-                          <path d="M480-360 280-560h400L480-360Z"/>
-                        </svg>
-                      </button>
-                      <button
-                        onClick={(e) => handleDelete(e, d.id)}
-                        className="text-[#CAC4D0] hover:text-red-400 p-1 transition-colors"
-                      >
-                        <svg xmlns="http://www.w3.org/2000/svg" height="18" viewBox="0 -960 960 960" width="18" fill="currentColor">
-                          <path d="M280-120q-33 0-56.5-23.5T200-200v-520h-40v-80h200v-40h240v40h200v80h-40v520q0 33-23.5 56.5T680-120H280Zm400-600H280v520h400v-520ZM360-280h80v-360h-80v360Zm160 0h80v-360h-80v360ZM280-720v520-520Z"/>
-                        </svg>
-                      </button>
-                    </div>
                   </div>
-                  {isOpen && (
-                    <div className="px-4 pb-4 border-t border-[#CAC4D0]">
-                      {preview ? (
-                        <p className="text-sm text-[#49454F] mt-3 line-clamp-4">{preview}</p>
-                      ) : (
-                        <p className="text-sm text-[#79747E] mt-3 italic">No messages yet.</p>
-                      )}
-                      <button
-                        onClick={() => navigate(`/buckets/${bucket}/discussions/${d.id}`, { state: { from: `/buckets/${bucket}` } })}
-                        className="mt-3 text-xs font-medium text-[#6750A4] hover:underline"
-                      >
-                        Open discussion →
-                      </button>
-                    </div>
-                  )}
                 </div>
-              )
-            })}
+              </div>
+            ))}
           </div>
         )}
       </div>
