@@ -21,6 +21,7 @@ export default function DiscussionThread() {
   })
 
   const [editingTitle, setEditingTitle] = useState(isNew)
+  const [descOpen, setDescOpen] = useState(false)
   const [tasks, setTasks] = useState(() => getCachedTasks())
   const inputRef = useRef(null)
   const endRef = useRef(null)
@@ -115,9 +116,18 @@ export default function DiscussionThread() {
                 className="w-full text-lg font-semibold text-[#1C1B1F] bg-transparent border-b border-[#6750A4] focus:outline-none pb-0.5"
               />
             ) : (
-              <button onClick={() => setEditingTitle(true)} className="text-left w-full">
-                <h1 className="text-lg font-semibold text-[#1C1B1F] truncate">{discussion.title || 'Untitled'}</h1>
+              <button onClick={() => setDescOpen(o => !o)} className="text-left w-full">
+                <h1 className="text-lg font-semibold text-[#1C1B1F] break-words">{discussion.title || 'Untitled'}</h1>
               </button>
+            )}
+            {descOpen && (
+              <div className="mt-2 text-sm text-[#49454F] line-clamp-4">
+                {messages[0]?.content
+                  ? (typeof messages[0].content === 'string'
+                      ? messages[0].content
+                      : messages[0].content.find?.(b => b.type === 'text')?.text ?? '')
+                  : 'No messages yet.'}
+              </div>
             )}
             <p className="text-xs text-[#79747E]">{bucket} · Discussion</p>
           </div>

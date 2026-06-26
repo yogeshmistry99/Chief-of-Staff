@@ -1,70 +1,80 @@
-# Spec: Discussion list UI fix in BucketDetail.jsx
+# Spec: Discussion detail page — fix title clipping + add description expand/collapse
 
 Target file (the ONLY file to modify):
-`/home/user/Chief-of-Staff/src/pages/BucketDetail.jsx`
+`/home/user/Chief-of-Staff/src/pages/DiscussionThread.jsx`
 
-Component: `DiscussionsTab` (lines 158-249). Render block of interest: lines 183-235.
+## Context
+The discussion detail page header (lines 92–125) shows the title with `truncate` (line 119),
+which clips long titles with an ellipsis. The user also wants a description dropdown
+within the discussion header — tapping the title area expands/collapses a preview of the
+first message content (4-line clamp) instead of opening the inline title editor.
 
-## OPEN QUESTIONS
-1. The current code already implements expand/collapse, first-message preview,
-   "Open discussion →" navigation, and a top-right delete button (lines 183-235). Most of
-   the request is ALREADY present. The remaining genuine defect is requirement #1 (title
-   clipping). Confirm with the requester whether the title is visibly clipped in their build:
-   the title `<p>` (line 193) has no truncation class, so any clipping must come from a flex
-   width constraint. The spec below hardens against clipping regardless of cause.
-2. Requirement #2 asks to expand "a preview of the first message content." Current preview
-   uses `line-clamp-4` (line 221). Assume keeping the 4-line clamp is acceptable (the full
-   thread is one tap away via "Open discussion →"). Flag if full untruncated first message
-   is required instead.
+Tapping to **edit** the title should still be possible — move it to a dedicated edit icon
+or only enter edit mode when `isNew` (which is already handled via `editingTitle` state).
 
-## Existing behavior to PRESERVE (do not regress)
-- State: `const [expanded, setExpanded] = useState(null)` (line 161) holds the id of the
-  expanded card, or null. No NEW state is needed.
-- `handleDelete(e, id)` (lines 165-171): `e.stopPropagation()`, `confirm`, delete, refresh,
-  clear `expanded` if it matched. Keep.
-- Header toggle `<button>` (lines 189-197): toggles expand, does NOT navigate. Keep.
-- Chevron `<button>` (lines 199-207): toggles expand + rotates 180deg when open. Keep.
-- Delete `<button>` (lines 208-215): in the right-side group, outside the header toggle. Keep.
-- Expanded area (lines 218-232): preview (or "No messages yet.") + "Open discussion →"
-  that calls `navigate(`/buckets/${bucket}/discussions/${d.id}`, { state: { from: ... }})`. Keep.
+## Existing behaviour to PRESERVE
+- `editingTitle` state (line 23): `useState(isNew)` — new discussions start in edit mode.
+- When `editingTitle` is true: show the `<input>` (lines 102–116). Keep exactly as-is.
+- Back button (line 95): navigates to `backTo`. Keep.
+- `bucket · Discussion` subtitle (line 122). Keep.
+- `handleSend`, `updateDiscussion`, all message rendering. Do not touch.
 
 ## Required changes
 
-### Change 1 — Guarantee full title, no clipping (lines 188-193)
-1. Header `<button>` (lines 189-192): current className `"flex-1 text-left p-4 pr-2"`.
-   Add `min-w-0` so the flex child can wrap instead of forcing overflow:
-   → `"flex-1 min-w-0 text-left p-4 pr-2"`
-2. Title `<p>` (line 193): current className
-   `"text-sm font-medium text-[#1C1B1F] leading-snug"`.
-   Add `break-words`; ensure NO `truncate` / `line-clamp-*` is present:
-   → `"text-sm font-medium text-[#1C1B1F] leading-snug break-words"`
+### Change 1 — Fix title clipping (line 119)
+Remove `truncate` from the h1 className. Title must wrap fully.
+- Before: `"text-lg font-semibold text-[#1C1B1F] truncate"`
+- After:  `"text-lg font-semibold text-[#1C1B1F] break-words"`
 
-### Change 2 — Delete stays top-right, outside toggle (lines 198-216)
-Already correct structurally (delete lives in the right-side `<div>`, separate from the
-header toggle button). No change needed. After Change 1, verify:
-- right-side `<div>` (line 198) keeps `"flex items-center pr-2 pt-3"`,
-- delete `onClick` remains `(e) => handleDelete(e, d.id)` (keeps `stopPropagation`).
+### Change 2 — Title tap → expand/collapse description, not edit
+Currently the non-editing title is wrapped in a `<button onClick={() => setEditingTitle(true)}>` (line 118).
+Change it so tapping the title toggles a `descOpen` boolean state instead.
 
-### Change 3 — Preview + Open button (lines 218-232)
-No change required. Confirm `preview = d.messages[0]?.content ?? null` (line 185) and the
-"No messages yet." fallback (line 223) remain intact.
+Add state:
+```js
+const [descOpen, setDescOpen] = useState(false)
+```
 
-## Pattern notes for the Coder
-- Match existing Tailwind usage (hex color tokens e.g. `#6750A4`, `rounded-2xl` cards).
-- The card header must NOT navigate — expansion only. Navigation is solely via
-  "Open discussion →".
-- Keep `e.stopPropagation()` on delete so it never triggers expand or navigation.
+Replace the title button (lines 118–121) with:
+```jsx
+<button onClick={() => setDescOpen(o => !o)} className="text-left w-full">
+  <h1 className="text-lg font-semibold text-[#1C1B1F] break-words">{discussion.title || 'Untitled'}</h1>
+</button>
+```
+
+### Change 3 — Description dropdown below the title row
+Directly after the title `<button>` (still inside the `<div className="flex-1 min-w-0">`),
+add the conditional description area:
+
+```jsx
+{descOpen && (
+  <div className="mt-2 text-sm text-[#49454F] line-clamp-4">
+    {messages[0]?.content
+      ? (typeof messages[0].content === 'string'
+          ? messages[0].content
+          : messages[0].content.find?.(b => b.type === 'text')?.text ?? '')
+      : 'No messages yet.'}
+  </div>
+)}
+```
+
+Note: `messages` is already derived at line 88 (`const messages = discussion.messages ?? []`),
+but that line is BELOW the header JSX. Move the `const messages = discussion.messages ?? []`
+line to BEFORE the return statement (it already is at line 88, which is before `return` at
+line 90 — so it is accessible). Confirm this is in scope; no changes needed to line 88.
+
+### Change 4 — Preserve title editing via isNew only
+Since the tap-to-edit is removed from the title button, the `editingTitle` state now only
+activates for new discussions (`isNew` = true, set at line 23). That is the correct and
+complete behaviour — no additional edit affordance is required by this spec.
 
 ## What the Tester must verify
-1. A discussion with a long, multi-line title renders the FULL title (wraps over multiple
-   lines), no ellipsis/clipping, and the delete button stays visible in the top-right.
-2. Tapping the card header (title area) toggles expand/collapse and does NOT navigate.
-3. Tapping the chevron toggles expand/collapse; chevron rotates 180deg when open, back to 0 when closed.
-4. When expanded, the first message preview shows (clamped to ~4 lines); a discussion with
-   no messages shows "No messages yet." instead.
-5. "Open discussion →" navigates to `/buckets/{bucket}/discussions/{d.id}` with
-   `state.from = /buckets/{bucket}`.
-6. Delete prompts a confirm, removes the discussion from the list, and clears `expanded`
-   if the deleted card was open. Delete never navigates or expands a card.
-7. Collapsing a card hides the preview/Open area.
-8. Expanding a second card collapses the first (only one open at a time).
+1. A long discussion title (e.g. "Audit protection cover — fill critical illness gap") wraps
+   fully across multiple lines; no ellipsis/truncation.
+2. Tapping the title area on an existing discussion toggles the description dropdown open/closed.
+3. When open, the first message's text content is shown (clamped to 4 lines).
+4. A discussion with no messages shows "No messages yet." in the dropdown.
+5. `descOpen` starts as false — the dropdown is closed on page load.
+6. A NEW discussion (`isNew` = true) still shows the title input immediately (editingTitle = true),
+   and the description dropdown is not shown while in edit mode.
+7. The back button, bucket subtitle, message list, and chat input are unaffected.
