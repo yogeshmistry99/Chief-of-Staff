@@ -658,6 +658,7 @@ export default function Home() {
   const inputRef = useRef(null)
   const scrollRef = useRef(null)
   const chatEndRef = useRef(null)
+  const chatScrollRef = useRef(null)
   const inputHoldRef = useRef(null)
 
   useEffect(() => {
@@ -715,7 +716,9 @@ export default function Home() {
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
   useEffect(() => {
-    if (tab === 'chief') chatEndRef.current?.scrollIntoView({ behavior: 'instant' })
+    if (tab === 'chief') setTimeout(() => {
+      if (chatScrollRef.current) chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight
+    }, 0)
   }, [tab])
   useEffect(() => {
     const toSave = messages.filter((m) => !m.streaming)
@@ -789,7 +792,7 @@ export default function Home() {
             Knowledge
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
+        <div ref={chatScrollRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
           {messages.length === 0 && (
             <div className="text-center py-12">
               <p className="text-3xl mb-3">🎯</p>
