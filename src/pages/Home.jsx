@@ -715,6 +715,9 @@ export default function Home() {
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
   useEffect(() => {
+    if (tab === 'chief') chatEndRef.current?.scrollIntoView({ behavior: 'instant' })
+  }, [tab])
+  useEffect(() => {
     const toSave = messages.filter((m) => !m.streaming)
     localStorage.setItem('cos_home_messages', JSON.stringify(toSave))
   }, [messages])
