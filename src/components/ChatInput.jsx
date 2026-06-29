@@ -41,6 +41,10 @@ export default function ChatInput({ placeholder, onSend, onVoiceComplete, disabl
   const recognitionRef     = useRef(null)
   const isHoldRef          = useRef(false)
   const voiceTranscriptRef = useRef('')
+  const holdEndedRef       = useRef(false)
+  const onVoiceCompleteRef = useRef(onVoiceComplete)
+
+  useEffect(() => { onVoiceCompleteRef.current = onVoiceComplete }, [onVoiceComplete])
 
   // Clean up on unmount
   useEffect(() => () => {
@@ -107,6 +111,7 @@ export default function ChatInput({ placeholder, onSend, onVoiceComplete, disabl
     if (!SR) return
     haptic.medium()
     voiceTranscriptRef.current = ''
+    holdEndedRef.current = false
     setRecording(true)
     const r = new SR()
     r.continuous = true
@@ -117,23 +122,27 @@ export default function ChatInput({ placeholder, onSend, onVoiceComplete, disabl
       setInput(transcript)
       voiceTranscriptRef.current = transcript
     }
-    r.onend = () => setRecording(false)
-    r.onerror = () => setRecording(false)
+    r.onend = () => {
+      setRecording(false)
+      if (holdEndedRef.current && onVoiceCompleteRef.current) {
+        const text = voiceTranscriptRef.current.trim()
+        if (text) {
+          setInput('')
+          voiceTranscriptRef.current = ''
+          onVoiceCompleteRef.current(text)
+        }
+      }
+      holdEndedRef.current = false
+    }
+    r.onerror = () => { holdEndedRef.current = false; setRecording(false) }
     recognitionRef.current = r
     r.start()
   }
 
   function stopVoice(fromHold = false) {
+    if (fromHold) holdEndedRef.current = true
     recognitionRef.current?.stop()
     setRecording(false)
-    if (fromHold && onVoiceComplete) {
-      const text = voiceTranscriptRef.current.trim()
-      if (text) {
-        setInput('')
-        voiceTranscriptRef.current = ''
-        onVoiceComplete(text)
-      }
-    }
   }
 
   function handleSendPointerDown(e) {
@@ -270,7 +279,7 @@ export default function ChatInput({ placeholder, onSend, onVoiceComplete, disabl
         <button
           onPointerDown={handleSendPointerDown}
           onPointerUp={handleSendPointerUp}
-          onPointerLeave={() => { clearTimeout(holdTimer.current); if (recording) stopVoice() }}
+          onPointerLeave={() => { clearTimeout(holdTimer.current); if (recording) stopVoice(true) }}
           disabled={!canSend && !recording}
           className={`w-9 h-9 flex items-center justify-center rounded-full transition-colors flex-shrink-0 select-none touch-none ${
             recording ? 'bg-red-500 animate-pulse' : canSend ? 'bg-[#6750A4]' : 'bg-[#CAC4D0]'
