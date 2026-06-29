@@ -25,7 +25,7 @@ export function buildContent(text, attachment) {
   return blocks
 }
 
-export default function ChatInput({ placeholder, onSend, disabled, extraAbove, textareaRef: externalRef }) {
+export default function ChatInput({ placeholder, onSend, onVoiceComplete, disabled, extraAbove, textareaRef: externalRef }) {
   const [input, setInput]           = useState('')
   const [attachment, setAttachment] = useState(null)
   const [loading, setLoading]       = useState(false)
@@ -37,9 +37,10 @@ export default function ChatInput({ placeholder, onSend, disabled, extraAbove, t
   const fileRef        = useRef(null)
   const imageRef       = useRef(null)
   const cameraRef      = useRef(null)
-  const holdTimer      = useRef(null)
-  const recognitionRef = useRef(null)
-  const isHoldRef      = useRef(false)
+  const holdTimer          = useRef(null)
+  const recognitionRef     = useRef(null)
+  const isHoldRef          = useRef(false)
+  const voiceTranscriptRef = useRef('')
 
   // Clean up on unmount
   useEffect(() => () => {
@@ -105,14 +106,16 @@ export default function ChatInput({ placeholder, onSend, disabled, extraAbove, t
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition
     if (!SR) return
     haptic.medium()
+    voiceTranscriptRef.current = ''
     setRecording(true)
     const r = new SR()
-    r.continuous = false
+    r.continuous = true
     r.interimResults = true
     r.lang = 'en-GB'
     r.onresult = (ev) => {
       const transcript = Array.from(ev.results).map((res) => res[0].transcript).join('')
       setInput(transcript)
+      voiceTranscriptRef.current = transcript
     }
     r.onend = () => setRecording(false)
     r.onerror = () => setRecording(false)
@@ -120,9 +123,17 @@ export default function ChatInput({ placeholder, onSend, disabled, extraAbove, t
     r.start()
   }
 
-  function stopVoice() {
+  function stopVoice(fromHold = false) {
     recognitionRef.current?.stop()
     setRecording(false)
+    if (fromHold && onVoiceComplete) {
+      const text = voiceTranscriptRef.current.trim()
+      if (text) {
+        setInput('')
+        voiceTranscriptRef.current = ''
+        onVoiceComplete(text)
+      }
+    }
   }
 
   function handleSendPointerDown(e) {
@@ -138,7 +149,7 @@ export default function ChatInput({ placeholder, onSend, disabled, extraAbove, t
     e.preventDefault()
     clearTimeout(holdTimer.current)
     if (recording) {
-      stopVoice()
+      stopVoice(true)
     } else if (!isHoldRef.current) {
       doSend()
     }
