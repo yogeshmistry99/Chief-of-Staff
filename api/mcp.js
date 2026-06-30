@@ -56,6 +56,33 @@ function labelToTodoist(label) {
 }
 function todoistToLabel(p) { return `P${5 - (p ?? 1)}` }
 
+// ─── Head config helpers ──────────────────────────────────────────────────────
+const HEADS = [
+  { label: 'Chief of Staff', key: 'chief' },
+  { label: 'Finance',  key: 'Finance'  },
+  { label: 'Health',   key: 'Health'   },
+  { label: 'Work',     key: 'Work'     },
+  { label: 'Family',   key: 'Family'   },
+  { label: 'Home',     key: 'Home'     },
+  { label: 'Personal', key: 'Personal' },
+  { label: 'Systems',  key: 'Systems'  },
+]
+
+function resolveHeadKey(head) {
+  if (!head) throw new Error('head is required')
+  const match = HEADS.find(
+    (h) => h.label.toLowerCase() === head.toLowerCase() || h.key.toLowerCase() === head.toLowerCase()
+  )
+  if (!match) throw new Error(`Unknown head "${head}". Valid: ${HEADS.map((h) => h.label).join(', ')}`)
+  return match.key
+}
+
+async function getHeadConfig(sb, key) {
+  if (!sb) return null
+  const { data } = await sb.from('app_data').select('value, updated_at').eq('key', `head_config_${key}`).single()
+  return data ?? null
+}
+
 // ─── Tool implementations ─────────────────────────────────────────────────────
 
 async function listTasks({ bucket, priority, status } = {}) {
@@ -197,6 +224,61 @@ async function deleteTask({ id }) {
   return { id, deleted: true }
 }
 
+async function listHeads() {
+  return HEADS.map((h) => ({ name: h.label, key: h.key }))
+}
+
+async function getKnowledge({ head }) {
+  const key = resolveHeadKey(head)
+  const sb = getSupabase()
+  const row = await getHeadConfig(sb, key)
+  return {
+    head,
+    instructions:  row?.value?.instructions ?? null,
+    context:       row?.value?.context ?? null,
+    model:         row?.value?.model ?? null,
+    updated_at:    row?.updated_at ?? null,
+  }
+}
+
+async function updateKnowledge({ head, instructions, context }) {
+  if (instructions === undefined && context === undefined) {
+    throw new Error('At least one of instructions or context must be provided')
+  }
+  const key = resolveHeadKey(head)
+  const sb = getSupabase()
+  if (!sb) throw new Error('Supabase not configured')
+
+  // Load current record
+  const current = await getHeadConfig(sb, key)
+  const currentValue = current?.value ?? {}
+
+  // Back up current values before overwriting
+  const backup = {
+    head_key:     key,
+    backed_up_at: new Date().toISOString(),
+    value:        currentValue,
+  }
+  await sb.from('knowledge_backups').insert(backup)
+
+  // Merge only the fields provided
+  const newValue = {
+    ...currentValue,
+    ...(instructions !== undefined ? { instructions } : {}),
+    ...(context      !== undefined ? { context }      : {}),
+  }
+  const updatedAt = new Date().toISOString()
+  await sb.from('app_data').upsert({ key: `head_config_${key}`, value: newValue, updated_at: updatedAt })
+
+  return {
+    head,
+    instructions:  newValue.instructions ?? null,
+    context:       newValue.context ?? null,
+    model:         newValue.model ?? null,
+    updated_at:    updatedAt,
+  }
+}
+
 async function listBuckets() {
   const sb = getSupabase()
   const tasks = await getTaskCache(sb)
@@ -286,6 +368,35 @@ const TOOLS = [
     description: 'Return all 7 Life OS buckets (Finance, Health, Home, Work, Family, Personal, Systems) with active and total task counts.',
     inputSchema: { type: 'object', properties: {} },
   },
+  {
+    name: 'list_heads',
+    description: 'Return all available Life OS heads (Chief of Staff, Finance, Health, Work, Family, Home, Personal, Systems).',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'get_knowledge',
+    description: 'Return the instructions and context currently saved for a Life OS head, including last updated timestamp. Returns null fields if nothing has been saved yet.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        head: { type: 'string', description: 'Head name: Chief of Staff, Finance, Health, Work, Family, Home, Personal, or Systems' },
+      },
+      required: ['head'],
+    },
+  },
+  {
+    name: 'update_knowledge',
+    description: 'Update the instructions and/or context for a Life OS head. Saves the current values to a knowledge_backups table before writing, so changes can be reverted. Only provided fields are updated.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        head:         { type: 'string', description: 'Head name: Chief of Staff, Finance, Health, Work, Family, Home, Personal, or Systems' },
+        instructions: { type: 'string', description: 'New instructions text (omit to leave unchanged)' },
+        context:      { type: 'string', description: 'New context text (omit to leave unchanged)' },
+      },
+      required: ['head'],
+    },
+  },
 ]
 
 async function callTool(name, args) {
@@ -296,7 +407,10 @@ async function callTool(name, args) {
     case 'update_task':   return updateTask(args)
     case 'complete_task': return completeTask(args)
     case 'delete_task':   return deleteTask(args)
-    case 'list_buckets':  return listBuckets()
+    case 'list_buckets':    return listBuckets()
+    case 'list_heads':      return listHeads()
+    case 'get_knowledge':   return getKnowledge(args)
+    case 'update_knowledge': return updateKnowledge(args)
     default: throw new Error(`Unknown tool: ${name}`)
   }
 }
