@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { getMonthlyUsage } from '../lib/claude'
 import { pullAndCacheTasks, getLastPullTime, getCachedTasks } from '../lib/taskCache'
 import { supabase } from '../lib/supabase'
@@ -82,6 +83,7 @@ const SPEND_LIMIT_KEY = 'cos_monthly_spend_limit'
 export default function Settings() {
   const [usage, setUsage] = useState({})
   const [resetDone, setResetDone] = useState(false)
+  const [calendarDisconnecting, setCalendarDisconnecting] = useState(false)
   const [spendLimit, setSpendLimit] = useState(() => {
     const v = parseFloat(localStorage.getItem(SPEND_LIMIT_KEY))
     return isNaN(v) ? 20 : v
@@ -95,11 +97,29 @@ export default function Settings() {
   const [backupState, setBackupState] = useState('idle') // idle | saving | done | error
   const [restoreTarget, setRestoreTarget] = useState(null) // backup obj to confirm
   const [restoreState, setRestoreState] = useState('idle') // idle | restoring | done | error
+  const [calendarNotice, setCalendarNotice] = useState(null) // 'connected' | error string
+
+  const location = useLocation()
+  const navigate = useNavigate()
 
   useEffect(() => { setUsage(getMonthlyUsage()) }, [])
+
+  // Handle OAuth redirect params
   useEffect(() => {
+    const params = new URLSearchParams(location.search)
+    if (params.get('calendar_connected')) {
+      setCalendarNotice('connected')
+      navigate('/settings', { replace: true })
+    } else if (params.get('calendar_error')) {
+      setCalendarNotice(params.get('calendar_error'))
+      navigate('/settings', { replace: true })
+    }
+  }, [location.search, navigate])
+
+  function fetchStatus() {
     fetch('/api/status').then((r) => r.json()).then(setStatus).catch(() => {})
-  }, [])
+  }
+  useEffect(() => { fetchStatus() }, [])
   useEffect(() => {
     if (!supabase) { setSupabaseOk(false); return }
     supabase.from('app_data').select('updated_at').limit(1)
@@ -200,6 +220,16 @@ export default function Settings() {
     setTimeout(() => setResetDone(false), 2000)
   }
 
+  async function handleCalendarDisconnect() {
+    setCalendarDisconnecting(true)
+    try {
+      await fetch('/api/google-disconnect', { method: 'POST' })
+      setCalendarNotice(null)
+      fetchStatus()
+    } catch {}
+    setCalendarDisconnecting(false)
+  }
+
   function saveSpendLimit(val) {
     const n = parseFloat(val)
     if (!isNaN(n) && n > 0) {
@@ -231,8 +261,9 @@ export default function Settings() {
       name: 'Google Calendar',
       description: 'Pulls upcoming events to the home screen and calendar view.',
       connected: 'googleCalendar' in status ? status.googleCalendar : null,
-      detail: status.googleCalendar ? 'Calendar connected' : null,
-      url: 'https://calendar.google.com',
+      detail: status.googleCalendar && status.calendarEmail ? status.calendarEmail : status.googleCalendar ? 'Connected' : null,
+      url: null,
+      isCalendar: true,
     },
     {
       icon: '✅',
@@ -359,7 +390,56 @@ export default function Settings() {
       {/* Integrations */}
       <CollapsibleSection title="How this app is built" subtitle="Tap any card to manage the connection.">
         <div className="space-y-2 pt-2">
-          {integrations.map((item) => <IntegrationCard key={item.name} {...item} />)}
+          {calendarNotice === 'connected' && (
+            <div className="flex items-center gap-2 px-4 py-3 rounded-2xl bg-[#C8F5E1] text-[#00513A] text-xs font-medium">
+              <span>✓</span><span>Google Calendar connected successfully.</span>
+              <button onClick={() => setCalendarNotice(null)} className="ml-auto text-[#00513A] opacity-60">✕</button>
+            </div>
+          )}
+          {calendarNotice && calendarNotice !== 'connected' && (
+            <div className="px-4 py-3 rounded-2xl bg-red-50 border border-red-200 text-xs text-red-700">
+              <span className="font-semibold block mb-0.5">Calendar connection failed</span>
+              {calendarNotice}
+            </div>
+          )}
+          {integrations.map((item) => {
+            if (item.isCalendar) {
+              const isConnected = item.connected
+              const isLoading = item.connected === null
+              return (
+                <div key={item.name} className={`flex items-start gap-3 p-4 rounded-2xl border ${isConnected ? 'bg-white border-[#CAC4D0]' : 'bg-[#FAFAFA] border-[#E7E0EC]'}`}>
+                  <div className="w-10 h-10 rounded-xl bg-[#F3EDF7] flex items-center justify-center text-xl flex-shrink-0">📅</div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2 mb-0.5">
+                      <p className="text-sm font-semibold text-[#1C1B1F] leading-tight">{item.name}</p>
+                      <StatusPill connected={isLoading ? null : isConnected} />
+                    </div>
+                    <p className="text-xs text-[#49454F] leading-snug mb-2">{item.description}</p>
+                    {isConnected && item.detail && (
+                      <p className="text-[11px] text-[#79747E] mb-2">{item.detail}</p>
+                    )}
+                    {isConnected ? (
+                      <button
+                        onClick={handleCalendarDisconnect}
+                        disabled={calendarDisconnecting}
+                        className="text-xs font-medium text-red-600 hover:underline disabled:opacity-50"
+                      >
+                        {calendarDisconnecting ? 'Disconnecting…' : 'Disconnect'}
+                      </button>
+                    ) : !isLoading && (
+                      <a
+                        href="/api/google-auth?return=/settings"
+                        className="inline-block text-xs font-semibold px-3 py-1.5 rounded-full bg-[#6750A4] text-white hover:bg-[#5B4397] transition-colors"
+                      >
+                        Connect Google Calendar
+                      </a>
+                    )}
+                  </div>
+                </div>
+              )
+            }
+            return <IntegrationCard key={item.name} {...item} />
+          })}
         </div>
         <div className="bg-[#EADDFF] rounded-2xl p-4 mt-2">
           <h2 className="text-sm font-semibold text-[#21005D] mb-2">How to connect</h2>

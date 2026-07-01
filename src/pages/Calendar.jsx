@@ -370,14 +370,20 @@ export default function Calendar() {
         {/* Calendar error banner */}
         {calendarError && (
           <div className="mb-4 rounded-2xl bg-red-50 border border-red-200 px-4 py-3">
-            <p className="text-sm font-semibold text-red-800 mb-0.5">Google Calendar error</p>
-            <p className="text-xs text-red-700 leading-relaxed">{calendarError}</p>
-            {calendarError.toLowerCase().includes('token') && (
-              <p className="text-xs text-red-600 mt-1.5">
-                The Google refresh token has expired. Go to Vercel → Environment Variables and update <code className="bg-red-100 px-1 rounded">GOOGLE_REFRESH_TOKEN</code> with a new token from the OAuth Playground.
-              </p>
+            {calendarError === 'auth_required' ? (
+              <>
+                <p className="text-sm font-semibold text-red-800 mb-1">Google Calendar not connected</p>
+                <a href="/api/google-auth?return=/calendar" className="inline-block text-xs font-semibold px-3 py-1.5 rounded-full bg-[#6750A4] text-white hover:bg-[#5B4397]">
+                  Connect Google Calendar
+                </a>
+              </>
+            ) : (
+              <>
+                <p className="text-sm font-semibold text-red-800 mb-0.5">Google Calendar error</p>
+                <p className="text-xs text-red-700 leading-relaxed">{calendarError}</p>
+                <button onClick={loadEvents} className="mt-2 text-xs font-medium text-red-700 underline">Retry</button>
+              </>
             )}
-            <button onClick={loadEvents} className="mt-2 text-xs font-medium text-red-700 underline">Retry</button>
           </div>
         )}
 

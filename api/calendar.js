@@ -1,31 +1,79 @@
+import { createClient } from '@supabase/supabase-js'
+
+function getSupabase() {
+  const url = process.env.VITE_SUPABASE_URL
+  const key = process.env.VITE_SUPABASE_ANON_KEY
+  if (!url || !key) return null
+  return createClient(url, key)
+}
+
+async function getStoredAuth(sb) {
+  if (!sb) return null
+  const { data } = await sb.from('app_data').select('value').eq('key', 'google_calendar_auth').single()
+  return data?.value ?? null
+}
+
+async function saveStoredAuth(sb, updates, existing) {
+  if (!sb) return
+  await sb.from('app_data').upsert({
+    key: 'google_calendar_auth',
+    value: { ...existing, ...updates },
+    updated_at: new Date().toISOString(),
+  })
+}
+
+// Exchange refresh token for a fresh access token; persist updated token to Supabase
+async function getAccessToken(sb, stored) {
+  const { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET } = process.env
+
+  // Token still valid (with 60s buffer)?
+  if (stored.access_token && stored.expiry_date && stored.expiry_date - 60_000 > Date.now()) {
+    return stored.access_token
+  }
+
+  const res = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: GOOGLE_CLIENT_ID,
+      client_secret: GOOGLE_CLIENT_SECRET,
+      refresh_token: stored.refresh_token,
+      grant_type: 'refresh_token',
+    }),
+  })
+  const data = await res.json()
+  if (!res.ok) {
+    const isRevoked = data.error === 'invalid_grant'
+    throw Object.assign(new Error(data.error_description ?? data.error ?? 'token_refresh_failed'), { isRevoked })
+  }
+
+  // Persist updated access token so next request skips the refresh
+  await saveStoredAuth(sb, {
+    access_token: data.access_token,
+    expiry_date: data.expires_in ? Date.now() + data.expires_in * 1000 : null,
+  }, stored)
+
+  return data.access_token
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
   if (req.method === 'OPTIONS') return res.status(200).end()
 
-  const { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN } = process.env
-  if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !GOOGLE_REFRESH_TOKEN) {
-    return res.status(500).json({ error: 'Google Calendar not configured. Add GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET and GOOGLE_REFRESH_TOKEN in Vercel.' })
+  const sb = getSupabase()
+  const stored = await getStoredAuth(sb)
+
+  if (!stored?.refresh_token) {
+    return res.status(401).json({ error: 'auth_required' })
   }
 
-  // Exchange refresh token for access token
   let accessToken
   try {
-    const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        client_id: GOOGLE_CLIENT_ID,
-        client_secret: GOOGLE_CLIENT_SECRET,
-        refresh_token: GOOGLE_REFRESH_TOKEN,
-        grant_type: 'refresh_token',
-      }),
-    })
-    const tokenData = await tokenRes.json()
-    if (!tokenRes.ok) return res.status(500).json({ error: 'Failed to refresh Google token', detail: tokenData })
-    accessToken = tokenData.access_token
+    accessToken = await getAccessToken(sb, stored)
   } catch (err) {
+    if (err.isRevoked) return res.status(401).json({ error: 'auth_required' })
     return res.status(500).json({ error: err.message })
   }
 
@@ -73,14 +121,13 @@ export default async function handler(req, res) {
   const { start, end } = req.query
 
   try {
-    // Get all calendars the user has enabled
     const calListRes = await fetch('https://www.googleapis.com/calendar/v3/users/me/calendarList', {
       headers: { Authorization: `Bearer ${accessToken}` },
     })
+    if (calListRes.status === 401) return res.status(401).json({ error: 'auth_required' })
     const calList = await calListRes.json()
     const calendars = (calList.items ?? []).filter((c) => c.selected !== false)
 
-    // Fetch events from each calendar concurrently
     const results = await Promise.allSettled(
       calendars.map(async (cal) => {
         const url = new URL(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(cal.id)}/events`)
