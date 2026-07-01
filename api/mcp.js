@@ -224,6 +224,33 @@ async function deleteTask({ id }) {
   return { id, deleted: true }
 }
 
+async function getRoadmap() {
+  const sb = getSupabase()
+  if (!sb) return { content: null }
+  const { data } = await sb.from('app_data').select('value, updated_at').eq('key', 'app_roadmap').single()
+  return { content: data?.value ?? null, updated_at: data?.updated_at ?? null }
+}
+
+async function updateRoadmap({ content }) {
+  if (content === undefined || content === null) throw new Error('content is required')
+  const sb = getSupabase()
+  if (!sb) throw new Error('Supabase not configured')
+
+  // Back up current value
+  const { data: current } = await sb.from('app_data').select('value, updated_at').eq('key', 'app_roadmap').single()
+  if (current?.value !== undefined) {
+    await sb.from('knowledge_backups').insert({
+      head_key: 'app_roadmap',
+      backed_up_at: new Date().toISOString(),
+      value: { content: current.value, updated_at: current.updated_at },
+    })
+  }
+
+  const updatedAt = new Date().toISOString()
+  await sb.from('app_data').upsert({ key: 'app_roadmap', value: content, updated_at: updatedAt })
+  return { content, updated_at: updatedAt }
+}
+
 async function listHeads() {
   return HEADS.map((h) => ({ name: h.label, key: h.key }))
 }
@@ -369,6 +396,22 @@ const TOOLS = [
     inputSchema: { type: 'object', properties: {} },
   },
   {
+    name: 'get_roadmap',
+    description: 'Return the current Development Roadmap content from Supabase (key: app_roadmap). Returns the stored value (JSON array of phases) and its last-updated timestamp, or null content if not yet set.',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'update_roadmap',
+    description: 'Write new roadmap content to Supabase (key: app_roadmap). Backs up the current value to knowledge_backups before writing. The content should be a JSON array of phase objects matching the roadmap schema used by the Settings UI.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        content: { description: 'New roadmap content — JSON array of phase objects, or any value the Settings UI understands' },
+      },
+      required: ['content'],
+    },
+  },
+  {
     name: 'list_heads',
     description: 'Return all available Life OS heads (Chief of Staff, Finance, Health, Work, Family, Home, Personal, Systems).',
     inputSchema: { type: 'object', properties: {} },
@@ -408,7 +451,9 @@ async function callTool(name, args) {
     case 'complete_task': return completeTask(args)
     case 'delete_task':   return deleteTask(args)
     case 'list_buckets':    return listBuckets()
-    case 'list_heads':      return listHeads()
+    case 'get_roadmap':      return getRoadmap()
+    case 'update_roadmap':   return updateRoadmap(args)
+    case 'list_heads':       return listHeads()
     case 'get_knowledge':   return getKnowledge(args)
     case 'update_knowledge': return updateKnowledge(args)
     default: throw new Error(`Unknown tool: ${name}`)

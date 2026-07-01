@@ -45,6 +45,125 @@ function IntegrationCard({ icon, name, description, connected, detail, url }) {
   )
 }
 
+const DEFAULT_ROADMAP = [
+  {
+    phase: 1, title: 'Foundation', status: 'in-progress',
+    items: [
+      { done: true,  text: 'PWA shell — offline-capable, installable on iOS/Android' },
+      { done: true,  text: 'Supabase sync — all data persisted and cross-device' },
+      { done: true,  text: 'Task management — create, complete, prioritise via AI' },
+      { done: true,  text: 'Chief of Staff chat — daily AI briefing and task triage' },
+      { done: true,  text: '7 Life OS heads — Finance, Health, Work, Family, Home, Personal, Systems' },
+      { done: true,  text: 'Google Calendar integration — read/write, OAuth self-managing' },
+      { done: true,  text: 'MCP server — 10 tools for external Claude Code access' },
+      { done: false, text: 'Notifications — smart reminders from AI-spotted urgency' },
+    ],
+  },
+  {
+    phase: 2, title: 'Intelligence', status: 'up-next',
+    items: [
+      { done: false, text: 'Weekly review — structured reflection and planning session' },
+      { done: false, text: 'Priority scoring — AI weights tasks by context and deadlines' },
+      { done: false, text: 'Pattern recognition — spots recurring decisions and habits' },
+      { done: false, text: 'Proactive nudges — AI surfaces things before they become urgent' },
+      { done: false, text: 'Knowledge graph — links tasks, discussions, and decisions over time' },
+    ],
+  },
+  {
+    phase: 3, title: 'Connected Intelligence', status: 'planned',
+    items: [
+      { done: false, text: 'Email integration — Gmail read + draft via AI' },
+      { done: false, text: 'Document intelligence — attach and query PDFs, notes' },
+      { done: false, text: 'Financial data pull — live balances, spending, net worth' },
+      { done: false, text: 'Health data — Apple Health / Garmin sync for Head coaching' },
+      { done: false, text: 'Location awareness — commute, travel, home/office context' },
+    ],
+  },
+  {
+    phase: 4, title: 'Automation', status: 'planned',
+    items: [
+      { done: false, text: 'Recurring task automation — AI creates tasks from patterns' },
+      { done: false, text: 'Calendar auto-scheduling — AI books focus blocks and prep time' },
+      { done: false, text: 'Decision templates — saved playbooks for repeating decisions' },
+      { done: false, text: 'Trigger-based workflows — if/then rules across heads' },
+    ],
+  },
+  {
+    phase: 5, title: 'Voice and Mobility', status: 'planned',
+    items: [
+      { done: false, text: 'Full voice input — dictate tasks, chat, decisions hands-free' },
+      { done: false, text: 'Siri / Shortcuts integration — quick capture from lock screen' },
+      { done: false, text: 'Widget support — glanceable priorities on home screen' },
+      { done: false, text: 'Apple Watch companion — surface top priority + voice reply' },
+    ],
+  },
+  {
+    phase: 6, title: 'Full Autonomy', status: 'future',
+    items: [
+      { done: false, text: 'Autonomous task execution — AI completes low-risk tasks directly' },
+      { done: false, text: 'Multi-agent heads — each head runs its own background agent' },
+      { done: false, text: 'Life simulation — model scenarios before committing' },
+      { done: false, text: 'Cross-person coordination — shared tasks with family/team' },
+    ],
+  },
+]
+
+const STATUS_BADGE = {
+  'in-progress': { label: 'In Progress', bg: 'bg-[#6750A4]', text: 'text-white' },
+  'up-next':     { label: 'Up Next',     bg: 'bg-[#EADDFF]', text: 'text-[#4F378B]' },
+  'planned':     { label: 'Planned',     bg: 'bg-[#F3EDF7]', text: 'text-[#79747E]' },
+  'future':      { label: 'Future',      bg: 'bg-[#F3EDF7]', text: 'text-[#B0A8BC]' },
+}
+
+function PhaseSection({ phase, title, status, items }) {
+  const [open, setOpen] = useState(false)
+  const badge = STATUS_BADGE[status] ?? STATUS_BADGE['planned']
+  const done = items.filter((i) => i.done).length
+  return (
+    <div className="border border-[#E7E0EC] rounded-2xl overflow-hidden">
+      <button
+        onClick={() => setOpen((x) => !x)}
+        className="w-full flex items-center gap-3 px-4 py-3 bg-white text-left"
+      >
+        <span className="text-xs font-bold text-[#79747E] w-6 flex-shrink-0">P{phase}</span>
+        <span className="flex-1 text-sm font-semibold text-[#1C1B1F]">{title}</span>
+        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0 ${badge.bg} ${badge.text}`}>{badge.label}</span>
+        <span className="text-[10px] text-[#79747E] flex-shrink-0">{done}/{items.length}</span>
+        <svg xmlns="http://www.w3.org/2000/svg" height="16" viewBox="0 -960 960 960" width="16" fill="#79747E"
+          style={{ transform: open ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s ease', flexShrink: 0 }}>
+          <path d="M480-345 240-585l56-56 184 184 184-184 56 56-240 240Z"/>
+        </svg>
+      </button>
+      <div style={{ display: 'grid', gridTemplateRows: open ? '1fr' : '0fr', transition: 'grid-template-rows 0.25s ease' }}>
+        <div style={{ overflow: 'hidden' }}>
+          <div className="px-4 pb-3 pt-1 bg-[#FAFAFA] border-t border-[#F3EDF7] space-y-2">
+            {items.map((item, i) => (
+              <div key={i} className="flex items-start gap-2">
+                <span className={`text-sm flex-shrink-0 mt-0.5 ${item.done ? 'text-green-600' : status === 'future' ? 'text-[#CAC4D0]' : 'text-[#6750A4]'}`}>
+                  {item.done ? '✓' : '→'}
+                </span>
+                <span className={`text-xs leading-relaxed ${item.done ? 'text-[#49454F] line-through' : status === 'future' ? 'text-[#B0A8BC]' : 'text-[#1C1B1F]'}`}>
+                  {item.text}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function RoadmapSection({ roadmap }) {
+  return (
+    <div className="space-y-2 pt-2">
+      {roadmap.map((phase) => (
+        <PhaseSection key={phase.phase} {...phase} />
+      ))}
+    </div>
+  )
+}
+
 function CollapsibleSection({ title, subtitle, children, defaultOpen = false }) {
   const [open, setOpen] = useState(defaultOpen)
   return (
@@ -98,6 +217,7 @@ export default function Settings() {
   const [restoreTarget, setRestoreTarget] = useState(null) // backup obj to confirm
   const [restoreState, setRestoreState] = useState('idle') // idle | restoring | done | error
   const [calendarNotice, setCalendarNotice] = useState(null) // 'connected' | error string
+  const [roadmap, setRoadmap] = useState(DEFAULT_ROADMAP)
 
   const location = useLocation()
   const navigate = useNavigate()
@@ -129,6 +249,9 @@ export default function Settings() {
       })
       .catch(() => setSupabaseOk(false))
     listBackups().then(setBackups).catch(() => {})
+    supabase.from('app_data').select('value').eq('key', 'app_roadmap').single()
+      .then(({ data }) => { if (data?.value) setRoadmap(data.value) })
+      .catch(() => {})
   }, [])
 
   const [refreshDone, setRefreshDone] = useState(false)
@@ -546,6 +669,11 @@ export default function Settings() {
             )}
           </div>
         </div>
+      </CollapsibleSection>
+
+      {/* Development Roadmap */}
+      <CollapsibleSection title="Development Roadmap" subtitle="6 phases · tap to explore">
+        <RoadmapSection roadmap={roadmap} />
       </CollapsibleSection>
 
       {/* About — bottom of list */}
