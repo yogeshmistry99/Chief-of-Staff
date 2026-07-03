@@ -153,6 +153,32 @@ function formatCalendarForPrompt(events) {
   }).join('\n')
 }
 
+const ALL_BUCKETS = ['Finance', 'Health', 'Work', 'Family', 'Home', 'Personal', 'Systems']
+
+function formatTasksForCoS(tasks) {
+  if (!tasks?.length) return 'No tasks loaded.'
+  const byBucket = Object.fromEntries(ALL_BUCKETS.map(b => [b, []]))
+  const unassigned = []
+  tasks.forEach((t) => {
+    if (t.is_completed) return
+    if (t._projectName && byBucket[t._projectName]) byBucket[t._projectName].push(t)
+    else unassigned.push(t)
+  })
+  const lines = ALL_BUCKETS.map((b) => {
+    const ts = byBucket[b]
+    if (!ts.length) return `${b}: (no open tasks)`
+    return `${b}:\n` + ts.map((t) => {
+      const priority = ['', 'P4', 'P3', 'P2', 'P1'][t.priority] ?? 'P4'
+      const due = t.due?.date ? ` | due ${t.due.date.slice(0, 10)}` : ''
+      return `  - [id:${t.id} | ${priority}${due}] ${t.content}`
+    }).join('\n')
+  })
+  if (unassigned.length) {
+    lines.push('Unassigned:\n' + unassigned.map(t => `  - [id:${t.id}] ${t.content}`).join('\n'))
+  }
+  return lines.join('\n')
+}
+
 export const SYSTEM_PROMPTS = {
   cos: (tasks, cfg, calendarEvents = null) => {
     const today = todayISO()
@@ -171,8 +197,8 @@ PRIORITY FRAMEWORK — apply this reasoning in every response that touches prior
 - Compounding value: which tasks create leverage — making other things easier or unlocking future progress?
 Bucket priority order when breaking ties: Finance > Health > Work > Family > Home > Personal > Systems.
 
-Current task list:
-${formatTasksForPrompt(tasks)}
+Current tasks (all 7 buckets):
+${formatTasksForCoS(tasks)}
 ${calendarSection}
 When he asks about existing tasks, check the list above. When he adds a new task, acknowledge it and suggest which bucket and priority it belongs in. When he pastes an email, extract actionable tasks. Keep responses short unless depth is needed.
 
