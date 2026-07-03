@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { PROJECTS } from '../lib/todoist'
-import { getCachedTasks, saveToCache, readTasksFromSupabase, pullAndCacheTasks, getLastPullTime } from '../lib/taskCache'
+import { getCachedTasks, saveToCache, readTasksFromSupabase } from '../lib/taskCache'
 import { getNotificationsForTask, dismissNotification, acceptNotification } from '../lib/notifications'
 import NotificationCard, { notifDotClass } from '../components/NotificationCard'
 import { prioritise, scoreTask } from '../lib/priority'
@@ -662,16 +662,7 @@ export default function Home() {
   const inputHoldRef = useRef(null)
 
   useEffect(() => {
-    const STALE_MS = 30 * 60 * 1000
-    const lastPull = getLastPullTime()
-    const isStale = !lastPull || Date.now() - new Date(lastPull).getTime() > STALE_MS
-    if (isStale) {
-      pullAndCacheTasks()
-        .then(({ tasks: t }) => setTasks(t))
-        .catch(() => readTasksFromSupabase().then((t) => { if (t) setTasks(t) }).catch(() => {}))
-    } else {
-      readTasksFromSupabase().then((t) => { if (t) setTasks(t) }).catch(() => {})
-    }
+    readTasksFromSupabase().then((t) => { if (t) setTasks(t) }).catch(() => {})
   }, [])
   useEffect(() => {
     return onSyncChange('last_weekly_review', () => {
