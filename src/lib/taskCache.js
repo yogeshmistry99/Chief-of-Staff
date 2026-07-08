@@ -19,9 +19,18 @@ export function getLastPullTime() {
   return localStorage.getItem(LAST_PULL_KEY) ?? null
 }
 
-export async function saveToCache(tasks) {
-  localStorage.setItem(CACHE_KEY, JSON.stringify(tasks))
-  await pushToSupabase('todoist_task_cache', tasks)
+// Merge incoming tasks into the existing cache by id — incoming wins per task,
+// and any task NOT present in `incoming` is preserved. This makes saveToCache
+// non-destructive: a bucket-filtered array (e.g. from a single bucket's head
+// chat) can only add/update its own tasks and can never wipe other buckets.
+export async function saveToCache(incoming) {
+  if (!Array.isArray(incoming)) return getCachedTasks()
+  const map = new Map(getCachedTasks().map((t) => [t.id, t]))
+  incoming.forEach((t) => { map.set(t.id, t) })
+  const merged = Array.from(map.values())
+  localStorage.setItem(CACHE_KEY, JSON.stringify(merged))
+  await pushToSupabase('todoist_task_cache', merged)
+  return merged
 }
 
 export async function archiveTask(id) {
