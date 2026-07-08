@@ -30,6 +30,13 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*')
   if (req.method === 'OPTIONS') return res.status(200).end()
 
+  // Token auth — same key as MCP server
+  const apiKey = process.env.MCP_API_KEY
+  if (apiKey) {
+    const token = req.query.token ?? req.headers['authorization']?.replace('Bearer ', '') ?? ''
+    if (token !== apiKey) return res.status(401).json({ error: 'Unauthorized' })
+  }
+
   const todoistKey = process.env.TODOIST_API_KEY
   if (!todoistKey) return res.status(500).json({ error: 'TODOIST_API_KEY not configured' })
 
@@ -43,6 +50,13 @@ export default async function handler(req, res) {
   const { data: existing } = await sb.from('app_data').select('value').eq('key', 'todoist_task_cache').single()
   const existingTasks = Array.isArray(existing?.value) ? existing.value : []
   const existingIds = new Set(existingTasks.map(t => t.id))
+
+  // Snapshot existing cache to knowledge_backups before any write
+  await sb.from('knowledge_backups').insert({
+    head_key: 'todoist_task_cache_snapshot',
+    backed_up_at: new Date().toISOString(),
+    value: { tasks: existingTasks, count: existingTasks.length },
+  })
 
   const report = {
     existing_count: existingTasks.length,

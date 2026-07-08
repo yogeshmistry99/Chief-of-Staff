@@ -8,19 +8,11 @@ Yogesh — architect at Gensler. Building a personal operating system to manage 
 
 ## Core function
 - Chief of Staff home screen — weighted daily priority list across all buckets
-- Read and write to Todoist across 7 projects
+- Task store in Supabase (app_data key: todoist_task_cache) — single source of truth
 - Google Calendar integration
 - Chat interface with persistent history
 - Individual bucket views
-
-## Todoist Project IDs
-- Finance: 6gmVXCpMmXX8V5MV
-- Health: 6gmVXCm3jxXfXVWw
-- Home: 6gmVXCpQQxw3gFgw
-- Work: 6gmVXCv7j946mv75
-- Family: 6gmVXCpr8mc6mjjX
-- Personal: 6gmcXJpGfj6gh4Gc
-- Systems: 6gmVXCmRw6X6cgpM
+- MCP server at /api/mcp for Claude Code integration
 
 ## Principles
 - Accuracy over speed
@@ -31,11 +23,11 @@ Yogesh — architect at Gensler. Building a personal operating system to manage 
 
 ## Build order
 1. Scaffold ✓
-2. Vercel deployment
-3. Todoist connection
-4. Chief of Staff home screen
-5. Bucket views
-6. Google Calendar
-7. Chat with persistent history
-8. Morning scheduled refresh
+2. Vercel deployment ✓
+3. Supabase task store ✓
+4. Chief of Staff home screen ✓
+5. Bucket views ✓
+6. Google Calendar ✓
+7. Chat with persistent history ✓
+8. MCP server for Claude Code ✓
 9. PWA home screen install

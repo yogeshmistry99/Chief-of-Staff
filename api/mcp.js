@@ -33,7 +33,7 @@ async function saveTaskCache(sb, tasks) {
   await sb.from('app_data').upsert({ key: 'todoist_task_cache', value: tasks, updated_at: new Date().toISOString() })
 }
 
-// ─── Todoist API helper ───────────────────────────────────────────────────────
+// ─── Todoist API helper (used for update/complete/delete of legacy tasks only) ─
 async function todoistFetch(path, method = 'GET', body = null) {
   const apiKey = process.env.TODOIST_API_KEY
   if (!apiKey) throw new Error('TODOIST_API_KEY not configured')
@@ -46,6 +46,9 @@ async function todoistFetch(path, method = 'GET', body = null) {
   if (res.status === 204 || method === 'DELETE') return null
   return res.json()
 }
+
+// Tasks created locally (post-Todoist) have UUID ids; legacy Todoist tasks are all-numeric.
+const isTodoistId = (id) => /^\d+$/.test(id)
 
 // ─── Priority conversion ──────────────────────────────────────────────────────
 // Life OS:  P1 (urgent) → P4 (low)
@@ -85,7 +88,7 @@ async function getHeadConfig(sb, key) {
 
 // ─── Tool implementations ─────────────────────────────────────────────────────
 
-async function listTasks({ bucket, priority, status } = {}) {
+async function listTasks({ bucket, priority, status, category } = {}) {
   const sb = getSupabase()
   let tasks = await getTaskCache(sb)
 
@@ -95,6 +98,9 @@ async function listTasks({ bucket, priority, status } = {}) {
   if (priority) {
     const tp = labelToTodoist(priority)
     tasks = tasks.filter((t) => t.priority === tp)
+  }
+  if (category) {
+    tasks = tasks.filter((t) => t._category?.toLowerCase() === category.toLowerCase())
   }
   if (status === 'completed') {
     tasks = tasks.filter((t) => t.is_completed)
@@ -107,6 +113,7 @@ async function listTasks({ bucket, priority, status } = {}) {
     id: t.id,
     name: t.content,
     bucket: t._projectName ?? null,
+    category: t._category ?? null,
     priority: todoistToLabel(t.priority),
     due_date: t.due?.date ?? null,
     is_completed: t.is_completed ?? false,
@@ -126,6 +133,7 @@ async function getTask({ id }) {
     id: task.id,
     name: task.content,
     bucket: task._projectName ?? null,
+    category: task._category ?? null,
     priority: todoistToLabel(task.priority),
     due_date: task.due?.date ?? null,
     is_completed: task.is_completed ?? false,
@@ -135,67 +143,94 @@ async function getTask({ id }) {
   }
 }
 
-async function createTask({ name, bucket, priority, due_date, parent_id, description }) {
+async function createTask({ name, bucket, priority, due_date, parent_id, description, category }) {
   if (!name) throw new Error('name is required')
 
   let project_id = null
+  let bucketName = null
   if (bucket) {
     const entry = Object.entries(PROJECTS).find(([n]) => n.toLowerCase() === bucket.toLowerCase())
     if (!entry) throw new Error(`Unknown bucket "${bucket}". Valid: ${Object.keys(PROJECTS).join(', ')}`)
-    project_id = entry[1]
+    ;[bucketName, project_id] = entry
   }
 
-  const body = { content: name, priority: priority ? labelToTodoist(priority) : 1 }
-  if (project_id) body.project_id = project_id
-  if (due_date)   body.due_string  = due_date
-  if (parent_id)  body.parent_id   = parent_id
-  if (description) body.description = description
-
-  const newTask = await todoistFetch('tasks', 'POST', body)
+  const id = crypto.randomUUID()
+  const newTask = {
+    id,
+    content: name,
+    priority: priority ? labelToTodoist(priority) : 1,
+    due: due_date ? { date: due_date } : null,
+    is_completed: false,
+    parent_id: parent_id ?? null,
+    description: description ?? null,
+    project_id,
+    section_id: null,
+    _projectName: bucketName,
+    _sectionName: null,
+    _category: category ?? null,
+    created_at: new Date().toISOString(),
+  }
 
   const sb = getSupabase()
   const tasks = await getTaskCache(sb)
-  const withName = { ...newTask, _projectName: project_id ? PROJECT_NAMES[project_id] : null }
-  await saveTaskCache(sb, [...tasks, withName])
+  await saveTaskCache(sb, [...tasks, newTask])
 
   return {
-    id: newTask.id,
-    name: newTask.content,
-    bucket: withName._projectName ?? null,
+    id,
+    name,
+    bucket: bucketName ?? null,
+    category: category ?? null,
     priority: todoistToLabel(newTask.priority),
-    due_date: newTask.due?.date ?? null,
+    due_date: due_date ?? null,
     is_completed: false,
   }
 }
 
-async function updateTask({ id, name, priority, due_date, description, bucket }) {
+async function updateTask({ id, name, priority, due_date, description, bucket, category }) {
   if (!id) throw new Error('id is required')
 
+  const sb = getSupabase()
+  const tasks = await getTaskCache(sb)
+  const existing = tasks.find((t) => t.id === id)
+  if (!existing) throw new Error(`Task ${id} not found`)
+
   const body = {}
-  if (name)              body.content     = name
+  if (name !== undefined)        body.content     = name
   if (description !== undefined) body.description = description
-  if (priority)          body.priority    = labelToTodoist(priority)
-  if (due_date === 'remove') body.due_string = 'no date'
-  else if (due_date)     body.due_string  = due_date
+  if (priority)                  body.priority    = labelToTodoist(priority)
+  if (due_date === 'remove')     body.due_string  = 'no date'
+  else if (due_date)             body.due_string  = due_date
+  let newBucketName
   if (bucket) {
     const entry = Object.entries(PROJECTS).find(([n]) => n.toLowerCase() === bucket.toLowerCase())
     if (!entry) throw new Error(`Unknown bucket "${bucket}"`)
     body.project_id = entry[1]
+    newBucketName = entry[0]
   }
 
-  const updated = await todoistFetch(`tasks/${id}`, 'POST', body)
+  let updated = { ...existing }
+  if (isTodoistId(id)) {
+    const result = await todoistFetch(`tasks/${id}`, 'POST', body)
+    updated = { ...existing, ...result }
+  } else {
+    if (body.content !== undefined)     updated.content     = body.content
+    if (body.description !== undefined) updated.description = body.description
+    if (body.priority !== undefined)    updated.priority    = body.priority
+    if (due_date === 'remove')          updated.due         = null
+    else if (due_date)                  updated.due         = { date: due_date }
+    if (body.project_id)               updated.project_id  = body.project_id
+  }
 
-  const sb = getSupabase()
-  const tasks = await getTaskCache(sb)
-  const newBucketName = body.project_id ? PROJECT_NAMES[body.project_id] : undefined
+  const newCategory = category !== undefined ? (category || null) : (existing._category ?? null)
   await saveTaskCache(sb, tasks.map((t) =>
-    t.id === id ? { ...t, ...updated, _projectName: newBucketName ?? t._projectName } : t
+    t.id === id ? { ...t, ...updated, _projectName: newBucketName ?? t._projectName, _category: newCategory } : t
   ))
 
   return {
-    id: updated.id,
+    id: updated.id ?? id,
     name: updated.content,
-    bucket: newBucketName ?? (tasks.find((t) => t.id === id)?._projectName ?? null),
+    bucket: newBucketName ?? existing._projectName ?? null,
+    category: newCategory,
     priority: todoistToLabel(updated.priority),
     due_date: updated.due?.date ?? null,
     is_completed: updated.is_completed ?? false,
@@ -204,7 +239,7 @@ async function updateTask({ id, name, priority, due_date, description, bucket })
 
 async function completeTask({ id }) {
   if (!id) throw new Error('id is required')
-  await todoistFetch(`tasks/${id}/close`, 'POST')
+  if (isTodoistId(id)) await todoistFetch(`tasks/${id}/close`, 'POST')
 
   const sb = getSupabase()
   const tasks = await getTaskCache(sb)
@@ -215,7 +250,7 @@ async function completeTask({ id }) {
 
 async function deleteTask({ id }) {
   if (!id) throw new Error('id is required')
-  await todoistFetch(`tasks/${id}`, 'DELETE')
+  if (isTodoistId(id)) await todoistFetch(`tasks/${id}`, 'DELETE')
 
   const sb = getSupabase()
   const tasks = await getTaskCache(sb)
@@ -321,13 +356,14 @@ async function listBuckets() {
 const TOOLS = [
   {
     name: 'list_tasks',
-    description: 'Return tasks from the Life OS task store. Optionally filter by bucket name, priority (P1–P4), or status.',
+    description: 'Return tasks from the Life OS task store. Optionally filter by bucket name, priority (P1–P4), status, or category.',
     inputSchema: {
       type: 'object',
       properties: {
         bucket:   { type: 'string', description: 'Bucket name: Finance, Health, Home, Work, Family, Personal, or Systems' },
         priority: { type: 'string', description: 'Priority label: P1 (highest), P2, P3, or P4 (lowest)' },
         status:   { type: 'string', enum: ['active', 'completed', 'all'], description: 'Default: active' },
+        category: { type: 'string', description: 'Filter by category label (e.g. "Life OS", "Work", "Admin")' },
       },
     },
   },
@@ -342,16 +378,17 @@ const TOOLS = [
   },
   {
     name: 'create_task',
-    description: 'Create a new task in Life OS (written to Todoist and the live task store).',
+    description: 'Create a new task in the Life OS task store.',
     inputSchema: {
       type: 'object',
       properties: {
         name:        { type: 'string',  description: 'Task title (required)' },
         bucket:      { type: 'string',  description: 'Bucket: Finance, Health, Home, Work, Family, Personal, or Systems' },
         priority:    { type: 'string',  description: 'Priority: P1, P2, P3, or P4' },
-        due_date:    { type: 'string',  description: 'Due date as natural language ("tomorrow", "next Friday") or YYYY-MM-DD' },
+        due_date:    { type: 'string',  description: 'Due date YYYY-MM-DD' },
         parent_id:   { type: 'string',  description: 'Parent task ID to create a subtask' },
         description: { type: 'string',  description: 'Optional notes/description' },
+        category:    { type: 'string',  description: 'Optional category label (e.g. "Life OS", "Admin", "Work")' },
       },
       required: ['name'],
     },
@@ -368,6 +405,7 @@ const TOOLS = [
         due_date:    { type: 'string', description: 'New due date, or "remove" to clear it' },
         description: { type: 'string', description: 'New description' },
         bucket:      { type: 'string', description: 'Move task to a different bucket' },
+        category:    { type: 'string', description: 'Set or update the category label' },
       },
       required: ['id'],
     },
