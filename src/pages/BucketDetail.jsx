@@ -16,6 +16,7 @@ import { getDiscussions, deleteDiscussion, saveDiscussion, newDiscussion, findDi
 import { archiveTask, restoreTask } from '../lib/taskCache'
 import { closeTask } from '../lib/todoist'
 import { BUCKET_META } from '../lib/bucketConfig'
+import { safeSetItem, capRecent } from '../lib/safeStorage'
 
 function extractJSON(text) {
   // Try clean parse first
@@ -856,8 +857,8 @@ export default function BucketDetail() {
     catch { return [] }
   })
   useEffect(() => {
-    const toSave = headMessages.filter((m) => !m.streaming)
-    if (toSave.length) localStorage.setItem(storageKey, JSON.stringify(toSave))
+    const toSave = capRecent(headMessages.filter((m) => !m.streaming), 50)
+    if (toSave.length) safeSetItem(storageKey, JSON.stringify(toSave))
   }, [headMessages, storageKey])
 
   const projectId = PROJECTS[bucket]

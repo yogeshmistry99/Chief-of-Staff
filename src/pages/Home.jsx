@@ -6,6 +6,7 @@ import { getNotificationsForTask, dismissNotification, acceptNotification } from
 import NotificationCard, { notifDotClass } from '../components/NotificationCard'
 import { prioritise, scoreTask } from '../lib/priority'
 import { haptic } from '../lib/haptic'
+import { safeSetItem, capRecent } from '../lib/safeStorage'
 import ChatInput from '../components/ChatInput'
 import ImageLightbox from '../components/ImageLightbox'
 import EditSheet from '../components/EditSheet'
@@ -721,8 +722,8 @@ export default function Home() {
     }, 0)
   }, [tab])
   useEffect(() => {
-    const toSave = messages.filter((m) => !m.streaming)
-    localStorage.setItem('cos_home_messages', JSON.stringify(toSave))
+    const toSave = capRecent(messages.filter((m) => !m.streaming), 50)
+    safeSetItem('cos_home_messages', JSON.stringify(toSave))
   }, [messages])
 
   async function handleSend(content, attachmentName, attachmentPreview) {
