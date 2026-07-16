@@ -33,6 +33,18 @@ async function saveTaskCache(sb, tasks) {
   await sb.from('app_data').upsert({ key: 'todoist_task_cache', value: tasks, updated_at: new Date().toISOString() })
 }
 
+// Keep only the most recent 12 knowledge_backups rows (matches task_backups).
+// Call after every insert so the table can never grow unbounded.
+const MAX_KNOWLEDGE_BACKUPS = 12
+async function pruneKnowledgeBackups(sb) {
+  if (!sb) return
+  const { data } = await sb
+    .from('knowledge_backups').select('id').order('backed_up_at', { ascending: false })
+  if (!data || data.length <= MAX_KNOWLEDGE_BACKUPS) return
+  const toDelete = data.slice(MAX_KNOWLEDGE_BACKUPS).map((r) => r.id)
+  await sb.from('knowledge_backups').delete().in('id', toDelete)
+}
+
 // ─── Todoist API helper (used for update/complete/delete of legacy tasks only) ─
 async function todoistFetch(path, method = 'GET', body = null) {
   const apiKey = process.env.TODOIST_API_KEY
@@ -279,6 +291,7 @@ async function updateRoadmap({ content }) {
       backed_up_at: new Date().toISOString(),
       value: { content: current.value, updated_at: current.updated_at },
     })
+    await pruneKnowledgeBackups(sb)
   }
 
   const updatedAt = new Date().toISOString()
@@ -322,6 +335,7 @@ async function updateKnowledge({ head, instructions, context }) {
     value:        currentValue,
   }
   await sb.from('knowledge_backups').insert(backup)
+  await pruneKnowledgeBackups(sb)
 
   // Merge only the fields provided
   const newValue = {

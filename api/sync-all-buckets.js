@@ -57,6 +57,12 @@ export default async function handler(req, res) {
     backed_up_at: new Date().toISOString(),
     value: { tasks: existingTasks, count: existingTasks.length },
   })
+  // Keep only the most recent 12 knowledge_backups rows (matches task_backups).
+  const { data: kb } = await sb
+    .from('knowledge_backups').select('id').order('backed_up_at', { ascending: false })
+  if (kb && kb.length > 12) {
+    await sb.from('knowledge_backups').delete().in('id', kb.slice(12).map((r) => r.id))
+  }
 
   const report = {
     existing_count: existingTasks.length,
