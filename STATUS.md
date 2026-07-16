@@ -67,7 +67,7 @@ Last updated: 2026-07-16 (storage inventory verified live against Supabase proje
 - **Lost forever** (localStorage-only, no server copy): **CoS chat, Head chats**, priority list, spend limit, usage/cost. Disposable working memory by design.
 
 ### Grows unbounded (watch list)
-- `knowledge_backups` table — no prune.
+- ~~`knowledge_backups`~~ — now capped at 12 (fixed 2026-07-16).
 - `cos_discussions_${bucket}` — no cap; each save re-serializes and re-uploads the whole bucket's discussion history to Supabase.
 - CoS/Head chats are now bounded at 50 (previously unbounded — caused the quota crash).
 
@@ -75,16 +75,18 @@ Last updated: 2026-07-16 (storage inventory verified live against Supabase proje
 
 ## Known bugs and open work
 
-1. **`knowledge_backups` unbounded** — no retention (10 rows now, grows forever). Consider a prune like `task_backups`.
+1. ~~**`knowledge_backups` unbounded**~~ — FIXED 2026-07-16. Now capped at 12, prune-on-write across all insert sites.
 2. **Discussions full-payload re-upload** — every message save pushes the entire bucket's discussion array to Supabase. Fine now; gets slow/bandwidth-heavy as history grows. Consider per-discussion writes.
 3. **Head chats can't set task categories** — the in-app Head chat task tools (`api/claude.js`) do not expose the `category` field, though the MCP tools do. Categories can only be set via the MCP (Claude.ai), not from in-app chats.
 4. **Legacy Todoist code still present** — `api/todoist.js` proxy, `src/lib/todoist.js`, and `update/complete/delete` in `api/mcp.js` still call Todoist for all-numeric (legacy) task IDs. New tasks are UUID and Supabase-only. Full Todoist removal is unfinished.
-5. **Weekly backup is browser-and-Sunday-gated** — see traps. Not a scheduled job; can silently never run.
+5. ~~**Weekly backup is browser-and-Sunday-gated**~~ — FIXED 2026-07-16. Now a Vercel cron (`api/cron-weekly-backup.js`, `0 8 * * 0`). The old client-side `maybeRunAutoBackup` still exists as a harmless fallback.
 
 ---
 
 ## Recent significant changes (newest first)
 
+- **2026-07-16 — `knowledge_backups` capped at 12 (prune on write).** Added prune-on-write to all three insert sites (`api/mcp.js` `updateRoadmap`/`updateKnowledge`, `api/sync-all-buckets.js`), keeping the most recent 12 by `backed_up_at`, matching `task_backups`. Was 11 rows at fix time (under cap, 0 reclaimed immediately); now bounded going forward.
+- **2026-07-16 — Weekly backup is now a real server-side cron.** New `api/cron-weekly-backup.js` (reads task store → inserts `task_backups` snapshot → prunes to 12), registered as a Vercel cron `0 8 * * 0` (Sundays 08:00 UTC). Auth accepts the Vercel `CRON_SECRET` bearer OR the `MCP_API_KEY` token. `CRON_SECRET` env var set in Vercel. Replaces the old browser-and-Sunday-gated client backup. Baseline snapshot taken 2026-07-16 (245 tasks). Note: Vercel is Hobby plan (cron max once/day, ~1h timing accuracy — weekly is fine).
 - **2026-07-16 — Storage inventory verified live via Supabase MCP.** Confirmed 3 tables, 19 `app_data` keys, task store at 245 tasks, `task_backups` at the 12-row cap, `knowledge_backups` at 10. Corrected the doc: `app_roadmap` is code-referenced but has no row yet. Noted that the Supabase MCP works in-session even though direct HTTPS egress is blocked.
 - **2026-07-09 — localStorage quota crash fixed.** CoS chat (`cos_home_messages`) and Head chats (`cos_head_${bucket}`) capped to the most recent 50 messages, evict-oldest-on-write. New `src/lib/safeStorage.js` (`safeSetItem` try/catch + `capRecent`) wraps all three chat writes (Home, ChiefPage, BucketDetail) so a quota error logs and continues instead of throwing. Discussions intentionally left uncapped.
 - **2026-07-09 — `saveToCache` destructive-overwrite bug fixed (merge-by-ID).** BucketDetail passes a bucket-filtered task slice; the head chat's `onTasksUpdated` called `saveToCache`, which full-overwrote `todoist_task_cache` and wiped the other 6 buckets (only Work/26 survived). `saveToCache` now merges incoming tasks by id into the existing cache — a filtered array can only add/update its own tasks, never delete others'. (Confirmed holding: store is back to 245 tasks.)
