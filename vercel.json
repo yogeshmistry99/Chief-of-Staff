@@ -6,6 +6,9 @@
     "api/calendar.js": { "maxDuration": 30 },
     "api/todoist.js":  { "maxDuration": 30 }
   },
+  "crons": [
+    { "path": "/api/cron-weekly-backup", "schedule": "0 8 * * 0" }
+  ],
   "headers": [
     {
       "source": "/sw.js",
