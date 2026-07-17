@@ -14,6 +14,20 @@ Yogesh — architect at Gensler. Building a personal operating system to manage 
 - Individual bucket views
 - MCP server at /api/mcp for Claude Code integration
 
+## Development roadmap
+The roadmap lives in the task store (Supabase `todoist_task_cache`), not in code or
+static docs. Each phase is a task with category "Roadmap Phase"; its features are the
+subtasks parented under it. The Settings roadmap card renders this live, and progress is
+computed from each subtask's real completion state. Phase names (aligned to the app):
+1. Foundation
+2. Intelligence
+3. Connected Intelligence
+4. Automation
+5. Voice and Mobility
+6. Full Autonomy
+
+(Phase 2 is "Intelligence" — not "Active Agents".)
+
 ## Principles
 - Accuracy over speed
 - Functional and intuitive UI — Google Material Design aesthetic
