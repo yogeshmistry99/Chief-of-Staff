@@ -45,68 +45,43 @@ function IntegrationCard({ icon, name, description, connected, detail, url }) {
   )
 }
 
-const DEFAULT_ROADMAP = [
-  {
-    phase: 1, title: 'Foundation', status: 'in-progress',
-    items: [
-      { done: true,  text: 'PWA shell — offline-capable, installable on iOS/Android' },
-      { done: true,  text: 'Supabase sync — all data persisted and cross-device' },
-      { done: true,  text: 'Task management — create, complete, prioritise via AI' },
-      { done: true,  text: 'Chief of Staff chat — daily AI briefing and task triage' },
-      { done: true,  text: '7 Life OS heads — Finance, Health, Work, Family, Home, Personal, Systems' },
-      { done: true,  text: 'Google Calendar integration — read/write, OAuth self-managing' },
-      { done: true,  text: 'MCP server — 10 tools for external Claude Code access' },
-      { done: false, text: 'Notifications — smart reminders from AI-spotted urgency' },
-    ],
-  },
-  {
-    phase: 2, title: 'Intelligence', status: 'up-next',
-    items: [
-      { done: false, text: 'Weekly review — structured reflection and planning session' },
-      { done: false, text: 'Priority scoring — AI weights tasks by context and deadlines' },
-      { done: false, text: 'Pattern recognition — spots recurring decisions and habits' },
-      { done: false, text: 'Proactive nudges — AI surfaces things before they become urgent' },
-      { done: false, text: 'Knowledge graph — links tasks, discussions, and decisions over time' },
-    ],
-  },
-  {
-    phase: 3, title: 'Connected Intelligence', status: 'planned',
-    items: [
-      { done: false, text: 'Email integration — Gmail read + draft via AI' },
-      { done: false, text: 'Document intelligence — attach and query PDFs, notes' },
-      { done: false, text: 'Financial data pull — live balances, spending, net worth' },
-      { done: false, text: 'Health data — Apple Health / Garmin sync for Head coaching' },
-      { done: false, text: 'Location awareness — commute, travel, home/office context' },
-    ],
-  },
-  {
-    phase: 4, title: 'Automation', status: 'planned',
-    items: [
-      { done: false, text: 'Recurring task automation — AI creates tasks from patterns' },
-      { done: false, text: 'Calendar auto-scheduling — AI books focus blocks and prep time' },
-      { done: false, text: 'Decision templates — saved playbooks for repeating decisions' },
-      { done: false, text: 'Trigger-based workflows — if/then rules across heads' },
-    ],
-  },
-  {
-    phase: 5, title: 'Voice and Mobility', status: 'planned',
-    items: [
-      { done: false, text: 'Full voice input — dictate tasks, chat, decisions hands-free' },
-      { done: false, text: 'Siri / Shortcuts integration — quick capture from lock screen' },
-      { done: false, text: 'Widget support — glanceable priorities on home screen' },
-      { done: false, text: 'Apple Watch companion — surface top priority + voice reply' },
-    ],
-  },
-  {
-    phase: 6, title: 'Full Autonomy', status: 'future',
-    items: [
-      { done: false, text: 'Autonomous task execution — AI completes low-risk tasks directly' },
-      { done: false, text: 'Multi-agent heads — each head runs its own background agent' },
-      { done: false, text: 'Life simulation — model scenarios before committing' },
-      { done: false, text: 'Cross-person coordination — shared tasks with family/team' },
-    ],
-  },
-]
+// Build the roadmap from the task store (single source of truth). Phase
+// containers are tasks with category "Roadmap Phase" named "Phase N: Title";
+// their items are the tasks whose parent_id points at the container. Progress
+// and completion come from each item's real is_completed state — no static
+// content here. Status badge is derived from progress + phase order.
+function buildRoadmapFromTasks(tasks) {
+  if (!Array.isArray(tasks)) return []
+
+  const phases = tasks
+    .filter((t) => t._category === 'Roadmap Phase')
+    .map((t) => {
+      const m = /^Phase\s+(\d+):\s*(.+)$/.exec(t.content || '')
+      return { id: t.id, phase: m ? Number(m[1]) : 0, title: m ? m[2].trim() : (t.content || 'Phase') }
+    })
+    .sort((a, b) => a.phase - b.phase)
+
+  const built = phases.map((p) => {
+    const items = tasks
+      .filter((t) => t.parent_id === p.id)
+      .map((t) => ({ done: !!t.is_completed, text: t.content }))
+      .sort((a, b) => (a.done === b.done ? 0 : a.done ? -1 : 1)) // completed first
+    const completed = items.filter((i) => i.done).length
+    return { ...p, items, completed, total: items.length }
+  })
+
+  const firstUnstarted = built.find((p) => p.completed === 0)?.id ?? null
+  const lastId = built.length ? built[built.length - 1].id : null
+
+  return built.map((p) => {
+    let status
+    if (p.completed > 0) status = 'in-progress'       // any progress (incl. fully done)
+    else if (p.id === firstUnstarted) status = 'up-next'
+    else if (p.id === lastId) status = 'future'
+    else status = 'planned'
+    return { phase: p.phase, title: p.title, status, items: p.items }
+  })
+}
 
 const STATUS_BADGE = {
   'in-progress': { label: 'In Progress', bg: 'bg-[#6750A4]', text: 'text-white' },
@@ -217,7 +192,7 @@ export default function Settings() {
   const [restoreTarget, setRestoreTarget] = useState(null) // backup obj to confirm
   const [restoreState, setRestoreState] = useState('idle') // idle | restoring | done | error
   const [calendarNotice, setCalendarNotice] = useState(null) // 'connected' | error string
-  const [roadmap, setRoadmap] = useState(DEFAULT_ROADMAP)
+  const [roadmap, setRoadmap] = useState([])
 
   const location = useLocation()
   const navigate = useNavigate()
@@ -249,8 +224,10 @@ export default function Settings() {
       })
       .catch(() => setSupabaseOk(false))
     listBackups().then(setBackups).catch(() => {})
-    supabase.from('app_data').select('value').eq('key', 'app_roadmap').single()
-      .then(({ data }) => { if (data?.value) setRoadmap(data.value) })
+    // Roadmap is derived live from the task store (category "Roadmap Phase"
+    // containers + their subtasks) — the task store is the single source of truth.
+    supabase.from('app_data').select('value').eq('key', 'todoist_task_cache').single()
+      .then(({ data }) => { if (data?.value) setRoadmap(buildRoadmapFromTasks(data.value)) })
       .catch(() => {})
   }, [])
 
