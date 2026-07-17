@@ -198,7 +198,7 @@ async function createTask({ name, bucket, priority, due_date, parent_id, descrip
   }
 }
 
-async function updateTask({ id, name, priority, due_date, description, bucket, category }) {
+async function updateTask({ id, name, priority, due_date, description, bucket, category, parent_id }) {
   if (!id) throw new Error('id is required')
 
   const sb = getSupabase()
@@ -234,8 +234,9 @@ async function updateTask({ id, name, priority, due_date, description, bucket, c
   }
 
   const newCategory = category !== undefined ? (category || null) : (existing._category ?? null)
+  const newParentId = parent_id !== undefined ? (parent_id || null) : (existing.parent_id ?? null)
   await saveTaskCache(sb, tasks.map((t) =>
-    t.id === id ? { ...t, ...updated, _projectName: newBucketName ?? t._projectName, _category: newCategory } : t
+    t.id === id ? { ...t, ...updated, _projectName: newBucketName ?? t._projectName, _category: newCategory, parent_id: newParentId } : t
   ))
 
   return {
@@ -243,6 +244,7 @@ async function updateTask({ id, name, priority, due_date, description, bucket, c
     name: updated.content,
     bucket: newBucketName ?? existing._projectName ?? null,
     category: newCategory,
+    parent_id: newParentId,
     priority: todoistToLabel(updated.priority),
     due_date: updated.due?.date ?? null,
     is_completed: updated.is_completed ?? false,
@@ -420,6 +422,7 @@ const TOOLS = [
         description: { type: 'string', description: 'New description' },
         bucket:      { type: 'string', description: 'Move task to a different bucket' },
         category:    { type: 'string', description: 'Set or update the category label' },
+        parent_id:   { type: 'string', description: 'Re-parent under another task ID, or "" to clear the parent' },
       },
       required: ['id'],
     },
