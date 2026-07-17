@@ -198,7 +198,7 @@ async function createTask({ name, bucket, priority, due_date, parent_id, descrip
   }
 }
 
-async function updateTask({ id, name, priority, due_date, description, bucket, category, parent_id }) {
+async function updateTask({ id, name, priority, due_date, description, bucket, category, parent_id, is_completed }) {
   if (!id) throw new Error('id is required')
 
   const sb = getSupabase()
@@ -235,8 +235,13 @@ async function updateTask({ id, name, priority, due_date, description, bucket, c
 
   const newCategory = category !== undefined ? (category || null) : (existing._category ?? null)
   const newParentId = parent_id !== undefined ? (parent_id || null) : (existing.parent_id ?? null)
+  const newCompleted = is_completed !== undefined ? !!is_completed : (updated.is_completed ?? existing.is_completed ?? false)
+  // Keep completed_at consistent with the app's own restore/complete behaviour.
+  const newCompletedAt = is_completed !== undefined
+    ? (newCompleted ? (existing.completed_at ?? new Date().toISOString()) : null)
+    : (existing.completed_at ?? null)
   await saveTaskCache(sb, tasks.map((t) =>
-    t.id === id ? { ...t, ...updated, _projectName: newBucketName ?? t._projectName, _category: newCategory, parent_id: newParentId } : t
+    t.id === id ? { ...t, ...updated, _projectName: newBucketName ?? t._projectName, _category: newCategory, parent_id: newParentId, is_completed: newCompleted, completed_at: newCompletedAt } : t
   ))
 
   return {
@@ -247,7 +252,7 @@ async function updateTask({ id, name, priority, due_date, description, bucket, c
     parent_id: newParentId,
     priority: todoistToLabel(updated.priority),
     due_date: updated.due?.date ?? null,
-    is_completed: updated.is_completed ?? false,
+    is_completed: newCompleted,
   }
 }
 
@@ -423,6 +428,7 @@ const TOOLS = [
         bucket:      { type: 'string', description: 'Move task to a different bucket' },
         category:    { type: 'string', description: 'Set or update the category label' },
         parent_id:   { type: 'string', description: 'Re-parent under another task ID, or "" to clear the parent' },
+        is_completed:{ type: 'boolean', description: 'Set completion state — true to complete, false to reopen' },
       },
       required: ['id'],
     },

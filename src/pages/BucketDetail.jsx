@@ -741,37 +741,47 @@ function ArchivedSection({ tasks, allTasks, bucket, onRestore }) {
               return (
                 <div key={t.id} className="bg-white border border-[#E7E0EC] rounded-2xl overflow-hidden">
                   {/* Task row */}
-                  <button
-                    onClick={() => setExpandedId(isExpanded ? null : t.id)}
-                    className="w-full flex items-start gap-2.5 py-2.5 px-3 text-left"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" height="15" viewBox="0 -960 960 960" width="15" fill="#6750A4" className="flex-shrink-0 mt-0.5">
-                      <path d="M382-240 154-468l57-57 171 171 367-367 57 57-424 424Z"/>
-                    </svg>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs text-[#79747E] line-through leading-snug">{t.content}</p>
-                      <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                        {t.completed_at && (
-                          <span className="text-[10px] text-[#79747E]">
-                            {new Date(t.completed_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
-                          </span>
-                        )}
-                        {subtasks.length > 0 && (
-                          <span className="text-[10px] text-[#79747E]">{subtasks.length} step{subtasks.length !== 1 ? 's' : ''}</span>
-                        )}
-                        {discussion && (
-                          <svg xmlns="http://www.w3.org/2000/svg" height="10" viewBox="0 -960 960 960" width="10" fill="#6750A4">
-                            <path d="M240-400h320v-80H240v80Zm0-120h480v-80H240v80Zm0-120h480v-80H240v80ZM80-80v-720q0-33 23.5-56.5T160-880h640q33 0 56.5 23.5T880-800v480q0 33-23.5 56.5T800-240H240L80-80Z"/>
-                          </svg>
-                        )}
+                  <div className="w-full flex items-start gap-2.5 py-2.5 px-3">
+                    {/* Completion circle — filled green tick, tap to reopen */}
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onRestore(t.id) }}
+                      title="Reopen task"
+                      aria-label="Reopen task"
+                      className="w-5 h-5 rounded-full border-2 border-green-600 bg-green-600 flex items-center justify-center flex-shrink-0 mt-0.5 transition-colors hover:bg-green-700 hover:border-green-700"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white" className="w-full h-full p-0.5">
+                        <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+                      </svg>
+                    </button>
+                    <button
+                      onClick={() => setExpandedId(isExpanded ? null : t.id)}
+                      className="flex-1 flex items-start gap-2.5 text-left min-w-0"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs text-[#79747E] line-through leading-snug">{t.content}</p>
+                        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                          {t.completed_at && (
+                            <span className="text-[10px] text-[#79747E]">
+                              {new Date(t.completed_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                            </span>
+                          )}
+                          {subtasks.length > 0 && (
+                            <span className="text-[10px] text-[#79747E]">{subtasks.length} step{subtasks.length !== 1 ? 's' : ''}</span>
+                          )}
+                          {discussion && (
+                            <svg xmlns="http://www.w3.org/2000/svg" height="10" viewBox="0 -960 960 960" width="10" fill="#6750A4">
+                              <path d="M240-400h320v-80H240v80Zm0-120h480v-80H240v80Zm0-120h480v-80H240v80ZM80-80v-720q0-33 23.5-56.5T160-880h640q33 0 56.5 23.5T880-800v480q0 33-23.5 56.5T800-240H240L80-80Z"/>
+                            </svg>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                    <svg xmlns="http://www.w3.org/2000/svg" height="14" viewBox="0 -960 960 960" width="14" fill="#CAC4D0"
-                      className="flex-shrink-0 transition-transform duration-200"
-                      style={{ transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}>
-                      <path d="M480-345 240-585l56-56 184 184 184-184 56 56-240 240Z"/>
-                    </svg>
-                  </button>
+                      <svg xmlns="http://www.w3.org/2000/svg" height="14" viewBox="0 -960 960 960" width="14" fill="#CAC4D0"
+                        className="flex-shrink-0 transition-transform duration-200"
+                        style={{ transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}>
+                        <path d="M480-345 240-585l56-56 184 184 184-184 56 56-240 240Z"/>
+                      </svg>
+                    </button>
+                  </div>
 
                   {/* Expanded detail */}
                   <div style={{

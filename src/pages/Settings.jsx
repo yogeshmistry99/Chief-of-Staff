@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { getMonthlyUsage } from '../lib/claude'
 import { pullAndCacheTasks, getLastPullTime, getCachedTasks } from '../lib/taskCache'
 import { supabase } from '../lib/supabase'
+import { onSyncChange } from '../lib/sync'
 import { listBackups, createBackup, restoreBackup, fmtBackupDate, fmtLabel } from '../lib/backups'
 
 // Sonnet 4.6: $3/MTok input, $15/MTok output
@@ -224,11 +225,20 @@ export default function Settings() {
       })
       .catch(() => setSupabaseOk(false))
     listBackups().then(setBackups).catch(() => {})
-    // Roadmap is derived live from the task store (category "Roadmap Phase"
-    // containers + their subtasks) — the task store is the single source of truth.
-    supabase.from('app_data').select('value').eq('key', 'todoist_task_cache').single()
-      .then(({ data }) => { if (data?.value) setRoadmap(buildRoadmapFromTasks(data.value)) })
-      .catch(() => {})
+  }, [])
+
+  // Roadmap is derived live from the task store (category "Roadmap Phase"
+  // containers + their subtasks) — the task store is the single source of truth.
+  // Subscribe to store changes so completions/reopens re-render without a reload.
+  useEffect(() => {
+    if (!supabase) return
+    const refresh = () => {
+      supabase.from('app_data').select('value').eq('key', 'todoist_task_cache').single()
+        .then(({ data }) => { if (data?.value) setRoadmap(buildRoadmapFromTasks(data.value)) })
+        .catch(() => {})
+    }
+    refresh()
+    return onSyncChange('todoist_task_cache', refresh)
   }, [])
 
   const [refreshDone, setRefreshDone] = useState(false)
