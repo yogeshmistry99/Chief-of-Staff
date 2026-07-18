@@ -12,15 +12,13 @@ const MAX_SNAPSHOTS = 12
 
 function authorized(req) {
   const bearer = (req.headers['authorization'] ?? '').replace('Bearer ', '')
+  const token = req.query.token ?? bearer ?? ''
   const cronSecret = process.env.CRON_SECRET
-  if (cronSecret && bearer === cronSecret) return true
   const mcpKey = process.env.MCP_API_KEY
-  if (mcpKey) {
-    const token = req.query.token ?? bearer ?? ''
-    if (token === mcpKey) return true
-    return false
-  }
-  // If no secrets configured at all, deny by default.
+  // Accept the Vercel-injected CRON_SECRET (bearer, on scheduled runs) or
+  // either secret via bearer/?token= for manual triggers. No secret → deny.
+  if (cronSecret && (bearer === cronSecret || token === cronSecret)) return true
+  if (mcpKey && token === mcpKey) return true
   return false
 }
 
