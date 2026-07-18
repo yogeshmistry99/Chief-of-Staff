@@ -36,6 +36,22 @@ export default async function handler(req, res) {
 
   const sb = createClient(supabaseUrl, supabaseKey)
 
+  const isForced = req.query.force === '1' || req.query.force === 'true'
+
+  // Dedupe: never store two weekly snapshots in the same week. The browser
+  // Sunday backup and this cron can both fire on a Sunday; whichever runs first
+  // wins, the other skips — so a week never eats two of the 12 snapshot slots.
+  // `?force=1` (still auth-gated) bypasses this for manual verification.
+  if (!isForced) {
+    const weekAgo = new Date(Date.now() - 6 * 24 * 60 * 60 * 1000).toISOString()
+    const { data: recent } = await sb
+      .from('task_backups').select('id, label, created_at')
+      .ilike('label', 'Weekly backup%').gte('created_at', weekAgo).limit(1)
+    if (recent && recent.length) {
+      return res.status(200).json({ ok: true, skipped: true, reason: 'weekly snapshot already exists this week', existing: recent[0] })
+    }
+  }
+
   // Read the live task store
   const { data: cacheRow, error: readErr } = await sb
     .from('app_data').select('value').eq('key', 'todoist_task_cache').single()
@@ -43,7 +59,7 @@ export default async function handler(req, res) {
   const tasks = Array.isArray(cacheRow?.value) ? cacheRow.value : []
 
   const now = new Date().toISOString()
-  const label = `Weekly backup (cron) — ${now.slice(0, 10)}`
+  const label = `Weekly backup ${isForced ? '(manual)' : '(cron)'} — ${now.slice(0, 10)}`
   const { error: insErr } = await sb
     .from('task_backups')
     .insert({ label, tasks, task_count: tasks.length, created_at: now })

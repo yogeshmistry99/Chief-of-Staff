@@ -70,6 +70,20 @@ export async function maybeRunAutoBackup() {
   const lastRun = localStorage.getItem(LAST_AUTO_BACKUP_KEY)
   if (lastRun === todayStr) return  // already ran today
 
+  // Dedupe against the server-side weekly cron (or a prior run this week):
+  // if a weekly snapshot already exists in the last 6 days, skip so a single
+  // week never stores two snapshots eating the 12-snapshot cap.
+  try {
+    const existing = await listBackups()
+    const weekAgo = Date.now() - 6 * 24 * 60 * 60 * 1000
+    const hasWeekly = existing.some(
+      (b) => /^Weekly backup/.test(b.label || '') && new Date(b.created_at).getTime() >= weekAgo
+    )
+    if (hasWeekly) { localStorage.setItem(LAST_AUTO_BACKUP_KEY, todayStr); return }
+  } catch {
+    // If the check fails, fall through and let createBackup proceed.
+  }
+
   localStorage.setItem(LAST_AUTO_BACKUP_KEY, todayStr)
   try {
     await createBackup(`Weekly backup — ${fmtLabel(now)}`)
