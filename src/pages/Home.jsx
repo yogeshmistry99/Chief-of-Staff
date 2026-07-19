@@ -7,6 +7,7 @@ import NotificationCard, { notifDotClass } from '../components/NotificationCard'
 import { prioritise, scoreTask } from '../lib/priority'
 import { haptic } from '../lib/haptic'
 import { safeSetItem, capRecent } from '../lib/safeStorage'
+import ComputedPreview from '../components/ComputedPreview'
 import ChatInput from '../components/ChatInput'
 import ImageLightbox from '../components/ImageLightbox'
 import EditSheet from '../components/EditSheet'
@@ -915,6 +916,8 @@ export default function Home() {
           ))}
         </div>
 
+        {/* Computed (preview) — deterministic ranking, read-only */}
+        <ComputedPreview tasks={tasks} />
 
         {/* Upcoming events */}
         <div className="bg-white border border-[#CAC4D0] rounded-2xl p-4 mb-4 shadow-sm">

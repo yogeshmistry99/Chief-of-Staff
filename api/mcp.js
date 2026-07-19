@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-import { buildTask, enrichNewTask, PROJECTS, PROJECT_NAMES } from './lib/taskWrite.js'
+import { buildTask, enrichNewTask, aiScoreTask, isScored, validScore, validEffort, PROJECTS, PROJECT_NAMES } from './lib/taskWrite.js'
 
 // ─── Supabase helpers ─────────────────────────────────────────────────────────
 function getSupabase() {
@@ -170,10 +170,15 @@ async function createTask({ name, bucket, priority, due_date, parent_id, descrip
     priority: todoistToLabel(newTask.priority),
     due_date: due_date ?? null,
     is_completed: false,
+    consequence: newTask.consequence,
+    reversibility: newTask.reversibility,
+    compounding: newTask.compounding,
+    effort: newTask.effort,
+    pinned: newTask.pinned === true,
   }
 }
 
-async function updateTask({ id, name, priority, due_date, description, bucket, category, parent_id, is_completed }) {
+async function updateTask({ id, name, priority, due_date, description, bucket, category, parent_id, is_completed, consequence, reversibility, compounding, effort, pinned }) {
   if (!id) throw new Error('id is required')
 
   const sb = getSupabase()
@@ -215,8 +220,31 @@ async function updateTask({ id, name, priority, due_date, description, bucket, c
   const newCompletedAt = is_completed !== undefined
     ? (newCompleted ? (existing.completed_at ?? new Date().toISOString()) : null)
     : (existing.completed_at ?? null)
+
+  // Scoring fields — explicit inputs win (correctable from Claude.ai);
+  // otherwise keep existing values.
+  const scoring = {
+    consequence: consequence !== undefined ? validScore(consequence) : (existing.consequence ?? null),
+    reversibility: reversibility !== undefined ? validScore(reversibility) : (existing.reversibility ?? null),
+    compounding: compounding !== undefined ? validScore(compounding) : (existing.compounding ?? null),
+    effort: effort !== undefined ? validEffort(effort) : (existing.effort ?? null),
+  }
+  const newPinned = pinned !== undefined ? pinned === true : (existing.pinned === true)
+
+  // Lazy backfill: score on touch. If the task is still unscored after
+  // applying explicit inputs, try one AI scoring pass — fail open.
+  if (!isScored(scoring) && !newCompleted) {
+    const ai = await aiScoreTask({ ...existing, ...updated, _projectName: newBucketName ?? existing._projectName })
+    if (ai) {
+      scoring.consequence = scoring.consequence ?? ai.consequence
+      scoring.reversibility = scoring.reversibility ?? ai.reversibility
+      scoring.compounding = scoring.compounding ?? ai.compounding
+      scoring.effort = scoring.effort ?? ai.effort
+    }
+  }
+
   await saveTaskCache(sb, tasks.map((t) =>
-    t.id === id ? { ...t, ...updated, _projectName: newBucketName ?? t._projectName, _category: newCategory, parent_id: newParentId, is_completed: newCompleted, completed_at: newCompletedAt } : t
+    t.id === id ? { ...t, ...updated, _projectName: newBucketName ?? t._projectName, _category: newCategory, parent_id: newParentId, is_completed: newCompleted, completed_at: newCompletedAt, ...scoring, pinned: newPinned } : t
   ))
 
   return {
@@ -228,6 +256,11 @@ async function updateTask({ id, name, priority, due_date, description, bucket, c
     priority: todoistToLabel(updated.priority),
     due_date: updated.due?.date ?? null,
     is_completed: newCompleted,
+    consequence: scoring.consequence,
+    reversibility: scoring.reversibility,
+    compounding: scoring.compounding,
+    effort: scoring.effort,
+    pinned: newPinned,
   }
 }
 
@@ -404,6 +437,11 @@ const TOOLS = [
         category:    { type: 'string', description: 'Set or update the category label' },
         parent_id:   { type: 'string', description: 'Re-parent under another task ID, or "" to clear the parent' },
         is_completed:{ type: 'boolean', description: 'Set completion state — true to complete, false to reopen' },
+        consequence: { type: 'integer', description: 'Priority scoring: consequence 1–5 (5 = life-altering impact)' },
+        reversibility:{ type: 'integer', description: 'Priority scoring: reversibility 1–5 (5 = window closes forever)' },
+        compounding: { type: 'integer', description: 'Priority scoring: compounding leverage 1–5 (5 = foundational)' },
+        effort:      { type: 'string', enum: ['S', 'M', 'L'], description: 'Priority scoring: effort size — S <30min, M half-day, L multi-day' },
+        pinned:      { type: 'boolean', description: 'Pin the task to the top of its ranking tier (manual override)' },
       },
       required: ['id'],
     },

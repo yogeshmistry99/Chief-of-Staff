@@ -1,4 +1,4 @@
-import { buildTask, enrichNewTask } from './lib/taskWrite.js'
+import { buildTask, enrichNewTask, aiScoreTask, isScored } from './lib/taskWrite.js'
 
 const BUCKETS = ['Finance', 'Health', 'Work', 'Family', 'Home', 'Personal', 'Systems']
 
@@ -180,6 +180,11 @@ async function executeTool(name, input, tasks) {
     if (input.priority !== undefined) task.priority = input.priority
     if (input.remove_due_date)        task.due      = null
     else if (input.due_string)        task.due      = { date: input.due_string }
+    // Lazy backfill: score on touch — fail open, never block the update.
+    if (!isScored(task) && !task.is_completed) {
+      const scores = await aiScoreTask(task)
+      if (scores) Object.assign(task, scores)
+    }
     // Return the actual resulting state so Claude can verify what changed
     return {
       success: true,
