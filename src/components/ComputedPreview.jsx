@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { rankTasks } from '../../api/lib/ranking.js'
+import { rankTasks } from '../../api/_lib/ranking.js'
 
 // Read-only "Computed (preview)" list — the deterministic ranking running in
 // parallel with the CoS-generated priority list. List view shows rank + a

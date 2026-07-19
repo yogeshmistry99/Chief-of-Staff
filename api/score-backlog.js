@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-import { aiScoreTask, isScored } from './lib/taskWrite.js'
+import { aiScoreTask, isScored } from './_lib/taskWrite.js'
 
 // Manually-triggered batch scorer: scores the N oldest unscored ACTIVE
 // top-level tasks per call (default 10, max 25), so the backlog gets chipped

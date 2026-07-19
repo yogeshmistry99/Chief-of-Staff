@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-import { buildTask, enrichNewTask, aiScoreTask, isScored, validScore, validEffort, PROJECTS, PROJECT_NAMES } from './lib/taskWrite.js'
+import { buildTask, enrichNewTask, aiScoreTask, isScored, validScore, validEffort, PROJECTS, PROJECT_NAMES } from './_lib/taskWrite.js'
 
 // ─── Supabase helpers ─────────────────────────────────────────────────────────
 function getSupabase() {

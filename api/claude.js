@@ -1,4 +1,4 @@
-import { buildTask, enrichNewTask, aiScoreTask, isScored } from './lib/taskWrite.js'
+import { buildTask, enrichNewTask, aiScoreTask, isScored } from './_lib/taskWrite.js'
 
 const BUCKETS = ['Finance', 'Health', 'Work', 'Family', 'Home', 'Personal', 'Systems']
 

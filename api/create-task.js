@@ -1,4 +1,4 @@
-import { buildTask, enrichNewTask } from './lib/taskWrite.js'
+import { buildTask, enrichNewTask } from './_lib/taskWrite.js'
 
 // Thin task-construction endpoint. Builds a canonical task through the single
 // choke point (buildTask + enrichNewTask) and returns it — it does NOT write
