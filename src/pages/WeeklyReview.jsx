@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { pushToSupabase } from '../lib/sync'
 import { useNavigate } from 'react-router-dom'
-import { getAllTasks, PROJECTS } from '../lib/todoist'
+import { getCachedTasks, readTasksFromSupabase } from '../lib/taskCache'
 import { scoreTask } from '../lib/priority'
 import { sendMessageStream, SYSTEM_PROMPTS } from '../lib/claude'
 import { loadHeadConfig } from '../lib/headConfig'
@@ -13,7 +13,6 @@ import Markdown from '../components/Markdown'
 const BUCKETS = ['Finance', 'Health', 'Work', 'Family', 'Home', 'Personal', 'Systems']
 
 
-const PROJECT_NAMES = Object.fromEntries(Object.entries(PROJECTS).map(([name, id]) => [id, name]))
 
 // Steps: 0=intention, 1-7=buckets, 8=CoS summary, 9=complete
 const TOTAL_STEPS = 10
@@ -401,10 +400,12 @@ export default function WeeklyReview() {
   const reviewTextsRef = useRef({})
 
   useEffect(() => {
-    getAllTasks()
-      .then((data) => data.map((t) => ({ ...t, _projectName: PROJECT_NAMES[t.project_id] })))
-      .then(setAllTasks)
-      .catch(() => {})
+    // Read the authoritative task store (single source of truth) — NOT live
+    // Todoist, which is stale post-migration. getCachedTasks/readTasksFromSupabase
+    // both backfill _projectName.
+    const cached = getCachedTasks()
+    if (cached.length) setAllTasks(cached)
+    readTasksFromSupabase().then((t) => { if (t) setAllTasks(t) }).catch(() => {})
   }, [])
 
   const progress = step / (TOTAL_STEPS - 1)

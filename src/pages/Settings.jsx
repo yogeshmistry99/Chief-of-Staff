@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { getMonthlyUsage } from '../lib/claude'
-import { pullAndCacheTasks, getLastPullTime, getCachedTasks } from '../lib/taskCache'
+import { getLastPullTime, getCachedTasks } from '../lib/taskCache'
 import { supabase } from '../lib/supabase'
 import { onSyncChange } from '../lib/sync'
 import { listBackups, createBackup, restoreBackup, fmtBackupDate, fmtLabel } from '../lib/backups'
@@ -242,25 +242,8 @@ export default function Settings() {
   }, [])
 
   const [refreshDone, setRefreshDone] = useState(false)
-  const [pullState, setPullState] = useState('idle')
-  const [lastPull, setLastPull] = useState(() => getLastPullTime())
+  const [lastPull] = useState(() => getLastPullTime())
   const [cachedCount, setCachedCount] = useState(() => getCachedTasks().length)
-
-  async function handlePullTasks() {
-    if (pullState === 'idle') { setPullState('confirm'); return }
-    if (pullState !== 'confirm') return
-    setPullState('pulling')
-    try {
-      const { tasks } = await pullAndCacheTasks()
-      setCachedCount(tasks.length)
-      setLastPull(new Date().toISOString())
-      setPullState('done')
-      setTimeout(() => setPullState('idle'), 3000)
-    } catch (e) {
-      setPullState('error')
-      setTimeout(() => setPullState('idle'), 3000)
-    }
-  }
 
   function formatTime(iso) {
     if (!iso) return null
@@ -559,40 +542,6 @@ export default function Settings() {
             <li>Redeploy on Vercel — environment variables update automatically</li>
           </ol>
           <p className="text-[11px] text-[#21005D] opacity-70 mt-3">Tasks live in Supabase. Todoist is used for one-off imports only. Google Calendar is read-only.</p>
-        </div>
-      </CollapsibleSection>
-
-      {/* Todoist import */}
-      <CollapsibleSection title="Import from Todoist" subtitle={cachedCount > 0 ? `${cachedCount} tasks in Supabase` : 'One-off import'}>
-        <div className="bg-white border border-[#CAC4D0] rounded-2xl px-4 py-3 mt-2">
-          <p className="text-xs text-[#79747E] mb-3">
-            Imports tasks from Todoist into Supabase. Use this when onboarding or to bring in a fresh batch of tasks.
-          </p>
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-[#1C1B1F]">{cachedCount > 0 ? `${cachedCount} tasks` : 'No tasks yet'}</p>
-              {lastPull && <p className="text-xs text-[#79747E]">Last imported {formatTime(lastPull)}</p>}
-            </div>
-            {pullState === 'confirm' ? (
-              <div className="flex items-center gap-2">
-                <button onClick={() => setPullState('idle')} className="px-3 py-1.5 rounded-full text-sm font-semibold bg-[#F3EDF7] text-[#49454F]">Cancel</button>
-                <button onClick={handlePullTasks} className="px-3 py-1.5 rounded-full text-sm font-semibold bg-[#6750A4] text-white">Import</button>
-              </div>
-            ) : (
-              <button
-                onClick={handlePullTasks}
-                disabled={pullState === 'pulling'}
-                className={`px-4 py-2 rounded-full text-sm font-semibold transition-colors flex-shrink-0 ${
-                  pullState === 'done'    ? 'bg-green-500 text-white' :
-                  pullState === 'error'  ? 'bg-red-500 text-white' :
-                  pullState === 'pulling'? 'bg-[#F3EDF7] text-[#79747E]' :
-                                           'bg-[#6750A4] text-white hover:bg-[#7965AF]'
-                }`}
-              >
-                {pullState === 'pulling' ? '⏳ Importing…' : pullState === 'done' ? '✓ Done' : pullState === 'error' ? '✗ Failed' : 'Import tasks'}
-              </button>
-            )}
-          </div>
         </div>
       </CollapsibleSection>
 
