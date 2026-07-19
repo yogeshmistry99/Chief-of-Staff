@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { haptic } from '../lib/haptic'
 import { PROJECTS } from '../lib/todoist'
+import { getCachedTasks, saveToCache } from '../lib/taskCache'
 
 const BUCKET_META = {
   Finance:  { emoji: '💰' },
@@ -71,16 +72,22 @@ export default function QuickAdd({ open, onClose, onAdd, initialBucket = 'Work' 
     setSaving(true)
     try {
       const desc = attachment ? `[Attachment: ${attachment.name}]` : undefined
-      await fetch('/api/todoist?path=tasks', {
+      // Construct through the single choke point (/api/create-task → buildTask)
+      // and persist to the store — no Todoist. priority is already the 1–4
+      // (4=urgent) scale buildTask expects.
+      const res = await fetch('/api/create-task', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           content: content.trim(),
           priority,
-          project_id: PROJECTS[bucket],
+          project_name: bucket,
           ...(desc ? { description: desc } : {}),
         }),
       })
+      if (!res.ok) throw new Error()
+      const { task } = await res.json()
+      await saveToCache([...getCachedTasks(), task])
       haptic.success()
       onAdd?.()
       setSaved(true)

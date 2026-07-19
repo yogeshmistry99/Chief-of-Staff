@@ -331,10 +331,11 @@ export default function TaskEditSheet({ open, onClose, task, allTasks = [], task
   async function saveSubtaskEdit() {
     if (!editingSubtask) return
     try {
-      await fetch(`/api/todoist?path=tasks/${editingSubtask.id}`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: editingSubtask.content }),
-      })
+      // This is an EDIT, so it persists to the task store (single source of
+      // truth) rather than /api/create-task, which is construction-only. No Todoist.
+      const cached = getCachedTasks()
+      const updated = cached.map((t) => t.id === editingSubtask.id ? { ...t, content: editingSubtask.content } : t)
+      await saveToCache(updated)
       setSubtasks((prev) => prev.map((s) => s.id === editingSubtask.id ? { ...s, content: editingSubtask.content } : s))
       haptic.success()
     } catch { haptic.error() }
