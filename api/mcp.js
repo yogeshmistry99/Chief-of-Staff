@@ -1,16 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-
-// ─── Bucket → Todoist project ID map ─────────────────────────────────────────
-const PROJECTS = {
-  Finance:  '6gmVXCpMmXX8V5MV',
-  Health:   '6gmVXCm3jxXfXVWw',
-  Home:     '6gmVXCpQQxw3gFgw',
-  Work:     '6gmVXCv7j946mv75',
-  Family:   '6gmVXCpr8mc6mjjX',
-  Personal: '6gmcXJpGfj6gh4Gc',
-  Systems:  '6gmVXCmRw6X6cgpM',
-}
-const PROJECT_NAMES = Object.fromEntries(Object.entries(PROJECTS).map(([n, id]) => [id, n]))
+import { buildTask, enrichNewTask, PROJECTS, PROJECT_NAMES } from './lib/taskWrite.js'
 
 // ─── Supabase helpers ─────────────────────────────────────────────────────────
 function getSupabase() {
@@ -158,40 +147,26 @@ async function getTask({ id }) {
 async function createTask({ name, bucket, priority, due_date, parent_id, description, category }) {
   if (!name) throw new Error('name is required')
 
-  let project_id = null
-  let bucketName = null
-  if (bucket) {
-    const entry = Object.entries(PROJECTS).find(([n]) => n.toLowerCase() === bucket.toLowerCase())
-    if (!entry) throw new Error(`Unknown bucket "${bucket}". Valid: ${Object.keys(PROJECTS).join(', ')}`)
-    ;[bucketName, project_id] = entry
-  }
-
-  const id = crypto.randomUUID()
-  const newTask = {
-    id,
+  // Construct through the single choke point (api/lib/taskWrite.js).
+  const newTask = await enrichNewTask(buildTask({
     content: name,
     priority: priority ? labelToTodoist(priority) : 1,
-    due: due_date ? { date: due_date } : null,
-    is_completed: false,
+    project_name: bucket ?? null,
+    category: category ?? null,
     parent_id: parent_id ?? null,
     description: description ?? null,
-    project_id,
-    section_id: null,
-    _projectName: bucketName,
-    _sectionName: null,
-    _category: category ?? null,
-    created_at: new Date().toISOString(),
-  }
+    due: due_date ? { date: due_date } : null,
+  }))
 
   const sb = getSupabase()
   const tasks = await getTaskCache(sb)
   await saveTaskCache(sb, [...tasks, newTask])
 
   return {
-    id,
-    name,
-    bucket: bucketName ?? null,
-    category: category ?? null,
+    id: newTask.id,
+    name: newTask.content,
+    bucket: newTask._projectName ?? null,
+    category: newTask._category ?? null,
     priority: todoistToLabel(newTask.priority),
     due_date: due_date ?? null,
     is_completed: false,

@@ -237,20 +237,13 @@ export default function TaskEditSheet({ open, onClose, task, allTasks = [], task
     saving.current = true
     clearTimeout(autoSaveRef.current)
     try {
-      const body = { content, priority, description }
-      if (due) body.due_date = due
-      const res = await fetch(`/api/todoist?path=tasks/${task.id}`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      })
-      if (!res.ok) throw new Error()
       haptic.success()
       const savedTask = { ...task, content, priority, description, due: due ? { date: due } : task.due }
       onSaved?.(savedTask)
-      // Update the task cache so edits persist to Supabase immediately
+      // Persist the edit to the task store (single source of truth) — no Todoist.
       const cached = getCachedTasks()
       const updated = cached.map((t) => t.id === task.id ? { ...t, content, priority, description, due: due ? { date: due } : task.due } : t)
-      saveToCache(updated).catch(() => {})
+      await saveToCache(updated)
       if (closeAfter) dismiss()
       else {
         setAutoSaved(true)
@@ -351,13 +344,22 @@ export default function TaskEditSheet({ open, onClose, task, allTasks = [], task
   async function handleAddSubtask() {
     if (!newSubtask.trim() || !task) return
     try {
-      const res = await fetch('/api/todoist?path=tasks', {
+      // Construct through the single choke point (/api/create-task → buildTask)
+      // and PERSIST to the store — fixes the old bug where subtasks were written
+      // only to Todoist and never reached the task store.
+      const res = await fetch('/api/create-task', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: newSubtask.trim(), parent_id: task.id, project_id: task.project_id, priority: newSubtaskPriority }),
+        body: JSON.stringify({
+          content: newSubtask.trim(),
+          parent_id: task.id,
+          project_name: task._projectName ?? null,
+          priority: newSubtaskPriority,
+        }),
       })
       if (!res.ok) throw new Error()
-      const created = await res.json()
+      const { task: created } = await res.json()
       setSubtasks((prev) => [...prev, created])
+      await saveToCache([...getCachedTasks(), created])
       setNewSubtask(''); setNewSubtaskPriority(1); haptic.success()
     } catch { haptic.error() }
   }

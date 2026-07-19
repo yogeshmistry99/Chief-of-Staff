@@ -1,3 +1,5 @@
+import { buildTask, enrichNewTask } from './lib/taskWrite.js'
+
 const BUCKETS = ['Finance', 'Health', 'Work', 'Family', 'Home', 'Personal', 'Systems']
 
 // ─── Calendar helpers ─────────────────────────────────────────────────────────
@@ -129,16 +131,15 @@ const TOOLS = [
 // Mutates the tasks array in place and returns a result summary. Calendar tools are async.
 async function executeTool(name, input, tasks) {
   if (name === 'create_task') {
-    const newTask = {
-      id: `local_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    // Construct through the single choke point (api/lib/taskWrite.js) — UUID id,
+    // canonical shape, same as MCP-created tasks.
+    const newTask = await enrichNewTask(buildTask({
       content: input.content,
-      priority: input.priority ?? 1,
-      _projectName: input.project_name ?? null,
+      priority: input.priority,
+      project_name: input.project_name ?? null,
       parent_id: input.parent_id ?? null,
       due: input.due_string ? { date: input.due_string } : null,
-      created_at: new Date().toISOString(),
-      _local: true,
-    }
+    }))
     tasks.push(newTask)
     return { success: true, task_id: newTask.id, message: `Task created: "${newTask.content}"` }
   }
@@ -148,8 +149,11 @@ async function executeTool(name, input, tasks) {
     if (!task) return { error: `Task not found: ${input.task_id}` }
     task.is_completed = true
     task.completed_at = new Date().toISOString()
-    // Persist to Todoist so the completion survives a sync
-    if (!input.task_id.startsWith('local_')) {
+    // Persist to Todoist so the completion survives a sync — but only for
+    // genuine legacy Todoist ids. UUID (choke-point) and local_ tasks don't
+    // exist in Todoist, so closing them there would 404.
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.task_id)
+    if (!input.task_id.startsWith('local_') && !isUuid) {
       try {
         const base = process.env.VERCEL_URL
           ? `https://${process.env.VERCEL_URL}`
