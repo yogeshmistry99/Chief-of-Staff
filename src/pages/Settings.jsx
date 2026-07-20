@@ -607,6 +607,24 @@ export default function Settings() {
         </div>
       </CollapsibleSection>
 
+      {/* How to Use Life OS */}
+      <CollapsibleSection title="How to Use Life OS" subtitle="The rhythm — glance once, internalise">
+        <div className="bg-white border border-[#CAC4D0] rounded-2xl px-4 py-3 mt-2 space-y-3">
+          {[
+            { cadence: 'Daily (weekday mornings)', action: 'Open the app → check Priorities → work from the top down. If something feels wrongly ranked, tap it and correct the score that’s off — every correction makes tomorrow’s list better.' },
+            { cadence: 'When something comes up', action: 'Tell the CoS in chat or use Quick Add. Tasks are scored automatically on creation. Don’t overthink priority or bucket — the system handles placement.' },
+            { cadence: 'Sunday (20 minutes)', action: 'Open CoS → type “Weekly review.” Review what got done, what didn’t move, what’s coming next week. Check the calendar for conflicts. This is the one habit that makes everything else work.' },
+            { cadence: 'Monthly (first Sunday)', action: 'Open CoS → type “Monthly review.” Step back from tasks — assess patterns, update knowledge bases if life circumstances have changed, prune stale tasks. Check the Development Roadmap in Settings for progress.' },
+            { cadence: 'When building the app', action: 'Strategic direction here in Claude.ai (CoS). Implementation prompts pasted into Claude Code. Never mix the two in one session. Keep Claude Code sessions short and focused.' },
+          ].map(({ cadence, action }) => (
+            <div key={cadence} className="border-l-2 border-[#EADDFF] pl-3">
+              <p className="text-xs font-semibold text-[#1C1B1F]">{cadence}</p>
+              <p className="text-xs text-[#49454F] leading-relaxed mt-0.5">{action}</p>
+            </div>
+          ))}
+        </div>
+      </CollapsibleSection>
+
       {/* How Scoring Works */}
       <CollapsibleSection title="How Scoring Works" subtitle="The priority ranking, explained">
         <div className="bg-white border border-[#CAC4D0] rounded-2xl px-4 py-3 mt-2">
