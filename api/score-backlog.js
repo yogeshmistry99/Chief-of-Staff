@@ -28,17 +28,25 @@ export default async function handler(req, res) {
   const sb = createClient(supabaseUrl, supabaseKey)
 
   const n = Math.min(Math.max(parseInt(req.query.n, 10) || 10, 1), 25)
+  // rescore=1 re-scores tasks that are ALREADY scored (e.g. after a rubric
+  // change) instead of only filling in unscored ones. bucket=<name> narrows
+  // to a single bucket. Default (no rescore) is the original backlog-fill mode.
+  const rescore = req.query.rescore === '1' || req.query.rescore === 'true'
+  const bucket = typeof req.query.bucket === 'string' ? req.query.bucket : null
 
   const { data, error } = await sb.from('app_data').select('value').eq('key', 'todoist_task_cache').single()
   if (error) return res.status(500).json({ error: `Read failed: ${error.message}` })
   const tasks = Array.isArray(data?.value) ? data.value : []
 
-  const candidates = tasks
-    .filter((t) => !t.is_completed && !t.parent_id && !isScored(t))
+  const matches = (t) => !t.is_completed && !t.parent_id
+    && (rescore ? isScored(t) : !isScored(t))
+    && (!bucket || (t._projectName ?? '').toLowerCase() === bucket.toLowerCase())
+  const pool = tasks.filter(matches)
+  const candidates = pool
     .sort((a, b) => String(a.created_at ?? '').localeCompare(String(b.created_at ?? '')))
     .slice(0, n)
 
-  const results = { scored: 0, failed: 0, remaining_unscored: 0, tasks: [] }
+  const results = { mode: rescore ? 'rescore' : 'backfill', bucket: bucket ?? 'all', pool: pool.length, scored: 0, failed: 0, remaining: Math.max(0, pool.length - candidates.length), tasks: [] }
   const scoreById = new Map()
   for (const t of candidates) {
     const scores = await aiScoreTask(t)
@@ -59,9 +67,6 @@ export default async function handler(req, res) {
     const current = Array.isArray(fresh?.value) ? fresh.value : tasks
     const merged = current.map((t) => (scoreById.has(t.id) ? { ...t, ...scoreById.get(t.id) } : t))
     await sb.from('app_data').upsert({ key: 'todoist_task_cache', value: merged, updated_at: new Date().toISOString() })
-    results.remaining_unscored = merged.filter((t) => !t.is_completed && !t.parent_id && !isScored(t)).length
-  } else {
-    results.remaining_unscored = tasks.filter((t) => !t.is_completed && !t.parent_id && !isScored(t)).length
   }
 
   return res.status(200).json(results)
