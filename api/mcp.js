@@ -120,6 +120,11 @@ async function listTasks({ bucket, priority, status, category } = {}) {
     is_completed: t.is_completed ?? false,
     parent_id: t.parent_id ?? null,
     description: t.description ?? null,
+    consequence: t.consequence ?? null,
+    reversibility: t.reversibility ?? null,
+    compounding: t.compounding ?? null,
+    effort: t.effort ?? null,
+    pinned: t.pinned === true,
   }))
 }
 

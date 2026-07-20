@@ -101,7 +101,7 @@ COMPOUNDING — leverage: does completing this unlock or ease other things over 
 2: Slight — a small convenience later. (Organising files for one project; saving a reusable template.)
 3: Moderate — makes a recurring activity easier from now on. (Setting up autopay; a weekly meal-prep routine; documenting a work process.)
 4: High — unlocks other tasks or builds an appreciating asset. (Automating savings; fixing sleep habits; building a reusable client pipeline; teaching a child to read.)
-5: Foundational — reshapes many future weeks. (Restructuring finances; a health regimen that reverses a chronic risk; a hiring/delegation system; the Life OS itself.)
+5: Foundational — reshapes many future weeks. (Restructuring finances; a health regimen that reverses a chronic risk; a hiring/delegation system; a system that permanently automates a recurring obligation.)
 
 EFFORT — honest size of the work:
 S: under ~30 minutes of focused work. (A phone call; a form; a decisive email.)
