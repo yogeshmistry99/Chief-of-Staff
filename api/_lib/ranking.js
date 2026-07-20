@@ -93,5 +93,11 @@ export function rankTasks(tasks, now = new Date()) {
     if (bu !== 0) return bu
     return String(a.task.created_at ?? '').localeCompare(String(b.task.created_at ?? ''))
   })
+  // Attach final 1-based rank and the urgency factor so the UI can render a
+  // plain-language placement line without recomputing.
+  entries.forEach((e, i) => {
+    e.rank = i + 1
+    e.urgency = e.tier === 'unscored' ? null : urgencyFactor(e.task, now)
+  })
   return entries
 }

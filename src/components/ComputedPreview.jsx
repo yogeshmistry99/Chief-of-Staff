@@ -6,6 +6,27 @@ import { rankTasks } from '../../api/_lib/ranking.js'
 // tier dot only (no raw numbers); tapping a row reveals the four scores and
 // the rule that placed it. Purely informational: no writes, no actions.
 
+// Human "due in …" phrase from a YYYY-MM-DD date (matches ranking's urgency curve).
+function duePhrase(date) {
+  if (!date) return null
+  const dueMs = new Date(date.slice(0, 10) + 'T23:59:59').getTime()
+  if (Number.isNaN(dueMs)) return null
+  const hours = (dueMs - Date.now()) / 3_600_000
+  if (hours <= 0) return 'overdue'
+  if (hours <= 36) return 'due in 1 day'
+  return `due in ${Math.round(hours / 24)} days`
+}
+
+// One plain-language line stating which rule placed the task.
+function placementLine(entry) {
+  if (entry.tier === 'unscored') return 'Unscored — ranks below all scored tasks'
+  if (entry.tier === 0) return 'Triage — irreversible + high consequence'
+  const score = entry.score.toFixed(1)
+  if (!entry.urgency || entry.urgency === 1) return `Rank #${entry.rank} — score ${score}, no urgency modifier`
+  const due = duePhrase(entry.task.due?.date)
+  return `Rank #${entry.rank} — score ${score}, ×${entry.urgency} urgency${due ? ` (${due})` : ''}`
+}
+
 const TIER_DOT = {
   0: 'bg-red-500',          // triage: irreversible + high consequence
   1: 'bg-[#6750A4]',        // scored
@@ -26,7 +47,8 @@ export default function ComputedPreview({ tasks }) {
       </div>
       <p className="text-[11px] text-[#79747E] mb-2">Rule-based ranking from task scores. Tap a row for the why.</p>
 
-      {ranked.slice(0, 15).map(({ task, tier, rule }, i) => {
+      {ranked.slice(0, 15).map((entry, i) => {
+        const { task, tier } = entry
         const isOpen = expandedId === task.id
         const unscored = tier === 'unscored'
         return (
@@ -48,7 +70,7 @@ export default function ComputedPreview({ tasks }) {
             {isOpen && (
               <div className="pb-2.5 pl-9 pr-2">
                 {unscored ? (
-                  <p className="text-[11px] text-[#79747E]">{rule}</p>
+                  <p className="text-[11px] text-[#79747E]">{placementLine(entry)}</p>
                 ) : (
                   <>
                     <div className="flex gap-3 mb-1">
@@ -64,7 +86,7 @@ export default function ComputedPreview({ tasks }) {
                         </div>
                       ))}
                     </div>
-                    <p className="text-[11px] text-[#79747E]">{rule}</p>
+                    <p className="text-[11px] text-[#79747E]">{placementLine(entry)}</p>
                   </>
                 )}
               </div>

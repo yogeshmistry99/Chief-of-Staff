@@ -607,6 +607,24 @@ export default function Settings() {
         </div>
       </CollapsibleSection>
 
+      {/* How Scoring Works */}
+      <CollapsibleSection title="How Scoring Works" subtitle="The priority ranking, explained">
+        <div className="bg-white border border-[#CAC4D0] rounded-2xl px-4 py-3 mt-2">
+          <p className="text-xs text-[#49454F] leading-relaxed">
+            Every task is scored on four dimensions when created: <span className="font-semibold text-[#1C1B1F]">Consequence</span> (cost of not doing it, 1–5), <span className="font-semibold text-[#1C1B1F]">Reversibility</span> (can you undo the damage, 1–5), <span className="font-semibold text-[#1C1B1F]">Compounding</span> (does it unlock future value, 1–5), and <span className="font-semibold text-[#1C1B1F]">Effort</span> (S/M/L).
+          </p>
+          <p className="text-xs text-[#49454F] leading-relaxed mt-2">
+            Tasks scoring reversibility 5 and consequence 4+ are flagged as <span className="font-semibold text-[#1C1B1F]">Triage</span> — they surface first, always. Everything else is ranked by (consequence × reversibility × compounding) ÷ effort, with deadlines increasing urgency as they approach.
+          </p>
+          <p className="text-xs text-[#49454F] leading-relaxed mt-2">
+            Bucket order (Finance → Health → Work → Family → Home → Personal → Systems) only breaks ties. Pin any task to force it to the top of its tier.
+          </p>
+          <p className="text-xs text-[#49454F] leading-relaxed mt-2">
+            Scores are set by AI at creation and corrected by you — every correction makes the ranking permanently smarter.
+          </p>
+        </div>
+      </CollapsibleSection>
+
       {/* Development Roadmap */}
       <CollapsibleSection title="Development Roadmap" subtitle="6 phases · tap to explore">
         <RoadmapSection roadmap={roadmap} />
