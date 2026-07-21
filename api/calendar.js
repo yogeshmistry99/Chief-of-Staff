@@ -130,18 +130,30 @@ export default async function handler(req, res) {
 
     const results = await Promise.allSettled(
       calendars.map(async (cal) => {
-        const url = new URL(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(cal.id)}/events`)
-        if (start) url.searchParams.set('timeMin', start)
-        if (end) url.searchParams.set('timeMax', end)
-        url.searchParams.set('singleEvents', 'true')
-        url.searchParams.set('orderBy', 'startTime')
-        url.searchParams.set('maxResults', '50')
-        const r = await fetch(url.toString(), { headers: { Authorization: `Bearer ${accessToken}` } })
-        if (!r.ok) return []
-        const data = await r.json()
+        // Page through ALL events in the window — Google caps each page and
+        // returns a nextPageToken; without following it, events past the first
+        // page were silently dropped (near-future ones starved by past events).
+        const items = []
+        let pageToken = null
+        let pages = 0
+        do {
+          const url = new URL(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(cal.id)}/events`)
+          if (start) url.searchParams.set('timeMin', start)
+          if (end) url.searchParams.set('timeMax', end)
+          url.searchParams.set('singleEvents', 'true')
+          url.searchParams.set('orderBy', 'startTime')
+          url.searchParams.set('maxResults', '250')
+          if (pageToken) url.searchParams.set('pageToken', pageToken)
+          const r = await fetch(url.toString(), { headers: { Authorization: `Bearer ${accessToken}` } })
+          if (!r.ok) break // keep whatever we've gathered so far rather than dropping the calendar
+          const data = await r.json()
+          items.push(...(data.items ?? []))
+          pageToken = data.nextPageToken ?? null
+          pages++
+        } while (pageToken && pages < 20) // safety cap: 20 × 250 = 5000 events/calendar
         const isReadOnly = cal.accessRole === 'reader'
         const isHoliday = cal.id.includes('holiday') || cal.summary?.toLowerCase().includes('holiday')
-        return (data.items ?? []).map((e) => ({
+        return items.map((e) => ({
           ...e,
           _calendarId: cal.id,
           _calendarName: cal.summary,
