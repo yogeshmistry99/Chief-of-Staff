@@ -3,6 +3,29 @@ export const haptic = {
   medium:  () => navigator.vibrate?.(25),
   success: () => navigator.vibrate?.([10, 50, 10]),
   error:   () => navigator.vibrate?.([50, 30, 50]),
+  // Sending a message: a crisp vibration pulse + a brief, soft ascending
+  // two-note "ping" (D5 → A5). Kept short and quiet — satisfying, not distracting.
+  send: () => {
+    try {
+      navigator.vibrate?.(15)
+      const ctx = new (window.AudioContext || window.webkitAudioContext)()
+      const notes = [[587.33, 0], [880, 0.07]]
+      notes.forEach(([freq, when]) => {
+        const osc = ctx.createOscillator()
+        const gain = ctx.createGain()
+        osc.connect(gain); gain.connect(ctx.destination)
+        osc.type = 'sine'
+        osc.frequency.value = freq
+        gain.gain.setValueAtTime(0.10, ctx.currentTime + when)
+        gain.gain.exponentialRampToValueAtTime(0.0008, ctx.currentTime + when + 0.14)
+        osc.start(ctx.currentTime + when)
+        osc.stop(ctx.currentTime + when + 0.16)
+      })
+      // High-frequency action — release the context so they don't accumulate
+      // toward the browser's hardware-context limit.
+      setTimeout(() => ctx.close?.(), 400)
+    } catch {}
+  },
   chat: () => {
     try {
       navigator.vibrate?.(12)

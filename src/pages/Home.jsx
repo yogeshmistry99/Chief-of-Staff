@@ -948,8 +948,8 @@ export default function Home() {
         <div className="bg-white border-t border-[#CAC4D0] px-4 pt-3 pb-3 safe-bottom flex-shrink-0">
           <ChatInput
             placeholder="Message your Chief of Staff…"
-            onSend={handleSend}
-            onVoiceComplete={(text) => { handleSend(text, null, null); setTab('chief') }}
+            onSend={(content, name, preview) => { haptic.send(); setTab('chief'); handleSend(content, name, preview) }}
+            onVoiceComplete={(text) => { haptic.send(); setTab('chief'); handleSend(text, null, null) }}
           />
         </div>
       </div>
