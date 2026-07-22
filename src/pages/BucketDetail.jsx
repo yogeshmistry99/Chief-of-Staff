@@ -397,6 +397,7 @@ function TaskItem({ task: initialTask, onComplete, index = 0, allTasks = [], buc
     if (!focusTaskId || focusTaskId !== initialTask.id) return
     const raf = requestAnimationFrame(() => rowRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }))
     setFlash(true)
+    setEditOpen(true) // deep-link from search opens the task's edit sheet directly
     const t = setTimeout(() => setFlash(false), 2000)
     return () => { cancelAnimationFrame(raf); clearTimeout(t) }
   }, [focusTaskId, initialTask.id])
@@ -700,7 +701,9 @@ function ArchivedSection({ tasks, allTasks, bucket, onRestore, focusTaskId = nul
   const hasFocus = !!(focusTaskId && tasks.some((t) => t.id === focusTaskId))
   const [open, setOpen] = useState(hasFocus)
   const [search, setSearch] = useState('')
-  const [expandedId, setExpandedId] = useState(null)
+  // Deep-linked completed task: open its inline detail (the archived equivalent
+  // of the edit view) in addition to expanding the section + highlighting.
+  const [expandedId, setExpandedId] = useState(hasFocus ? focusTaskId : null)
   const focusRef = useRef(null)
   const [flashId, setFlashId] = useState(hasFocus ? focusTaskId : null)
   useEffect(() => {
