@@ -1,4 +1,4 @@
-import { buildTask, enrichNewTask, aiScoreTask, isScored } from './_lib/taskWrite.js'
+import { buildTask, enrichNewTask, aiScoreTask, isScored, persistNewTask } from './_lib/taskWrite.js'
 
 const BUCKETS = ['Finance', 'Health', 'Work', 'Family', 'Home', 'Personal', 'Systems']
 
@@ -131,7 +131,7 @@ const TOOLS = [
 // Mutates the tasks array in place and returns a result summary. Calendar tools are async.
 async function executeTool(name, input, tasks) {
   if (name === 'create_task') {
-    // Construct through the single choke point (api/lib/taskWrite.js) — UUID id,
+    // Construct through the single choke point (api/_lib/taskWrite.js) — UUID id,
     // canonical shape, same as MCP-created tasks.
     const newTask = await enrichNewTask(buildTask({
       content: input.content,
@@ -140,8 +140,21 @@ async function executeTool(name, input, tasks) {
       parent_id: input.parent_id ?? null,
       due: input.due_string ? { date: input.due_string } : null,
     }))
-    tasks.push(newTask)
-    return { success: true, task_id: newTask.id, message: `Task created: "${newTask.content}"` }
+    // AUTHORITATIVE write: persist server-side and only report success if the
+    // store write actually succeeded. A failure returns an error the model must
+    // surface — no false confirmation, no swallowed write.
+    try {
+      await persistNewTask(newTask)
+    } catch (err) {
+      return { error: `Task NOT saved — the store write failed: ${err.message}. Tell the user it was not created.` }
+    }
+    tasks.push(newTask) // reflect in the streamed tasks_updated for the client UI
+    return {
+      success: true,
+      task_id: newTask.id,
+      verified: { content: newTask.content, bucket: newTask._projectName ?? null, due_date: newTask.due?.date ?? null },
+      message: `Task saved to the store: "${newTask.content}"${newTask.due?.date ? ` (due ${newTask.due.date})` : ''}`,
+    }
   }
 
   if (name === 'complete_task') {
