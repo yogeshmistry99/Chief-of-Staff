@@ -75,7 +75,7 @@ export default function Buckets() {
                 return (
                   <div key={task.id}
                     className="flex items-start gap-3 px-4 py-3 border-b border-[#F3EDF7] last:border-0 cursor-pointer active:bg-[#F3EDF7]"
-                    onClick={() => navigate(`/buckets/${task._projectName}`)}>
+                    onClick={() => navigate(`/buckets/${task._projectName}`, { state: { focusTaskId: task.id } })}>
                     <span className="text-base mt-0.5">{meta.emoji ?? '📁'}</span>
                     <div className="flex-1 min-w-0">
                       <p className={`text-sm leading-snug ${isOverdue ? 'text-red-900' : 'text-[#1C1B1F]'}`}>{task.content}</p>

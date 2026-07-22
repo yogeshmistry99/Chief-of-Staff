@@ -257,7 +257,7 @@ function groupBySection(tasks, sections) {
   return result
 }
 
-function TaskCard({ title, tasks, onComplete, indexOffset = 0, allTasks = [], bucket = '', onRespond }) {
+function TaskCard({ title, tasks, onComplete, indexOffset = 0, allTasks = [], bucket = '', onRespond, focusTaskId = null }) {
   return (
     <div className="bg-white border border-[#CAC4D0] rounded-2xl px-4 pt-3 pb-1 shadow-sm mb-3"
       style={{ animation: `fade-up 0.4s cubic-bezier(0.22,1,0.36,1) ${0.05 + indexOffset * 0.06}s both` }}>
@@ -268,13 +268,13 @@ function TaskCard({ title, tasks, onComplete, indexOffset = 0, allTasks = [], bu
         </div>
       )}
       {tasks.map((task, i) => (
-        <TaskItem key={task.id} task={task} onComplete={onComplete} index={indexOffset + i} allTasks={allTasks} bucket={bucket} onRespond={onRespond} />
+        <TaskItem key={task.id} task={task} onComplete={onComplete} index={indexOffset + i} allTasks={allTasks} bucket={bucket} onRespond={onRespond} focusTaskId={focusTaskId} />
       ))}
     </div>
   )
 }
 
-function TasksTab({ tasks, sections, loading, onComplete, allTasks, bucket = '', onRefresh, refreshing, onRespond }) {
+function TasksTab({ tasks, sections, loading, onComplete, allTasks, bucket = '', onRefresh, refreshing, onRespond, focusTaskId = null }) {
   const [sort, setSort] = useState('category')
   const [commentsOnly, setCommentsOnly] = useState(false)
 
@@ -314,13 +314,13 @@ function TasksTab({ tasks, sections, loading, onComplete, allTasks, bucket = '',
     const groups = groupBySection(allScored, sections)
     let offset = 0
     content = groups.map((g) => {
-      const el = <TaskCard key={g.id} title={g.name} tasks={g.tasks} onComplete={onComplete} indexOffset={offset} allTasks={allTasks} bucket={bucket} onRespond={onRespond} />
+      const el = <TaskCard key={g.id} title={g.name} tasks={g.tasks} onComplete={onComplete} indexOffset={offset} allTasks={allTasks} bucket={bucket} onRespond={onRespond} focusTaskId={focusTaskId} />
       offset += g.tasks.length
       return el
     })
   } else {
     const sorted = sortTasks(active, sort)
-    content = <TaskCard title={null} tasks={sorted} onComplete={onComplete} allTasks={allTasks} bucket={bucket} onRespond={onRespond} />
+    content = <TaskCard title={null} tasks={sorted} onComplete={onComplete} allTasks={allTasks} bucket={bucket} onRespond={onRespond} focusTaskId={focusTaskId} />
   }
 
   return (
@@ -382,7 +382,7 @@ function TasksTab({ tasks, sections, loading, onComplete, allTasks, bucket = '',
   )
 }
 
-function TaskItem({ task: initialTask, onComplete, index = 0, allTasks = [], bucket = '', onRespond }) {
+function TaskItem({ task: initialTask, onComplete, index = 0, allTasks = [], bucket = '', onRespond, focusTaskId = null }) {
   const navigate = useNavigate()
   const [localTask, setLocalTask] = useState(initialTask)
   const [pendingComplete, setPendingComplete] = useState(false)
@@ -390,6 +390,16 @@ function TaskItem({ task: initialTask, onComplete, index = 0, allTasks = [], buc
   const [completingAnim, setCompletingAnim] = useState(false)
   const [expanded, setExpanded] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
+  // Deep-link focus: scroll this row into view + briefly highlight it.
+  const rowRef = useRef(null)
+  const [flash, setFlash] = useState(false)
+  useEffect(() => {
+    if (!focusTaskId || focusTaskId !== initialTask.id) return
+    const raf = requestAnimationFrame(() => rowRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }))
+    setFlash(true)
+    const t = setTimeout(() => setFlash(false), 2000)
+    return () => { cancelAnimationFrame(raf); clearTimeout(t) }
+  }, [focusTaskId, initialTask.id])
   const [swipeX, setSwipeX] = useState(0)
   const [isSwiping, setIsSwiping] = useState(false)
   const [swipeTriggered, setSwipeTriggered] = useState(null)
@@ -518,7 +528,7 @@ function TaskItem({ task: initialTask, onComplete, index = 0, allTasks = [], buc
 
   return (
     <>
-    <div style={{
+    <div ref={rowRef} style={{
       display: 'grid',
       gridTemplateRows: removing ? '0fr' : '1fr',
       opacity: removing ? 0 : 1,
@@ -546,7 +556,7 @@ function TaskItem({ task: initialTask, onComplete, index = 0, allTasks = [], buc
       </div>
       <div
         data-task-swipe
-        style={{ transform: `translateX(${swipeX}px)`, transition: isSwiping ? 'none' : 'transform 0.28s cubic-bezier(0.25,1,0.5,1)', background: 'white' }}
+        style={{ transform: `translateX(${swipeX}px)`, transition: isSwiping ? 'none' : 'transform 0.28s cubic-bezier(0.25,1,0.5,1), background-color 0.4s ease', backgroundColor: flash ? '#EADDFF' : 'white' }}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
@@ -683,11 +693,22 @@ function TaskItem({ task: initialTask, onComplete, index = 0, allTasks = [], buc
   )
 }
 
-function ArchivedSection({ tasks, allTasks, bucket, onRestore }) {
+function ArchivedSection({ tasks, allTasks, bucket, onRestore, focusTaskId = null }) {
   const navigate = useNavigate()
-  const [open, setOpen] = useState(false)
+  // A deep-linked target that turns out to be completed lives here — auto-expand
+  // the section so it's visible, then scroll to + highlight it.
+  const hasFocus = !!(focusTaskId && tasks.some((t) => t.id === focusTaskId))
+  const [open, setOpen] = useState(hasFocus)
   const [search, setSearch] = useState('')
   const [expandedId, setExpandedId] = useState(null)
+  const focusRef = useRef(null)
+  const [flashId, setFlashId] = useState(hasFocus ? focusTaskId : null)
+  useEffect(() => {
+    if (!hasFocus) return
+    const raf = requestAnimationFrame(() => focusRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }))
+    const t = setTimeout(() => setFlashId(null), 2000)
+    return () => { cancelAnimationFrame(raf); clearTimeout(t) }
+  }, [hasFocus, focusTaskId])
 
   const allDiscussions = getDiscussions(bucket)
 
@@ -739,7 +760,9 @@ function ArchivedSection({ tasks, allTasks, bucket, onRestore }) {
               const isExpanded = expandedId === t.id
 
               return (
-                <div key={t.id} className="bg-white border border-[#E7E0EC] rounded-2xl overflow-hidden">
+                <div key={t.id} ref={t.id === focusTaskId ? focusRef : null}
+                  className="border rounded-2xl overflow-hidden"
+                  style={{ transition: 'background-color 0.4s ease', backgroundColor: flashId === t.id ? '#EADDFF' : 'white', borderColor: '#E7E0EC' }}>
                   {/* Task row */}
                   <div className="w-full flex items-start gap-2.5 py-2.5 px-3">
                     {/* Completion circle — filled green tick, tap to reopen */}
@@ -855,6 +878,8 @@ export default function BucketDetail() {
   const navigate = useNavigate()
   const location = useLocation()
   const [tab, setTab] = useState(location.state?.tab ?? 'tasks')
+  // Deep-link target from a search result (scroll-to + highlight on arrival).
+  const focusTaskId = location.state?.focusTaskId ?? null
   const [tasks, setTasks] = useState([])
   const [sections, setSections] = useState([])
   const [loading, setLoading] = useState(true)
@@ -1037,8 +1062,8 @@ export default function BucketDetail() {
           {loadError
             ? <p className="px-4 pt-6 text-sm text-red-500">Could not load tasks — {loadError}</p>
             : <>
-                <TasksTab tasks={open} sections={sections} loading={loading} onComplete={removeTask} allTasks={tasks} bucket={bucket} onRefresh={handleRefresh} refreshing={refreshing} onRespond={handleRespond} />
-                {archived.length > 0 && <ArchivedSection tasks={archived} allTasks={tasks} bucket={bucket} onRestore={handleRestore} />}
+                <TasksTab tasks={open} sections={sections} loading={loading} onComplete={removeTask} allTasks={tasks} bucket={bucket} onRefresh={handleRefresh} refreshing={refreshing} onRespond={handleRespond} focusTaskId={focusTaskId} />
+                {archived.length > 0 && <ArchivedSection tasks={archived} allTasks={tasks} bucket={bucket} onRestore={handleRestore} focusTaskId={focusTaskId} />}
               </>}
         </div>
         <div className={`absolute inset-0 ${tab === 'head' ? '' : 'invisible pointer-events-none'}`}>
