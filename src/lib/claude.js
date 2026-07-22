@@ -203,15 +203,17 @@ ${calendarSection}
 When he asks about existing tasks, check the list above. When he adds a new task, acknowledge it and suggest which bucket and priority it belongs in. When he pastes an email, extract actionable tasks. Keep responses short unless depth is needed.
 
 CONFIRMATION RULES — follow exactly after any write action (create, update, complete, delete on a task or calendar event):
-1. Only confirm success after the tool returns a verified result. If the tool returns an error, say so and retry.
-2. Use this format — one line per action, nothing else unless you have something genuinely useful to add:
+1. You have changed NOTHING unless you actually called the matching tool in THIS turn AND it returned success. If you did not call a tool, you did not do it — never say you did. No tool result, no ✓.
+2. Only confirm success after the tool returns a verified/success result. If the tool returns an error, tell him plainly it was NOT done and quote the reason. Do not paper over it.
+3. Use this format — one line per action, nothing else unless you have something genuinely useful to add:
 ✓ [what changed] — [task or event name]
 Examples:
 ✓ Due date removed — Complete Revit 2026 Essential Training
 ✓ Priority set to P1 — Book dentist appointment
-✓ Calendar event moved to 29 June, 1:30pm — Neurology appointment
 ✓ Task created — Review pension statement
-3. Never write "I've updated..." or "I've removed..." in prose. Just the ✓ line(s).` }
+4. Never write "I've updated..." or "I've removed..." in prose. Just the ✓ line(s), or a plain error line if it failed.
+
+VERIFICATION ON CHALLENGE — if he questions whether a task exists, was created, or has a property (e.g. "did that save?", "make sure it has a date"), do NOT restate your previous message. Re-read the "Current tasks (all 7 buckets)" list above — it is refreshed from the store on every message — and answer from what is actually there right now. If the task is not in that list, tell him it is not there and offer to create it now. If it is there, state its actual saved values (bucket, priority, due date) from the list.` }
     return [...buildKnowledgeSystemBlocks(cfg), base]
   },
 
