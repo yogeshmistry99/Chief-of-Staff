@@ -204,9 +204,14 @@ async function executeTool(name, input, tasks) {
     const events = (Array.isArray(data) ? data : []).map((e) => ({
       id: e.id,
       title: e.summary ?? '(No title)',
+      // Slice the wall-clock time straight from the RFC3339 string (event-local,
+      // e.g. "...T13:00:00+01:00" → "13:00"). Using `new Date().toLocaleTimeString`
+      // WITHOUT a timeZone renders in the server's zone (UTC on Vercel), which
+      // showed every timed event 1h early during BST — the CoS saw 12:00 for a
+      // 13:00 event. Matches the `date` field and the create/update verifies.
       date: e.start?.date ?? e.start?.dateTime?.slice(0, 10),
-      start_time: e.start?.dateTime ? new Date(e.start.dateTime).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : 'All day',
-      end_time:   e.end?.dateTime   ? new Date(e.end.dateTime).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })   : null,
+      start_time: e.start?.dateTime ? e.start.dateTime.slice(11, 16) : 'All day',
+      end_time:   e.end?.dateTime   ? e.end.dateTime.slice(11, 16)   : null,
       location: e.location ?? null,
       description: e.description ?? null,
     }))
