@@ -117,6 +117,20 @@ export default async function handler(req, res) {
     } catch (err) { return res.status(500).json({ error: err.message }) }
   }
 
+  // Fetch a single event by id — used to read its current start/end (timed vs
+  // all-day, time-of-day, timeZone) before an update. Defaults to the primary
+  // calendar, matching the PATCH target.
+  if (req.query.eventId) {
+    try {
+      const r = await fetch(`${BASE_CAL}/${encodeURIComponent(req.query.eventId)}`, { headers: authHeader })
+      if (r.status === 401) return res.status(401).json({ error: 'auth_required' })
+      const ev = await r.json()
+      return res.status(r.status).json(ev)
+    } catch (err) {
+      return res.status(500).json({ error: err.message })
+    }
+  }
+
   // Fetch events (GET) — all enabled calendars
   const { start, end } = req.query
 

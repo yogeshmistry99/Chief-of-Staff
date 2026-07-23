@@ -238,10 +238,36 @@ async function executeTool(name, input, tasks) {
     if (input.title)       updates.summary     = input.title
     if (input.location !== undefined) updates.location    = input.location
     if (input.description !== undefined) updates.description = input.description
-    if (input.date || input.start_time) {
-      const date = input.date ?? new Date().toISOString().slice(0, 10)
-      updates.start = toGCalDateTime(date, input.start_time)
-      updates.end   = toGCalDateTime(date, input.end_time ?? input.start_time)
+    if (input.date || input.start_time || input.end_time) {
+      // Read the existing event first so we preserve its timed-vs-all-day type,
+      // its time-of-day, and its timeZone. Without this, a date-only change
+      // collapses a timed event into an all-day { date } shape and Google drops
+      // it — the reported "date reverts" bug.
+      const ex = await calendarRequest('GET', null, { eventId: input.event_id })
+      if (!ex.ok || !ex.data || ex.data.error) {
+        return { error: "Couldn't read the event to move it safely — please try again, or delete and recreate it." }
+      }
+      const existing = ex.data
+      const isAllDay = !!existing.start?.date && !existing.start?.dateTime
+      const curDate  = existing.start?.date ?? existing.start?.dateTime?.slice(0, 10)
+      const targetDate = input.date ?? curDate
+      if (isAllDay && !input.start_time && !input.end_time) {
+        // Keep it all-day; preserve the original span (all-day end.date is exclusive).
+        const span = (existing.start?.date && existing.end?.date)
+          ? Math.max(1, Math.round((new Date(existing.end.date) - new Date(existing.start.date)) / 86400000))
+          : 1
+        const endDate = new Date(new Date(targetDate).getTime() + span * 86400000).toISOString().slice(0, 10)
+        updates.start = { date: targetDate }
+        updates.end   = { date: endDate }
+      } else {
+        // Timed event (or the user supplied a time): reuse existing time-of-day
+        // and timeZone unless explicitly overridden.
+        const tz = existing.start?.timeZone ?? 'Europe/London'
+        const startTime = input.start_time ?? existing.start?.dateTime?.slice(11, 16) ?? '09:00'
+        const endTime   = input.end_time ?? existing.end?.dateTime?.slice(11, 16) ?? startTime
+        updates.start = { dateTime: `${targetDate}T${startTime}:00`, timeZone: tz }
+        updates.end   = { dateTime: `${targetDate}T${endTime}:00`,   timeZone: tz }
+      }
     }
     const { ok, data } = await calendarRequest('PATCH', { eventId: input.event_id, ...updates })
     if (!ok) return { error: data.error ?? 'Failed to update event' }
@@ -259,6 +285,14 @@ async function executeTool(name, input, tasks) {
     // Check title matched if we tried to set it
     if (input.title && actualTitle !== input.title) {
       return { error: `Title update failed — calendar still shows "${actualTitle}", expected "${input.title}".` }
+    }
+    // Assert the date/time actually changed — a silent revert must surface as a
+    // failure, never a false success.
+    if (input.date && actualDate !== input.date) {
+      return { error: `Date update failed — calendar still shows ${actualDate}, expected ${input.date}. The event was not moved.` }
+    }
+    if (input.start_time && actualStart !== input.start_time) {
+      return { error: `Time update failed — calendar still shows ${actualStart}, expected ${input.start_time}.` }
     }
     return { success: true, verified: { title: actualTitle, date: actualDate, start_time: actualStart }, calendar_changed: true }
   }
