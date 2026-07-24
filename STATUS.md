@@ -43,7 +43,7 @@ Last updated: 2026-07-16 (storage inventory verified live against Supabase proje
   - `google_calendar_auth` — Google OAuth token state.
   - **`app_roadmap` — referenced by code (`get_roadmap`/`update_roadmap`) but NO ROW exists yet.** Not set until the roadmap is first saved.
 - **`task_backups`** — task-store snapshots (`label`, `tasks`, `task_count`, `created_at`). **12 rows — currently AT the cap.** Capped at 12 (`MAX_SNAPSHOTS`, pruned on every write in `src/lib/backups.js`).
-- **`knowledge_backups`** — prior values before overwrite (`head_key`, `backed_up_at`, `value`). 10 rows. Written by `update_knowledge`, `update_roadmap`, and `/api/sync-all-buckets` (key `todoist_task_cache_snapshot`). **No retention policy — grows unbounded.**
+- **`knowledge_backups`** — prior values before overwrite (`head_key`, `backed_up_at`, `value`). Written by `update_knowledge`, `update_roadmap`, and `/api/sync-all-buckets` (key `todoist_task_cache_snapshot`). **Capped at 12 (`MAX_KNOWLEDGE_BACKUPS`), prune-on-write at all three insert sites — fixed 2026-07-16.** (This line previously said "grows unbounded," contradicting the rest of the doc; corrected 2026-07-24.)
 
 ### localStorage keys
 | Key | Holds | Supabase mirror | Capped? |
@@ -84,6 +84,15 @@ Last updated: 2026-07-16 (storage inventory verified live against Supabase proje
 ---
 
 ## Recent significant changes (newest first)
+
+- **2026-07-24 — STATUS doc: knowledge_backups contradiction corrected.** The storage-inventory
+  line for `knowledge_backups` still read "No retention policy — grows unbounded," contradicting
+  the "Grows unbounded" watch-list, the "Known bugs" list, and the 2026-07-16 changelog, which
+  all correctly said capped at 12. Verified against the code: `MAX_KNOWLEDGE_BACKUPS = 12` +
+  `pruneKnowledgeBackups` in `api/mcp.js`, prune-on-write at `update_knowledge`, `update_roadmap`,
+  and `api/sync-all-buckets.js`. The cap is real (fixed 2026-07-16); the inventory line is now
+  aligned. Any externally-tracked "knowledge_backups unbounded / task 9 open" item can be closed
+  as already-fixed. Doc-only change.
 
 - **2026-07-24 — Recurring calendar events can now be created (CoS chat).** The
   `create_calendar_event` tool (api/claude.js) gained an optional `recurrence` input (an RFC
