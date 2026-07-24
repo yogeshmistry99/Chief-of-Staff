@@ -84,16 +84,17 @@ const TOOLS = [
   },
   {
     name: 'create_calendar_event',
-    description: 'Create a new event in Google Calendar. Confirm with the user before calling unless they explicitly asked you to create it.',
+    description: 'Create a new event in Google Calendar. Can create one-off OR repeating events — pass the recurrence field for anything that repeats ("every week", "daily", "each Monday until December"). Confirm with the user before calling unless they explicitly asked you to create it.',
     input_schema: {
       type: 'object',
       properties: {
         title:       { type: 'string', description: 'Event title' },
-        date:        { type: 'string', description: 'Date YYYY-MM-DD' },
+        date:        { type: 'string', description: 'Date YYYY-MM-DD. For a repeating event this is the FIRST occurrence.' },
         start_time:  { type: 'string', description: 'Start time HH:MM (24h)' },
         end_time:    { type: 'string', description: 'End time HH:MM (24h)' },
         location:    { type: 'string', description: 'Location or video link' },
         description: { type: 'string', description: 'Event description or notes' },
+        recurrence:  { type: 'string', description: "Optional. RFC 5545 recurrence rule WITHOUT the 'RRULE:' prefix, to make this a repeating event. Examples: 'FREQ=DAILY' (every day), 'FREQ=WEEKLY;BYDAY=MO,WE,FR' (every Mon/Wed/Fri), 'FREQ=WEEKLY;BYDAY=TU;COUNT=8' (8 Tuesdays), 'FREQ=MONTHLY;BYMONTHDAY=15' (15th of each month), 'FREQ=WEEKLY;UNTIL=20261231T235959Z' (weekly until year-end). Omit for a one-off event." },
       },
       required: ['title', 'date'],
     },
@@ -239,16 +240,26 @@ async function executeTool(name, input, tasks) {
       start: toGCalDateTime(input.date, input.start_time),
       end:   toGCalDateTime(input.date, input.end_time ?? input.start_time),
     }
+    // Repeating event: Google expects an array of RFC 5545 lines. Strip a leading
+    // "RRULE:" in case the model already included it, then re-add exactly one.
+    if (input.recurrence) {
+      const rule = input.recurrence.replace(/^RRULE:/i, '').trim()
+      if (rule) body.recurrence = [`RRULE:${rule}`]
+    }
     const { ok, data } = await calendarRequest('POST', body)
     if (!ok) return { error: data.error ?? 'Failed to create event' }
-    // Verify: re-fetch the created event
+    // Verify: re-fetch the created event. The GET expands recurring events
+    // (singleEvents=true), so a recurring master's id won't appear verbatim — its
+    // first occurrence is a dated instance carrying recurringEventId === master id.
     const verify = await calendarRequest('GET', null, {
       start: new Date(input.date).toISOString(),
       end:   new Date(input.date + 'T23:59:59').toISOString(),
     })
-    const created = (Array.isArray(verify.data) ? verify.data : []).find((e) => e.id === data.id)
+    const created = (Array.isArray(verify.data) ? verify.data : []).find(
+      (e) => e.id === data.id || e.recurringEventId === data.id
+    )
     if (!created) return { error: 'Event was submitted but could not be verified — please check your calendar.' }
-    return { success: true, event_id: data.id, verified: { title: created.summary, date: created.start?.date ?? created.start?.dateTime?.slice(0, 10), start_time: created.start?.dateTime?.slice(11, 16) ?? 'All day' }, calendar_changed: true }
+    return { success: true, event_id: data.id, verified: { title: created.summary, date: created.start?.date ?? created.start?.dateTime?.slice(0, 10), start_time: created.start?.dateTime?.slice(11, 16) ?? 'All day', recurring: !!body.recurrence }, calendar_changed: true }
   }
 
   if (name === 'update_calendar_event') {

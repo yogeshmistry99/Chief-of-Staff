@@ -85,6 +85,21 @@ Last updated: 2026-07-16 (storage inventory verified live against Supabase proje
 
 ## Recent significant changes (newest first)
 
+- **2026-07-24 — Recurring calendar events can now be created (CoS chat).** The
+  `create_calendar_event` tool (api/claude.js) gained an optional `recurrence` input (an RFC
+  5545 RRULE string without the `RRULE:` prefix, e.g. `FREQ=WEEKLY;BYDAY=MO,WE,FR`,
+  `FREQ=DAILY;COUNT=10`, `FREQ=WEEKLY;UNTIL=20261231T235959Z`). The handler strips any leading
+  `RRULE:` and wraps it as Google's `recurrence: ["RRULE:…"]` on the events.insert body; an
+  empty/whitespace rule is dropped rather than sent. `api/calendar.js` POST already forwards
+  arbitrary body fields to Google, so it needed no change. Also fixed the post-create verify:
+  the verify GET uses `singleEvents=true`, which expands a recurring master into dated
+  instances (`<masterId>_<stamp>` ids carrying `recurringEventId === masterId`), so the old
+  `e.id === data.id` match would have falsely reported "could not be verified" on a successful
+  recurring create — the match now also accepts `recurringEventId === data.id`, and the result
+  reports `recurring: true`. Scope: create only — `update_calendar_event` (making an existing
+  single event repeat) was deliberately left as a follow-up (same verify-match widening +
+  series-vs-instance semantics). No new create-event UI; creation remains chat-only.
+
 - **2026-07-22 — Calendar read 1-hour offset fixed (BST).** `read_calendar` (api/claude.js) formatted event times with `new Date(dateTime).toLocaleTimeString('en-GB')` and no `timeZone` — on Vercel's UTC server that rendered every timed event 1h early during British Summer Time, so the CoS saw 12:00 for a 13:00 event and made wrong calls ("already midday, no change"). Now slices the wall-clock time from the RFC3339 string (event-local), matching the `date` field and the create/update verifies. Deployed `0616ee8`. This was the "times the CoS sees vs times I see" disconnect — separate from the date-move fix.
 
 - **2026-07-22 — Calendar date-move fixed (in-app CoS chat).** Moving an event to a new date silently failed: `update_calendar_event` (api/claude.js) collapsed a timed event into an all-day `{ date }` shape because it never read the existing event, so Google dropped the change and the date "reverted" — and the verify only checked the title, reporting a false ✓. Fix: new single-event GET (`api/calendar.js` `?eventId=`); the update handler now reads the existing event and builds start/end preserving its timed-vs-all-day type, time-of-day and timeZone (date-only move keeps the time; all-day stays all-day with its span), erroring out if the event can't be read; and the verify now asserts the date/time actually changed so a silent revert surfaces as failure. Deployed `95b2fa5`. Note: updates still target the primary calendar only (pre-existing). Separately: the CoS task-write + confirmation fix remains on unmerged branch `fix/cos-chat-write-confirmation`.
