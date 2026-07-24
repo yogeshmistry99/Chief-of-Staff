@@ -85,6 +85,23 @@ Last updated: 2026-07-16 (storage inventory verified live against Supabase proje
 
 ## Recent significant changes (newest first)
 
+- **2026-07-24 — BucketDetail Category grouping re-keyed off the store's `_category`.**
+  `groupBySection` (src/pages/BucketDetail.jsx) previously grouped the "Category" sort purely by
+  `t.section_id` resolved against the live-Todoist section list, so UUID/Supabase-only tasks
+  (which have no `section_id`) all collapsed into one unnamed group and their real MCP-set
+  category was ignored. Now it groups by `t._category` first, falls back to the Todoist
+  `section_id`/`sectionMap` lookup only for legacy tasks that have a `section_id` and no
+  category, and still drops tasks with neither into an unnamed group. Group keys are namespaced
+  (`cat:`/`sec:`/`__none__`) to prevent a category label colliding with a section id; section
+  order is seeded first so legacy groups keep their Todoist order. Scope was the grouping key
+  only — the live Todoist `getProjectSections` call and everything else in the file are
+  untouched (open bug 4 / the Todoist read-path is unchanged). Verified with a Node unit check:
+  a Systems task with `_category` groups by category, a Finance task with the old
+  `section_id`/`_sectionName` still groups via `sectionMap`, category takes precedence when both
+  are present, and empty seeded sections are filtered out. JSX-only, no serverless function
+  added (12/12 cap unaffected). Not yet built in-session (node_modules reclaimed); relied on the
+  isolated-function test.
+
 - **2026-07-24 — STATUS doc: knowledge_backups contradiction corrected.** The storage-inventory
   line for `knowledge_backups` still read "No retention policy — grows unbounded," contradicting
   the "Grows unbounded" watch-list, the "Known bugs" list, and the 2026-07-16 changelog, which

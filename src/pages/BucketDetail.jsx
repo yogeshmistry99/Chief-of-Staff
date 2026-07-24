@@ -240,21 +240,33 @@ function sortTasks(tasks, sort) {
   return copy
 }
 
-// Build an ordered list of { sectionId, name, tasks[] } groups
+// Build an ordered list of { id, name, tasks[] } groups.
+// Group by the task's store category (_category) first; fall back to the live
+// Todoist section_id lookup only for legacy tasks that have a section_id and no
+// category. Tasks with neither fall into an unnamed group (same as before).
+// Keys are namespaced (cat:/sec:/__none__) so a category label can never collide
+// with a Todoist section id.
 function groupBySection(tasks, sections) {
   const sectionMap = Object.fromEntries(sections.map((s) => [s.id, s.name]))
   const groups = {}
+  const names = {}
   const order = []
-  sections.forEach((s) => { groups[s.id] = []; order.push(s.id) })
+  const ensure = (key, name) => {
+    if (!groups[key]) { groups[key] = []; names[key] = name; order.push(key) }
+  }
+  // Seed section order first so legacy section groups keep their Todoist order.
+  sections.forEach((s) => ensure(`sec:${s.id}`, s.name))
   tasks.forEach((t) => {
-    const sid = t.section_id ?? '__none__'
-    if (!groups[sid]) { groups[sid] = []; order.push(sid) }
-    groups[sid].push(t)
+    let key, name
+    if (t._category)       { key = `cat:${t._category}`;  name = t._category }
+    else if (t.section_id) { key = `sec:${t.section_id}`; name = sectionMap[t.section_id] ?? t.section_id }
+    else                   { key = '__none__';            name = null }
+    ensure(key, name)
+    groups[key].push(t)
   })
-  const result = order
-    .map((sid) => ({ id: sid, name: sectionMap[sid] ?? (sid === '__none__' ? null : sid), tasks: groups[sid] ?? [] }))
+  return order
+    .map((key) => ({ id: key, name: names[key], tasks: groups[key] ?? [] }))
     .filter((g) => g.tasks.length > 0)
-  return result
 }
 
 function TaskCard({ title, tasks, onComplete, indexOffset = 0, allTasks = [], bucket = '', onRespond, focusTaskId = null }) {
