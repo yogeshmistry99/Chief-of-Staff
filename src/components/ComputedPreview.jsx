@@ -1,37 +1,14 @@
 import { useMemo, useState } from 'react'
-import { rankTasks } from '../../api/_lib/ranking.js'
+import { rankTasks, placementLine, TIER_DOT, SCORE_FIELDS } from '../lib/scoringDisplay'
 
 // Read-only "Computed (preview)" list — the deterministic ranking running in
 // parallel with the CoS-generated priority list. List view shows rank + a
 // tier dot only (no raw numbers); tapping a row reveals the four scores and
 // the rule that placed it. Purely informational: no writes, no actions.
-
-// Human "due in …" phrase from a YYYY-MM-DD date (matches ranking's urgency curve).
-function duePhrase(date) {
-  if (!date) return null
-  const dueMs = new Date(date.slice(0, 10) + 'T23:59:59').getTime()
-  if (Number.isNaN(dueMs)) return null
-  const hours = (dueMs - Date.now()) / 3_600_000
-  if (hours <= 0) return 'overdue'
-  if (hours <= 36) return 'due in 1 day'
-  return `due in ${Math.round(hours / 24)} days`
-}
-
-// One plain-language line stating which rule placed the task.
-function placementLine(entry) {
-  if (entry.tier === 'unscored') return 'Unscored — ranks below all scored tasks'
-  if (entry.tier === 0) return 'Triage — irreversible + high consequence'
-  const score = entry.score.toFixed(1)
-  if (!entry.urgency || entry.urgency === 1) return `Rank #${entry.rank} — score ${score}, no urgency modifier`
-  const due = duePhrase(entry.task.due?.date)
-  return `Rank #${entry.rank} — score ${score}, ×${entry.urgency} urgency${due ? ` (${due})` : ''}`
-}
-
-const TIER_DOT = {
-  0: 'bg-red-500',          // triage: irreversible + high consequence
-  1: 'bg-[#6750A4]',        // scored
-  unscored: 'bg-[#CAC4D0]', // unscored — ranks last
-}
+//
+// Display helpers (placementLine / duePhrase / TIER_DOT / SCORE_FIELDS) live in
+// src/lib/scoringDisplay.js so they're shared with ScoringPanel and survive this
+// component's eventual removal from the main screen.
 
 export default function ComputedPreview({ tasks }) {
   const [expandedId, setExpandedId] = useState(null)
@@ -74,15 +51,10 @@ export default function ComputedPreview({ tasks }) {
                 ) : (
                   <>
                     <div className="flex gap-3 mb-1">
-                      {[
-                        ['Consequence', task.consequence],
-                        ['Reversibility', task.reversibility],
-                        ['Compounding', task.compounding],
-                        ['Effort', task.effort],
-                      ].map(([label, v]) => (
-                        <div key={label}>
+                      {SCORE_FIELDS.map(({ key, label }) => (
+                        <div key={key}>
                           <p className="text-[9px] text-[#79747E] uppercase tracking-wide">{label}</p>
-                          <p className="text-xs font-semibold text-[#1C1B1F]">{v}</p>
+                          <p className="text-xs font-semibold text-[#1C1B1F]">{task[key]}</p>
                         </div>
                       ))}
                     </div>

@@ -39,18 +39,25 @@ export function scoreTask(task) {
     return { score: -1, reasons: ['someday'], bucket, isOverdue, isToday }
   }
 
-  // Layer 1 — Fixed commitments (date proximity)
+  // Layer 1 — Date proximity.
+  // RULE (26 July 2026): only overdue and due-today auto-surface at the top.
+  // Everything else with a date weighs in normally rather than jumping the
+  // queue — a date alone is no longer a category override. The sub-today bands
+  // mirror the urgency curve in api/_lib/ranking.js (×2 / ×1.5 / ×1.2 / ×1) in
+  // additive form, but only the first band is large enough to auto-surface.
+  // Previously due-tomorrow (+75) and due-in-≤3-days (+55) outweighed even
+  // P1 (+50) plus any bucket weight, so any near-dated task topped the list.
   if (isOverdue) {
     score += 90
     reasons.push('overdue')
   } else if (isToday) {
     score += 100
     reasons.push('due today')
-  } else if (days === 1) {
-    score += 75
-    reasons.push('due tomorrow')
-  } else if (isSoon) {
-    score += 55
+  } else if (days !== null && days <= 7) {
+    score += 15
+    reasons.push(days === 1 ? 'due tomorrow' : `due in ${days} days`)
+  } else if (days !== null && days <= 14) {
+    score += 8
     reasons.push(`due in ${days} days`)
   }
 

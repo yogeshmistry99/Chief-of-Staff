@@ -8,6 +8,7 @@ import { prioritise, scoreTask } from '../lib/priority'
 import { haptic } from '../lib/haptic'
 import { safeSetItem, capRecent } from '../lib/safeStorage'
 import ComputedPreview from '../components/ComputedPreview'
+import ScoringPanel from '../components/ScoringPanel'
 import ChatInput from '../components/ChatInput'
 import ImageLightbox from '../components/ImageLightbox'
 import EditSheet from '../components/EditSheet'
@@ -245,6 +246,7 @@ function TaskRow({ task, onComplete, index = 0, allTasks = [] }) {
   const [removing, setRemoving] = useState(false)
   const [completingAnim, setCompletingAnim] = useState(false)
   const [expanded, setExpanded] = useState(false)
+  const [scoringOpen, setScoringOpen] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
   const [swipeX, setSwipeX] = useState(0)
   const [isSwiping, setIsSwiping] = useState(false)
@@ -487,7 +489,8 @@ function TaskRow({ task, onComplete, index = 0, allTasks = [] }) {
 
       {/* Expanded details */}
       <div style={{
-        maxHeight: expanded ? '180px' : '0',
+        // Grows when the scoring panel is open, or its contents get clipped.
+        maxHeight: expanded ? (scoringOpen ? '460px' : '180px') : '0',
         overflow: 'hidden',
         transition: 'max-height 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
       }}>
@@ -495,6 +498,7 @@ function TaskRow({ task, onComplete, index = 0, allTasks = [] }) {
           {localTask.description && (
             <p className="text-xs text-[#49454F] leading-relaxed">{localTask.description}</p>
           )}
+          <ScoringPanel task={localTask} onToggle={setScoringOpen} className="my-1.5" />
           <div className="flex flex-wrap gap-x-3 gap-y-1">
             {localTask.due?.date && (
               <span className="text-xs text-[#79747E]">

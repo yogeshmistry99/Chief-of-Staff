@@ -6,6 +6,7 @@ import { getCachedTasks, saveToCache } from '../lib/taskCache'
 import { getDiscussions, saveDiscussion, newDiscussion } from '../lib/discussions'
 import Markdown from '../components/Markdown'
 import ChatInput from '../components/ChatInput'
+import ScoringPanel from '../components/ScoringPanel'
 
 export default function DiscussionThread() {
   const { bucket, id } = useParams()
@@ -23,6 +24,8 @@ export default function DiscussionThread() {
   const [editingTitle, setEditingTitle] = useState(isNew)
   const [descOpen, setDescOpen] = useState(false)
   const [tasks, setTasks] = useState(() => getCachedTasks())
+  // The task this thread is about, if any — discussions carry an optional taskId.
+  const linkedTask = discussion?.taskId ? tasks.find((t) => t.id === discussion.taskId) : null
   const inputRef = useRef(null)
   const endRef = useRef(null)
 
@@ -133,6 +136,14 @@ export default function DiscussionThread() {
           </div>
         </div>
       </div>
+
+      {/* Scoring for the task under discussion — same depth context the CoS reads.
+          Only rendered when this thread is linked to a task. */}
+      {linkedTask && (
+        <div className="px-4 pt-3">
+          <ScoringPanel task={linkedTask} />
+        </div>
+      )}
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">

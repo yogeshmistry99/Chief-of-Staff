@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { haptic } from '../lib/haptic'
 import { getCachedTasks, saveToCache } from '../lib/taskCache'
+import ScoringPanel from './ScoringPanel'
 
 const P_META = {
   4: { label: 'P1', color: '#DC2626', bg: '#FEF2F2' },
@@ -163,6 +164,9 @@ export default function TaskEditSheet({ open, onClose, task, allTasks = [], task
   const [priority, setPriority] = useState(1)
   const [due, setDue] = useState('')
   const [description, setDescription] = useState('')
+  // The four priority-scoring fields, editable here (effort most prominently —
+  // it's the least reliable, highest-leverage number). null = not yet scored.
+  const [scores, setScores] = useState({ consequence: null, reversibility: null, compounding: null, effort: null })
   const [subtasks, setSubtasks] = useState([])
   const [newSubtask, setNewSubtask] = useState('')
   const [newSubtaskPriority, setNewSubtaskPriority] = useState(1)
@@ -208,6 +212,12 @@ export default function TaskEditSheet({ open, onClose, task, allTasks = [], task
     setPriority(task.priority ?? 1)
     setDue(task.due?.date ?? '')
     setDescription(task.description ?? '')
+    setScores({
+      consequence:   task.consequence   ?? null,
+      reversibility: task.reversibility ?? null,
+      compounding:   task.compounding   ?? null,
+      effort:        task.effort        ?? null,
+    })
     setSubtasks(allTasks.filter((t) => t.parent_id === task.id))
     setEditingContent(false); setEditingDue(false); setEditingDesc(false)
     setEditingSubtask(null); setNewSubtask(''); setNewSubtaskPriority(1)
@@ -221,7 +231,7 @@ export default function TaskEditSheet({ open, onClose, task, allTasks = [], task
     if (!fieldsChanged.current) { fieldsChanged.current = true; return }
     clearTimeout(autoSaveRef.current)
     autoSaveRef.current = setTimeout(() => doSave(false), 1500)
-  }, [content, priority, due, description])
+  }, [content, priority, due, description, scores])
 
   // Reset fieldsChanged when task changes
   useEffect(() => { fieldsChanged.current = false }, [task?.id])
@@ -238,11 +248,14 @@ export default function TaskEditSheet({ open, onClose, task, allTasks = [], task
     clearTimeout(autoSaveRef.current)
     try {
       haptic.success()
-      const savedTask = { ...task, content, priority, description, due: due ? { date: due } : task.due }
+      // `scores` must ride along in BOTH the optimistic object and the store
+      // write, or an edited score renders once and silently vanishes on reload.
+      const edits = { content, priority, description, ...scores, due: due ? { date: due } : task.due }
+      const savedTask = { ...task, ...edits }
       onSaved?.(savedTask)
       // Persist the edit to the task store (single source of truth) — no Todoist.
       const cached = getCachedTasks()
-      const updated = cached.map((t) => t.id === task.id ? { ...t, content, priority, description, due: due ? { date: due } : task.due } : t)
+      const updated = cached.map((t) => t.id === task.id ? { ...t, ...edits } : t)
       await saveToCache(updated)
       if (closeAfter) dismiss()
       else {
@@ -494,6 +507,16 @@ export default function TaskEditSheet({ open, onClose, task, allTasks = [], task
                   <button onClick={() => setEditingDesc(true)} className="text-[#79747E] p-1 flex-shrink-0"><EditIcon /></button>
                 )}
               </div>
+            </div>
+
+            {/* Scoring — editable here; collapsed by default, sits with the description */}
+            <div className="py-3 border-b border-[#F3EDF7]">
+              <ScoringPanel
+                task={task}
+                editable
+                values={scores}
+                onChange={(field, value) => setScores((s) => ({ ...s, [field]: value }))}
+              />
             </div>
 
             {/* Subtasks */}
