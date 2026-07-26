@@ -155,6 +155,51 @@ function formatCalendarForPrompt(events) {
 
 const ALL_BUCKETS = ['Finance', 'Health', 'Work', 'Family', 'Home', 'Personal', 'Systems']
 
+// Start of the current review period. Defaults to the last completed weekly
+// review, falling back to `fallbackDays` ago on a first-ever run.
+export function reviewPeriodStart(fallbackDays = 7) {
+  try {
+    const s = localStorage.getItem('lastWeeklyReview')
+    if (s) {
+      const d = new Date(s)
+      if (!Number.isNaN(d.getTime())) return d
+    }
+  } catch { /* localStorage unavailable — fall through */ }
+  return new Date(Date.now() - fallbackDays * 86_400_000)
+}
+
+// Tasks completed since `since`, newest first. Completed tasks carry a
+// completed_at stamp written consistently across every write path.
+// Tasks completed before the stamp existed have no completed_at and are
+// deliberately excluded — undated completions would pollute every period.
+export function completedSince(tasks, since, bucket = null) {
+  if (!tasks?.length || !since) return []
+  const cutoff = since instanceof Date ? since.getTime() : new Date(since).getTime()
+  if (Number.isNaN(cutoff)) return []
+  return tasks
+    .filter((t) => t.is_completed && t.completed_at)
+    .filter((t) => (bucket ? t._projectName === bucket : true))
+    .filter((t) => {
+      const at = new Date(t.completed_at).getTime()
+      return !Number.isNaN(at) && at >= cutoff
+    })
+    .sort((a, b) => String(b.completed_at).localeCompare(String(a.completed_at)))
+}
+
+// "What's been done" block for review prompts. Without this the heads and the
+// CoS see only outstanding work — completed tasks are stripped by
+// formatTasksForCoS and were never surfaced anywhere else, so the system had no
+// honest record of what actually shipped.
+export function formatCompletedForPrompt(tasks, since, bucket = null) {
+  const done = completedSince(tasks, since, bucket)
+  if (!done.length) return 'Nothing recorded as completed in this period.'
+  return done.map((t) => {
+    const when = String(t.completed_at).slice(0, 10)
+    const where = !bucket && t._projectName ? ` | ${t._projectName}` : ''
+    return `  - [${when}${where}] ${t.content}`
+  }).join('\n')
+}
+
 function formatTasksForCoS(tasks) {
   if (!tasks?.length) return 'No tasks loaded.'
   const byBucket = Object.fromEntries(ALL_BUCKETS.map(b => [b, []]))

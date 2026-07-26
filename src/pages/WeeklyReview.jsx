@@ -1,9 +1,12 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { pushToSupabase } from '../lib/sync'
 import { useNavigate } from 'react-router-dom'
 import { getCachedTasks, readTasksFromSupabase } from '../lib/taskCache'
 import { scoreTask } from '../lib/priority'
-import { sendMessageStream, SYSTEM_PROMPTS } from '../lib/claude'
+import {
+  sendMessageStream, SYSTEM_PROMPTS,
+  reviewPeriodStart, completedSince, formatCompletedForPrompt,
+} from '../lib/claude'
 import { loadHeadConfig } from '../lib/headConfig'
 import { haptic } from '../lib/haptic'
 import { BUCKET_META } from '../lib/bucketConfig'
@@ -74,8 +77,16 @@ function StepIntention({ onNext }) {
 // ── Steps 1–7: Bucket review ──────────────────────────────────────────────────
 function BucketStep({ bucket, allTasks, onNext, reviewTextsRef, tasksAdded, setTasksAdded }) {
   const meta = BUCKET_META[bucket]
-  const bucketTasks = allTasks.filter((t) => t._projectName === bucket)
+  // Outstanding only — the store holds completed tasks too, and they were
+  // previously listed here indistinguishably from live work.
+  const bucketTasks = allTasks.filter((t) => t._projectName === bucket && !t.is_completed)
   const overdueTasks = bucketTasks.filter((t) => scoreTask(t).isOverdue)
+  const periodStart = useMemo(() => reviewPeriodStart(), [])
+  const periodLabel = 'this review period'
+  const doneThisPeriod = useMemo(
+    () => completedSince(allTasks, periodStart, bucket),
+    [allTasks, periodStart, bucket]
+  )
   const [aiText, setAiText] = useState('')
   const [aiLoading, setAiLoading] = useState(true)
   const [quickAddOpen, setQuickAddOpen] = useState(false)
@@ -86,7 +97,14 @@ function BucketStep({ bucket, allTasks, onNext, reviewTextsRef, tasksAdded, setT
     if (firedRef.current) return
     firedRef.current = true
     const cfg = loadHeadConfig(bucket)
-    const prompt = `You are the ${bucket} Head. Review this bucket. In three points maximum: what is urgent, what is being neglected, and what priority change would you recommend this week? Be direct.`
+    // Include what actually shipped this period — the head's task list only ever
+    // shows outstanding work, so without this it reviews the bucket blind to progress.
+    const prompt = `You are the ${bucket} Head. Review this bucket. In three points maximum: what is urgent, what is being neglected, and what priority change would you recommend this week? Be direct.
+
+Completed in ${periodLabel}:
+${formatCompletedForPrompt(allTasks, periodStart, bucket)}
+
+Take that completed work into account — acknowledge real progress, and don't flag as neglected anything that has just been finished.`
     sendMessageStream([{ role: 'user', content: prompt }], SYSTEM_PROMPTS.head(bucket, allTasks, cfg), (chunk) => {
       setAiText((prev) => {
         const next = prev + chunk
@@ -147,7 +165,30 @@ function BucketStep({ bucket, allTasks, onNext, reviewTextsRef, tasksAdded, setT
               })}
             </div>
           ) : (
-            <p className="text-sm text-[#79747E] text-center py-4">No tasks in this bucket.</p>
+            <p className="text-sm text-[#79747E] text-center py-4">No open tasks in this bucket.</p>
+          )}
+
+          {/* What's been done — completed work is otherwise invisible in review */}
+          {doneThisPeriod.length > 0 && (
+            <div className="bg-[#C8F5E1] rounded-2xl px-4 py-3">
+              <p className="text-xs font-semibold text-[#002115] mb-2">
+                Completed this period · {doneThisPeriod.length}
+              </p>
+              <div className="space-y-1.5">
+                {doneThisPeriod.map((t) => (
+                  <div key={t.id} className="flex items-start gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" height="13" viewBox="0 -960 960 960" width="13"
+                      fill="#0B6B4F" className="mt-0.5 flex-shrink-0">
+                      <path d="M382-240 154-468l57-57 171 171 367-367 57 57-424 424Z" />
+                    </svg>
+                    <p className="text-sm leading-snug text-[#002115] flex-1 min-w-0">{t.content}</p>
+                    <span className="text-[10px] text-[#0B6B4F] opacity-70 flex-shrink-0 mt-0.5">
+                      {new Date(t.completed_at).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' })}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
 
           <div className="bg-white border border-[#CAC4D0] rounded-2xl p-4">
@@ -212,7 +253,12 @@ function StepSummary({ intention, bucketReviews, allTasks, onNext, setTasksAdded
       .map((r) => `${r.bucket}:\n${r.text || '(no review loaded)'}`)
       .join('\n\n')
 
-    const prompt = `Weekly review complete. ${intentionLine}\n\nAll 7 buckets have been reviewed:\n\n${reviewSummary}\n\nBased on the full task list and bucket weighting framework, produce: (1) Top 5 priorities for this week ranked by consequence, irreversibility and compounding value. (2) Any cross-bucket conflicts or dependencies to flag. (3) One clarifying question if a decision is needed. Be direct. No waffle.`
+    // The CoS system prompt strips completed tasks (formatTasksForCoS), so what
+    // shipped has to be supplied explicitly or the summary reviews progress blind.
+    const periodStart = reviewPeriodStart()
+    const completedBlock = formatCompletedForPrompt(allTasks, periodStart)
+
+    const prompt = `Weekly review complete. ${intentionLine}\n\nAll 7 buckets have been reviewed:\n\n${reviewSummary}\n\nCompleted since the last review (all buckets):\n${completedBlock}\n\nBased on the full task list, what was completed above, and the bucket weighting framework, produce: (1) A one-line acknowledgement of what actually shipped this period. (2) Top 5 priorities for this week ranked by consequence, irreversibility and compounding value. (3) Any cross-bucket conflicts or dependencies to flag. (4) One clarifying question if a decision is needed. Be direct. No waffle.`
 
     const cfg = loadHeadConfig('chief')
     let fullText = ''
