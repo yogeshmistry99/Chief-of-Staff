@@ -7,7 +7,6 @@ import NotificationCard, { notifDotClass } from '../components/NotificationCard'
 import { prioritise, scoreTask } from '../lib/priority'
 import { haptic } from '../lib/haptic'
 import { safeSetItem, capRecent } from '../lib/safeStorage'
-import ComputedPreview from '../components/ComputedPreview'
 import ScoringPanel from '../components/ScoringPanel'
 import ChatInput from '../components/ChatInput'
 import ImageLightbox from '../components/ImageLightbox'
@@ -640,6 +639,8 @@ export default function Home() {
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
 
   const [tab, setTab]                 = useState('priorities')
+  // null = the CoS priority list; 'today' | 'overdue' = block-filtered lenses.
+  const [blockFilter, setBlockFilter] = useState(null)
   const [tasks, setTasks]             = useState(() => getCachedTasks())
   const [error]                        = useState(null)
   const [lastWeeklyReview, setLastWeeklyReview] = useState(() => {
@@ -758,12 +759,34 @@ export default function Home() {
   const { active } = prioritise(tasks)
   const openTasks = tasks.filter((t) => !t.is_completed)
   const todayStr = isoDate(new Date())
-  const todayCount   = tasks.filter((t) => t.due?.date?.slice(0, 10) === todayStr).length
-  const p1Count      = tasks.filter((t) => t.priority === 4).length
-  const overdueCount = active.filter((t) => scoreTask(t).isOverdue).length
-  const focusList = priorityList?.length
+  const cosList = priorityList?.length
     ? priorityList.map((id) => openTasks.find((t) => t.id === id)).filter(Boolean).slice(0, 10)
     : active.slice(0, 8)
+
+  // The main-screen blocks act as primary navigation, filtering this list in
+  // place rather than routing away. `null` = the CoS-generated list, which is the
+  // sole primary list; 'today' and 'overdue' are lenses over the same open tasks.
+  // Each block's count is derived from the very list it opens, so the number on
+  // the block can never disagree with what tapping it shows. (todayCount used to
+  // count completed tasks too, so it over-reported.)
+  const todayTasks   = openTasks.filter((t) => t.due?.date?.slice(0, 10) === todayStr)
+  const overdueTasks = openTasks.filter((t) => scoreTask(t).isOverdue)
+  const todayCount   = todayTasks.length
+  const overdueCount = overdueTasks.length
+  const focusList =
+    blockFilter === 'today'   ? todayTasks   :
+    blockFilter === 'overdue' ? overdueTasks :
+    cosList
+
+  const BLOCK_META = {
+    priorities: { label: 'Priorities', title: 'Priority list',
+      empty: 'Nothing active. Tap Refresh to generate your priority list.' },
+    today:      { label: 'Today',      title: 'Due today',
+      empty: 'Nothing due today.' },
+    overdue:    { label: 'Overdue',    title: 'Overdue',
+      empty: 'Nothing overdue — all caught up.' },
+  }
+  const activeBlock = BLOCK_META[blockFilter ?? 'priorities']
   const todayEvents  = events.filter((e) => {
     if (e.start?.date) return e.start.date === todayStr
     if (e.start?.dateTime) return new Date(e.start.dateTime).toLocaleDateString('en-CA') === todayStr
@@ -861,33 +884,58 @@ export default function Home() {
         {/* Quote of the day */}
         <DailyQuote />
 
-        {/* Stats */}
+        {/* Primary navigation blocks. Tapping one filters the list below in place;
+            Events is the one that leaves, to the Calendar. "P1" was retired here —
+            a raw count of the legacy priority label, superseded by the scoring
+            model — and its slot now holds Priorities, the sole primary list. */}
         <div className="grid grid-cols-4 gap-2 mb-4">
           {[
-            { label: 'Today',    value: todayCount,   color: 'bg-[#EADDFF] text-[#21005D]' },
-            { label: 'Events',   value: eventsLoading ? '…' : todayEventsActionable.length, color: 'bg-[#D3E4FF] text-[#001D36]' },
-            { label: 'P1',       value: p1Count,       color: 'bg-[#FFD8E4] text-[#31111D]' },
-            { label: 'Overdue',  value: overdueCount,  color: overdueCount > 0 ? 'bg-red-100 text-red-900' : 'bg-[#C8F5E1] text-[#002115]' },
-          ].map(({ label, value, color }, i) => (
-            <div key={label} className={`rounded-xl p-3 ${color}`}
-              style={{ animation: `fade-up 0.5s cubic-bezier(0.22,1,0.36,1) ${0.18 + i * 0.08}s both` }}>
-              <p className="text-xs opacity-60 mb-0.5">{label}</p>
-              <p className="text-xl font-bold leading-none">{value}</p>
-            </div>
-          ))}
+            { id: 'priorities', label: 'Priorities', value: cosList.length, color: 'bg-[#EADDFF] text-[#21005D]' },
+            { id: 'today',      label: 'Today',      value: todayCount,     color: 'bg-[#D0E8D5] text-[#0B2818]' },
+            { id: 'events',     label: 'Events',     value: eventsLoading ? '…' : todayEventsActionable.length, color: 'bg-[#D3E4FF] text-[#001D36]' },
+            { id: 'overdue',    label: 'Overdue',    value: overdueCount,   color: overdueCount > 0 ? 'bg-red-100 text-red-900' : 'bg-[#C8F5E1] text-[#002115]' },
+          ].map(({ id, label, value, color }, i) => {
+            const isActive = id !== 'events' && (blockFilter ?? 'priorities') === id
+            return (
+              <button
+                key={id}
+                onClick={() => {
+                  haptic.light()
+                  if (id === 'events') { navigate('/calendar'); return }
+                  setBlockFilter(id === 'priorities' ? null : id)
+                }}
+                aria-pressed={id === 'events' ? undefined : isActive}
+                className={`rounded-xl p-3 text-left transition-shadow ${color} ${
+                  isActive ? 'ring-2 ring-[#6750A4] ring-offset-1' : 'hover:shadow-sm'
+                }`}
+                style={{ animation: `fade-up 0.5s cubic-bezier(0.22,1,0.36,1) ${0.18 + i * 0.08}s both` }}
+              >
+                <p className="text-xs opacity-60 mb-0.5">{label}</p>
+                <p className="text-xl font-bold leading-none">{value}</p>
+              </button>
+            )
+          })}
         </div>
 
         {/* Priority list */}
         <div className="bg-white border border-[#CAC4D0] rounded-2xl p-4 mb-3 shadow-sm">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold text-[#1C1B1F]">Priority list</h2>
+            <h2 className="text-sm font-semibold text-[#1C1B1F]">{activeBlock.title}</h2>
             <div className="flex items-center gap-2">
-              {priorityLastRefreshed && !priorityRefreshing && (
+              {blockFilter && (
+                <button
+                  onClick={() => { haptic.light(); setBlockFilter(null) }}
+                  className="text-[11px] font-medium px-2.5 py-1 rounded-full bg-[#F3EDF7] text-[#6750A4] hover:bg-[#EADDFF] transition-colors"
+                >Clear</button>
+              )}
+              {!blockFilter && priorityLastRefreshed && !priorityRefreshing && (
                 <span className="text-[11px] text-[#CAC4D0]">{formatRefreshTime(priorityLastRefreshed)}</span>
               )}
+              {/* Refresh regenerates the CoS list, so it only applies unfiltered */}
               <button
                 onClick={handleRefreshPriorities}
                 disabled={priorityRefreshing}
+                hidden={!!blockFilter}
                 className={`flex items-center gap-1 text-[11px] font-medium px-2.5 py-1 rounded-full transition-colors disabled:opacity-60 ${
                   priorityError
                     ? 'bg-red-50 text-red-600'
@@ -912,16 +960,13 @@ export default function Home() {
           {error && <p className="text-xs text-red-500">Could not load tasks — check TODOIST_API_KEY in Vercel.</p>}
 
           {focusList.length === 0 && !error && (
-            <p className="text-sm text-[#79747E]">Nothing active. Tap Refresh to generate your priority list.</p>
+            <p className="text-sm text-[#79747E]">{activeBlock.empty}</p>
           )}
 
           {focusList.map((task, i) => (
             <TaskRow key={task.id} task={task} onComplete={removeTask} index={i} allTasks={tasks} />
           ))}
         </div>
-
-        {/* Computed (preview) — deterministic ranking, read-only */}
-        <ComputedPreview tasks={tasks} />
 
         {/* Upcoming events */}
         <div className="bg-white border border-[#CAC4D0] rounded-2xl p-4 mb-4 shadow-sm">

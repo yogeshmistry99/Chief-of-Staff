@@ -85,6 +85,52 @@ Last updated: 2026-07-16 (storage inventory verified live against Supabase proje
 
 ## Recent significant changes (newest first)
 
+- **2026-07-26 — Scoring made visible, review sees completed work, main-screen blocks are now nav.**
+  Five Systems tasks, on branch `claude/calendar-recurring-events-7tsptn`, **not yet merged**.
+  1. **Scoring surfaced (d6aeb73c + 36469a71 pt 1 — one build; they overlapped).** New
+     `src/lib/scoringDisplay.js` holds helpers *extracted* from `ComputedPreview` (which was the
+     only place the four scores were rendered, so removing it would have deleted the display
+     logic too). New `src/components/ScoringPanel.jsx` — collapsed "Scoring" section, read-only
+     or editable, explicit empty state for unscored tasks. Read-only in both task-detail drawers
+     (Home, BucketDetail) and atop a Discussion with a linked task; **editable** in
+     `TaskEditSheet` with effort first and largest. Two traps fixed: the detail drawers are
+     clamped at `maxHeight:180px/overflow:hidden` so the panel clipped (added `onToggle` so the
+     container grows), and `doSave` rebuilt its update object field-by-field so edited scores
+     would have vanished on reload — the four fields now ride in both the optimistic object and
+     the store write.
+  2. **Date rule aligned (6a52a311).** Confirmed **no code-level filter strips dated P4s** —
+     `rankPriorities`, `formatTasksForPrompt` and `rankTasks` all filter on completion only; the
+     original repro was ranking, not filtering. The one real exclusion (`prioritise` dropping
+     "someday") hits *undated* P4s only. But `scoreTask` gave due-tomorrow +75 / due-≤3d +55,
+     outweighing P1 (+50) plus any bucket weight, so any near-dated task topped the list. Now
+     overdue +90 / due-today +100 keep the auto-surface tier and everything else dated weighs in
+     modestly (≤7d +15, ≤14d +8), mirroring `ranking.js`'s urgency bands. **Caveat:** `scoreTask`
+     has no access to consequence/reversibility/compounding, so "weighs in alongside c/r/k" is
+     only fully satisfied by converging this fallback on `rankTasks` — still open.
+  3. **Review sees what shipped (8c0b46ac pt 2).** `formatTasksForCoS` strips completed tasks
+     outright, so review ran blind to progress. New `reviewPeriodStart` / `completedSince` /
+     `formatCompletedForPrompt` in `src/lib/claude.js`; bucket steps and the CoS summary both
+     receive the completed block, bucket steps render a "Completed this period" view. Completions
+     with a missing or corrupt `completed_at` are excluded (undated completions would pollute
+     every period). **Also fixed:** the bucket review list filtered by bucket only, so completed
+     tasks were listed indistinguishably from live work.
+  4. **Computed (preview) removed from the main screen (6adad5a8)** — shipped only once the
+     scoring data was visible elsewhere, per its dependency. `ComputedPreview.jsx` is now
+     **unreferenced dead code** (kept on disk, not bundled — build dropped 102→101 modules).
+     Deleting it is a trivial follow-up.
+  5. **Blocks are primary nav (714dd682).** Assessment: kept Today / Events / Overdue, **retired
+     "P1"** (a raw legacy-priority-label count, superseded by the scoring model) and gave its
+     slot to **Priorities**. Blocks are now buttons that filter the Home list *in place* (no new
+     routes — there are no today/overdue views); Events navigates to `/calendar`. Active block
+     gets a ring, plus a Clear button. Each block's count is derived from the list it opens, so
+     the number can never disagree with what tapping it shows — `todayCount` previously counted
+     *completed* tasks and over-reported.
+  Verified: real `vite build` passes; 47 assertions across four Node runs (scoring helpers incl.
+  unscored/partial/corrupt input, score persistence round-trip, period filtering, block filters).
+  **Not yet seen in a browser** — spacing/clipping in the detail drawers is worth an eye.
+  Still open: 36469a71 pt 2 (banded tie-break, deferred pending evidence, per the task);
+  094b2e6b stays **PARKED** (only its `.mcp.json --browser chromium` pin was applied).
+
 - **2026-07-24 — BucketDetail Category grouping re-keyed off the store's `_category`.**
   `groupBySection` (src/pages/BucketDetail.jsx) previously grouped the "Category" sort purely by
   `t.section_id` resolved against the live-Todoist section list, so UUID/Supabase-only tasks
