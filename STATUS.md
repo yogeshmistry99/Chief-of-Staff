@@ -108,9 +108,15 @@ Last updated: 2026-07-26 (AI spend tracking moved server-side; see newest change
   `calcCost` duplication. Widget shows the stored `cost` × **+10% buffer, rounded up** (`SPEND_BUFFER`)
   so it never reads below actual; label reads "≈ $X" with a note that the console is source of truth.
   No new serverless function (respects the 12/12 cap — logic lives in `api/_lib`). Verified: pricing
-  unit tests, `bump_ai_usage` aggregation (incl. `by_model`) against live DB, client build. NOT yet
-  run end-to-end against a live Anthropic call — that needs the parked Stage-2 dev credentials in a
-  running `vercel dev`. Cross-device note: spend is now shared across phone/desktop (was per-browser).
+  unit tests, `bump_ai_usage` aggregation (incl. `by_model`) against live DB, client build.
+  **DEPLOYED to `main`/production 2026-07-26** (Vercel dpl for commit 9990819 READY); the RPC was
+  already live in the shared Supabase project. **Seeded `ai_usage_2026_07` = $20.03 / 195 calls** from
+  the Anthropic console (the real July spend), so the reset-to-$0 didn't hide incurred spend and the
+  limit gate stays honest; real calls now accumulate on top. With the +10% display buffer the widget
+  shows ≈ $22 of $20 (correctly over the limit — raise the limit in Settings if desired). Live
+  end-to-end (real Anthropic call → row increments) still best confirmed by using the app, since the
+  sandbox can't reach prod `/api` (egress-blocked). Cross-device note: spend is now shared across
+  phone/desktop (was per-browser).
 
 - **2026-07-24 — BucketDetail Category grouping re-keyed off the store's `_category`.**
   `groupBySection` (src/pages/BucketDetail.jsx) previously grouped the "Category" sort purely by
