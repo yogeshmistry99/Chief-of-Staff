@@ -63,6 +63,7 @@ function formatEventDay(event) {
 function HomeEventRow({ event: initialEvent }) {
   const [e, setE] = useState(initialEvent)
   const [expanded, setExpanded] = useState(false)
+  const [detailRef, detailHeight] = useMeasuredHeight()
   const [editOpen, setEditOpen] = useState(false)
   const [editSummary, setEditSummary] = useState(initialEvent.summary ?? '')
   const [editLocation, setEditLocation] = useState(initialEvent.location ?? '')
@@ -155,11 +156,11 @@ function HomeEventRow({ event: initialEvent }) {
         </div>
 
         <div style={{
-          maxHeight: expanded ? '280px' : '0',
+          maxHeight: expanded ? `${detailHeight}px` : '0',
           overflow: 'hidden',
           transition: 'max-height 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
         }}>
-          <div className="pb-3 pl-13 space-y-1.5" style={{ paddingLeft: '3.25rem' }}>
+          <div ref={detailRef} className="pb-3 pl-13 space-y-1.5" style={{ paddingLeft: '3.25rem' }}>
             {!isAllDay && startTime && (
               <p className="text-xs text-[#49454F]">{startTime} – {endTime}{duration ? ` (${duration})` : ''}</p>
             )}

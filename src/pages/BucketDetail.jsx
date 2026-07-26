@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import TaskEditSheet from '../components/TaskEditSheet'
 import ScoringPanel from '../components/ScoringPanel'
-import { useMeasuredHeight } from '../lib/useMeasuredHeight'
+import { useMeasuredHeight, useMeasuredHeights } from '../lib/useMeasuredHeight'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { getProjectSections, PROJECTS } from '../lib/todoist'
 import { getCachedTasks, saveToCache, readTasksFromSupabase } from '../lib/taskCache'
@@ -718,6 +718,8 @@ function ArchivedSection({ tasks, allTasks, bucket, onRestore, focusTaskId = nul
   // the section so it's visible, then scroll to + highlight it.
   const hasFocus = !!(focusTaskId && tasks.some((t) => t.id === focusTaskId))
   const [open, setOpen] = useState(hasFocus)
+  // Per-row measured heights — these rows come from a .map(), so one ref won't do.
+  const [measureArchived, archivedHeights] = useMeasuredHeights()
   const [search, setSearch] = useState('')
   // Deep-linked completed task: open its inline detail (the archived equivalent
   // of the edit view) in addition to expanding the section + highlighting.
@@ -827,13 +829,14 @@ function ArchivedSection({ tasks, allTasks, bucket, onRestore, focusTaskId = nul
                     </button>
                   </div>
 
-                  {/* Expanded detail */}
+                  {/* Expanded detail — measured, not clamped, so a long description
+                      plus subtasks can't be silently cut off. */}
                   <div style={{
-                    maxHeight: isExpanded ? '400px' : '0',
+                    maxHeight: isExpanded ? `${archivedHeights[t.id] ?? 0}px` : '0',
                     overflow: 'hidden',
                     transition: 'max-height 0.25s cubic-bezier(0.4,0,0.2,1)',
                   }}>
-                    <div className="px-3 pb-3 space-y-2 border-t border-[#F3EDF7]">
+                    <div ref={measureArchived(t.id)} className="px-3 pb-3 space-y-2 border-t border-[#F3EDF7]">
                       {t.description && (
                         <p className="text-xs text-[#49454F] leading-relaxed pt-2">{t.description}</p>
                       )}

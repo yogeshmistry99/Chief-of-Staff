@@ -34,26 +34,10 @@ async function pruneKnowledgeBackups(sb) {
   await sb.from('knowledge_backups').delete().in('id', toDelete)
 }
 
-// ─── Todoist API helper (used for update/complete/delete of legacy tasks only) ─
-async function todoistFetch(path, method = 'GET', body = null) {
-  const apiKey = process.env.TODOIST_API_KEY
-  if (!apiKey) throw new Error('TODOIST_API_KEY not configured')
-  const res = await fetch(`https://api.todoist.com/api/v1/${path}`, {
-    method,
-    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    ...(body ? { body: JSON.stringify(body) } : {}),
-  })
-  if (!res.ok) throw new Error(`Todoist ${method} /${path}: ${res.status} ${await res.text()}`)
-  if (res.status === 204 || method === 'DELETE') return null
-  return res.json()
-}
-
-// Tasks created locally (post-Todoist) have UUID ids; legacy Todoist tasks are all-numeric.
-const isTodoistId = (id) => /^\d+$/.test(id)
-
 // ─── Priority conversion ──────────────────────────────────────────────────────
 // Life OS:  P1 (urgent) → P4 (low)
-// Todoist:  priority 4 (urgent) → 1 (low)
+// Stored as: priority 4 (urgent) → 1 (low). The name is legacy — the scale was
+// inherited from Todoist and kept when the store became authoritative.
 function labelToTodoist(label) {
   const n = typeof label === 'string' ? parseInt(label.replace(/^p/i, '')) : label
   return Math.max(1, Math.min(4, 5 - (n || 4)))
@@ -205,18 +189,13 @@ async function updateTask({ id, name, priority, due_date, description, bucket, c
     newBucketName = entry[0]
   }
 
-  let updated = { ...existing }
-  if (isTodoistId(id)) {
-    const result = await todoistFetch(`tasks/${id}`, 'POST', body)
-    updated = { ...existing, ...result }
-  } else {
-    if (body.content !== undefined)     updated.content     = body.content
-    if (body.description !== undefined) updated.description = body.description
-    if (body.priority !== undefined)    updated.priority    = body.priority
-    if (due_date === 'remove')          updated.due         = null
-    else if (due_date)                  updated.due         = { date: due_date }
-    if (body.project_id)               updated.project_id  = body.project_id
-  }
+  const updated = { ...existing }
+  if (body.content !== undefined)     updated.content     = body.content
+  if (body.description !== undefined) updated.description = body.description
+  if (body.priority !== undefined)    updated.priority    = body.priority
+  if (due_date === 'remove')          updated.due         = null
+  else if (due_date)                  updated.due         = { date: due_date }
+  if (body.project_id)                updated.project_id  = body.project_id
 
   const newCategory = category !== undefined ? (category || null) : (existing._category ?? null)
   const newParentId = parent_id !== undefined ? (parent_id || null) : (existing.parent_id ?? null)
@@ -271,8 +250,6 @@ async function updateTask({ id, name, priority, due_date, description, bucket, c
 
 async function completeTask({ id }) {
   if (!id) throw new Error('id is required')
-  if (isTodoistId(id)) await todoistFetch(`tasks/${id}/close`, 'POST')
-
   const sb = getSupabase()
   const tasks = await getTaskCache(sb)
   await saveTaskCache(sb, tasks.map((t) => (t.id === id ? { ...t, is_completed: true } : t)))
@@ -282,8 +259,6 @@ async function completeTask({ id }) {
 
 async function deleteTask({ id }) {
   if (!id) throw new Error('id is required')
-  if (isTodoistId(id)) await todoistFetch(`tasks/${id}`, 'DELETE')
-
   const sb = getSupabase()
   const tasks = await getTaskCache(sb)
   await saveTaskCache(sb, tasks.filter((t) => t.id !== id))

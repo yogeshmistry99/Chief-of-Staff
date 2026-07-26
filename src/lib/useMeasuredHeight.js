@@ -44,4 +44,40 @@ export function useMeasuredHeight() {
   return [ref, height]
 }
 
+// Keyed variant for collapsibles rendered in a list, where one ref won't do.
+// Returns [measureFor, heights]:
+//   measureFor(key) → a ref callback for that row's content wrapper
+//   heights[key]    → that row's measured height (undefined until first measure)
+//
+// Used by the archived-task rows, which are produced by a .map() — extracting each
+// into its own component just to hold a hook would be a much larger refactor for
+// no behavioural gain.
+export function useMeasuredHeights() {
+  const [heights, setHeights] = useState({})
+  const observers = useRef(new Map())
+
+  const measureFor = useCallback((key) => (node) => {
+    const existing = observers.current.get(key)
+    if (existing) { existing.disconnect(); observers.current.delete(key) }
+    if (!node) return
+
+    const measure = () => setHeights((h) => (
+      h[key] === node.scrollHeight ? h : { ...h, [key]: node.scrollHeight }
+    ))
+    measure()
+
+    if (typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(measure)
+    ro.observe(node)
+    observers.current.set(key, ro)
+  }, [])
+
+  useEffect(() => () => {
+    observers.current.forEach((ro) => ro.disconnect())
+    observers.current.clear()
+  }, [])
+
+  return [measureFor, heights]
+}
+
 export default useMeasuredHeight

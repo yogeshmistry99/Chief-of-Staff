@@ -27,7 +27,7 @@ sees completed work, main-screen blocks are primary nav — see the two newest c
 | Supabase via **Supabase MCP** | **Verified** | `list_tables` / `execute_sql` work in this session — used to verify this doc's inventory. |
 | Supabase via the app (browser) | **Assumed** | The deployed PWA reads/writes Supabase normally; not directly observable from the sandbox. |
 | Supabase via `/api/mcp` connector | **Verified** (when connected) | Life OS MCP tools return live data; connection is intermittent in-session. |
-| **Direct** Supabase HTTPS egress from the sandbox | **BLOCKED** | Known platform bug: `xrmjzglsabnnqqeyubgh.supabase.co` returns 403 "Host not in allowlist" through the egress proxy. A raw `curl`/`fetch` fails — but the **Supabase MCP tools do work**. Use the MCP, not direct HTTP. |
+| **Direct** Supabase HTTPS egress from the sandbox | **WORKS (retested 2026-07-26)** | The old 403 "Host not in allowlist" is **gone** — `xrmjzglsabnnqqeyubgh.supabase.co` is reachable. Proof: an unauthenticated GET to `/rest/v1/` returns Supabase's own **401 `{"message":"No API key found in request"}`**, i.e. PostgREST answered; a proxy block returns 403, not 401. The anon key isn't in the sandbox env, so an authenticated read wasn't exercised. The Supabase MCP remains the easier route (no key handling), but direct HTTP is no longer blocked. |
 | `*.vercel.app` from the sandbox | **BLOCKED** | Egress proxy 403s all `*.vercel.app` hosts, so `/api/*` endpoints cannot be triggered from the sandbox. Trigger from a browser. |
 
 ---
@@ -86,6 +86,48 @@ sees completed work, main-screen blocks are primary nav — see the two newest c
 ---
 
 ## Recent significant changes (newest first)
+
+- **2026-07-26 (batch 4) — Five autonomy-safe Systems tasks: legacy ID handling removed, all
+  fixed max-height clamps converted, egress finding, two verifications.**
+  1. **Legacy Todoist ID handling removed (201d520d) — and it was hiding a LIVE bug, not just
+     dead code.** Measured the store first: of 62 active Systems tasks, **49 UUID, 12
+     Todoist-style alphanumeric (e.g. `6gmqr49276wqxXGM`), 1 `local_`, ZERO all-numeric.** The
+     two files disagreed on what "legacy" meant. `api/mcp.js` guarded on `/^\d+$/` (all-numeric),
+     so with zero such ids its three branches in `updateTask`/`completeTask`/`deleteTask` were
+     genuinely dead — removed, along with the now-orphaned `todoistFetch` and `isTodoistId`.
+     But `api/claude.js` guarded on the **inverse** (`!local_ && !isUuid`), so it fired for all
+     12 alphanumeric ids and, on a Todoist failure, did `return { error: … }` — meaning
+     **completing one of those tasks from the in-app CoS chat could fail outright even though the
+     store write succeeded.** That path is gone; completion is store-only for every id format.
+     **Behaviour change, stated plainly:** those 12+ tasks are no longer closed in Todoist. That
+     is the intended post-migration end state (store authoritative, Todoist retired, the Settings
+     import path already disarmed) — but it is a change, not a no-op. `labelToTodoist` /
+     `todoistToLabel` are **kept**: still live priority-scale converters, legacy-named but not
+     ID-format handling. `api/todoist.js` and the read paths (`getAllTasks`,
+     `getProjectSections`) are untouched — still open-bug 4.
+  2. **All remaining fixed max-height clamps converted (ad86436a).** `BucketDetail` archived row
+     (was 400px), `Home` event row (280px), `Calendar` event row (360px) now measure their content
+     like the two task drawers already did. The archived rows come from a `.map()`, so
+     `src/lib/useMeasuredHeight.js` gained a keyed `useMeasuredHeights()` variant
+     (`measureFor(key)` + `heights[key]`, same-value writes short-circuit to avoid re-render
+     churn) — extracting each row into its own component just to hold a hook would have been a
+     far larger refactor for no behavioural gain. **No fixed clamps on variable content remain in
+     the app.**
+  3. **Direct Supabase egress RETESTED and it now WORKS (6h4Fm4JcQFwjMchv)** — see the
+     connections table above; the doc had been wrong since the block lifted.
+  4. **`knowledge_backups` cap verified (36e529a4) — already implemented 2026-07-16, no work
+     needed.** Live table: **12 rows exactly at the cap**, oldest `2026-07-24 18:11`, newest
+     `2026-07-26 20:55`, **296 kB**. The two-day-old floor proves prune-on-write is actively
+     rotating, not merely present. Nothing to reclaim — it never grew past 12.
+  5. **Chief of Staff head context (6h4Fm3mcWgcQpm6v)** — "life-os-context.md" is that head's
+     context in Supabase, not a repo file. Inspected: **already contained no Todoist project IDs
+     and no stale "source of truth" claims**, so it was substantially done; corrected only its
+     now-false open-bug line about lingering legacy numeric-ID code. Repo `CONTEXT.md` needed no
+     change — its two "todoist" hits are the `todoist_task_cache` key name, which is correct.
+  Verified: `vite build` passes, `api/*.js` still 12/12, 18 Node assertions (update field
+  application, complete/delete across all three id formats, one-code-path equivalence, keyed
+  height semantics). **Not browser-verified** — sandbox can't reach the app; the three clamp
+  conversions are the part that would most benefit from a visual check.
 
 - **2026-07-26 (later) — Two live-testing bugs fixed; ComputedPreview deleted.** Both bugs were
   regressions from the batch earlier the same day, which was verified by build but never seen in a

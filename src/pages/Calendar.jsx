@@ -6,6 +6,7 @@ import { haptic } from '../lib/haptic'
 import EditSheet from '../components/EditSheet'
 import { onCalendarChange } from '../lib/claude'
 import { isoDate, addDays, startOfWeek, formatTime, formatDuration, getEventAccent } from '../lib/calendarUtils'
+import { useMeasuredHeight } from '../lib/useMeasuredHeight'
 import { BUCKET_META } from '../lib/bucketConfig'
 
 const PROJECT_NAMES = Object.fromEntries(Object.entries(PROJECTS).map(([name, id]) => [id, name]))
@@ -13,6 +14,7 @@ const PROJECT_NAMES = Object.fromEntries(Object.entries(PROJECTS).map(([name, id
 function EventRow({ event: initialEvent }) {
   const [e, setE] = useState(initialEvent)
   const [expanded, setExpanded] = useState(false)
+  const [detailRef, detailHeight] = useMeasuredHeight()
   const [editOpen, setEditOpen] = useState(false)
   const [editSummary, setEditSummary] = useState(initialEvent.summary ?? '')
   const [editLocation, setEditLocation] = useState(initialEvent.location ?? '')
@@ -102,11 +104,11 @@ function EventRow({ event: initialEvent }) {
         </div>
 
         <div style={{
-          maxHeight: expanded ? '360px' : '0',
+          maxHeight: expanded ? `${detailHeight}px` : '0',
           overflow: 'hidden',
           transition: 'max-height 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
         }}>
-          <div className="pl-13 pr-6 pb-3 space-y-2" style={{ paddingLeft: '3.25rem' }}>
+          <div ref={detailRef} className="pl-13 pr-6 pb-3 space-y-2" style={{ paddingLeft: '3.25rem' }}>
             {!isAllDay && startTime && (
               <p className="text-xs text-[#49454F]">{startTime} – {endTime}{duration ? ` (${duration})` : ''}</p>
             )}

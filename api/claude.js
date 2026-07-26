@@ -164,27 +164,13 @@ async function executeTool(name, input, tasks) {
     if (!task) return { error: `Task not found: ${input.task_id}` }
     task.is_completed = true
     task.completed_at = new Date().toISOString()
-    // Persist to Todoist so the completion survives a sync — but only for
-    // genuine legacy Todoist ids. UUID (choke-point) and local_ tasks don't
-    // exist in Todoist, so closing them there would 404.
-    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.task_id)
-    if (!input.task_id.startsWith('local_') && !isUuid) {
-      try {
-        const base = process.env.VERCEL_URL
-          ? `https://${process.env.VERCEL_URL}`
-          : 'http://localhost:3000'
-        const closeRes = await fetch(
-          `${base}/api/todoist?path=tasks/${encodeURIComponent(input.task_id)}/close`,
-          { method: 'POST', headers: { 'Content-Type': 'application/json' } }
-        )
-        if (!closeRes.ok) {
-          const detail = await closeRes.text().catch(() => '')
-          return { error: `Failed to close task in Todoist (${closeRes.status})${detail ? `: ${detail}` : ''}` }
-        }
-      } catch (err) {
-        return { error: `Todoist close failed: ${err.message}` }
-      }
-    }
+    // No Todoist mirror. This used to close the task in Todoist for any id that
+    // was neither a UUID nor `local_` — which caught the ~12 surviving
+    // Todoist-style alphanumeric ids (e.g. 6gmqr49276wqxXGM), NOT just numeric
+    // legacy ones. Worse, a Todoist failure returned an error, so completing one
+    // of those tasks from this chat could fail outright even though the store
+    // write was fine. Todoist is retired and the Supabase store is authoritative,
+    // so completion is store-only for every id format.
     return { success: true, verified: { is_completed: true, content: task.content } }
   }
 
