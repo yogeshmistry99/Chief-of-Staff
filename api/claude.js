@@ -1,4 +1,5 @@
 import { buildTask, enrichNewTask, aiScoreTask, isScored, persistNewTask } from './_lib/taskWrite.js'
+import { recordUsage } from './_lib/usage.js'
 
 const BUCKETS = ['Finance', 'Health', 'Work', 'Family', 'Home', 'Personal', 'Systems']
 
@@ -366,6 +367,8 @@ export default async function handler(req, res) {
       let currentMessages = messages
       let totalInputTokens = 0
       let totalOutputTokens = 0
+      let totalCacheWrite = 0
+      let totalCacheRead = 0
 
       for (let round = 0; round < 5; round++) {
         const upstream = await fetch('https://api.anthropic.com/v1/messages', {
@@ -433,6 +436,8 @@ export default async function handler(req, res) {
 
               if (evt.type === 'message_start') {
                 totalInputTokens += evt.message?.usage?.input_tokens ?? 0
+                totalCacheWrite  += evt.message?.usage?.cache_creation_input_tokens ?? 0
+                totalCacheRead   += evt.message?.usage?.cache_read_input_tokens ?? 0
               }
 
               if (evt.type === 'message_delta') {
@@ -473,7 +478,11 @@ export default async function handler(req, res) {
         break // end_turn or max_tokens — done
       }
 
-      res.write(`data: ${JSON.stringify({ usage: { input_tokens: totalInputTokens, output_tokens: totalOutputTokens, model: requestedModel ?? 'claude-haiku-4-5-20251001' } })}\n\n`)
+      // Record spend server-side (single source of truth for the Settings widget).
+      await recordUsage(requestedModel ?? 'claude-haiku-4-5-20251001', {
+        input: totalInputTokens, output: totalOutputTokens,
+        cacheWrite: totalCacheWrite, cacheRead: totalCacheRead,
+      })
       if (initialTasks) res.write(`data: ${JSON.stringify({ tasks_updated: tasks })}\n\n`)
       res.write('data: [DONE]\n\n')
       res.end()
@@ -487,6 +496,7 @@ export default async function handler(req, res) {
   try {
     let currentMessages = messages
     let finalText = ''
+    let nsInput = 0, nsOutput = 0, nsCacheWrite = 0, nsCacheRead = 0
 
     // Agentic loop — up to 5 rounds of tool use
     for (let i = 0; i < 5; i++) {
@@ -510,6 +520,11 @@ export default async function handler(req, res) {
       const data = await upstream.json()
       if (!upstream.ok) return res.status(upstream.status).json(data)
 
+      nsInput      += data.usage?.input_tokens ?? 0
+      nsOutput     += data.usage?.output_tokens ?? 0
+      nsCacheWrite += data.usage?.cache_creation_input_tokens ?? 0
+      nsCacheRead  += data.usage?.cache_read_input_tokens ?? 0
+
       const toolUseBlocks = data.content.filter((b) => b.type === 'tool_use')
       const textBlocks    = data.content.filter((b) => b.type === 'text')
 
@@ -530,6 +545,9 @@ export default async function handler(req, res) {
       ]
     }
 
+    await recordUsage(requestedModel ?? 'claude-haiku-4-5-20251001', {
+      input: nsInput, output: nsOutput, cacheWrite: nsCacheWrite, cacheRead: nsCacheRead,
+    })
     res.status(200).json({ content: finalText, tasks: initialTasks ? tasks : undefined })
   } catch (err) {
     res.status(500).json({ error: err.message })

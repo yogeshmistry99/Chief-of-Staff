@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { recordUsage } from './usage.js'
 
 // Canonical task construction — THE single choke point for creating a task.
 //
@@ -148,6 +149,8 @@ export async function aiScoreTask(task) {
     })
     if (!res.ok) return null
     const data = await res.json()
+    // Record spend even if the scores are unparseable — the tokens were billed.
+    await recordUsage('claude-haiku-4-5-20251001', data.usage)
     const text = data?.content?.find((b) => b.type === 'text')?.text ?? ''
     const match = text.match(/\{[\s\S]*\}/)
     if (!match) return null
