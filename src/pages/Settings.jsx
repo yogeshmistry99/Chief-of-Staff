@@ -6,15 +6,19 @@ import { supabase } from '../lib/supabase'
 import { onSyncChange } from '../lib/sync'
 import { listBackups, createBackup, restoreBackup, fmtBackupDate, fmtLabel } from '../lib/backups'
 
-// Sonnet 4.6: $3/MTok input, $15/MTok output
-// Haiku 4.5:  $0.80/MTok input, $4.00/MTok output
-function calcCost(usage) {
-  const si = usage.sonnet_input  ?? 0
-  const so = usage.sonnet_output ?? 0
-  const hi = usage.haiku_input   ?? (usage.input_tokens  ?? 0) - si
-  const ho = usage.haiku_output  ?? (usage.output_tokens ?? 0) - so
-  return (si / 1_000_000) * 3.00 + (so / 1_000_000) * 15.00
-       + (hi / 1_000_000) * 0.80 + (ho / 1_000_000) *  4.00
+// Cost is computed and stored server-side (api/_lib/pricing.js + usage.js) from
+// every AI call's real token usage, incl. cache tokens, at current Anthropic
+// rates. The widget displays that stored figure with a conservative upward
+// buffer so it never reads below actual spend: any AI call that the server
+// records but hasn't finished syncing, plus normal rounding, is covered by the
+// headroom. The Anthropic console remains the source of truth for exact billing.
+const SPEND_BUFFER = 0.10 // +10% headroom
+
+// Displayed (conservative) monthly cost: stored actual estimate × buffer,
+// rounded UP to the nearest cent.
+function displayCost(usage) {
+  const raw = usage.cost ?? 0
+  return Math.ceil(raw * (1 + SPEND_BUFFER) * 100) / 100
 }
 
 function StatusPill({ connected }) {
@@ -198,7 +202,17 @@ export default function Settings() {
   const location = useLocation()
   const navigate = useNavigate()
 
-  useEffect(() => { setUsage(getMonthlyUsage()) }, [])
+  useEffect(() => {
+    let alive = true
+    const load = () => getMonthlyUsage().then((u) => { if (alive) setUsage(u) })
+    load()
+    // AI spend is written server-side into app_data:ai_usage_YYYY_MM; refresh
+    // when that row syncs (realtime) so the widget reflects new spend live.
+    const d = new Date()
+    const usageSbKey = `ai_usage_${d.getFullYear()}_${String(d.getMonth() + 1).padStart(2, '0')}`
+    const unsub = onSyncChange(usageSbKey, load)
+    return () => { alive = false; unsub?.() }
+  }, [])
 
   // Handle OAuth redirect params
   useEffect(() => {
@@ -332,7 +346,7 @@ export default function Settings() {
     setEditingLimit(false)
   }
 
-  const cost = calcCost(usage)
+  const cost = displayCost(usage)
   const monthLabel = new Date().toLocaleString('default', { month: 'long', year: 'numeric' })
   const pct = spendLimit > 0 ? Math.min(100, (cost / spendLimit) * 100) : 0
   const resetDate = (() => {
@@ -346,7 +360,7 @@ export default function Settings() {
       name: 'Claude (Anthropic)',
       description: 'Powers all AI intelligence — Chief of Staff, all 7 heads, priority reasoning and chat.',
       connected: 'anthropic' in status ? status.anthropic : null,
-      detail: `CoS: claude-sonnet-4-6 · Heads: claude-haiku-4-5 · Spend this month: $${cost.toFixed(4)}`,
+      detail: `Chat: claude-haiku-4-5 · Priorities: claude-sonnet-4-6 · Spend this month: ≈ $${cost.toFixed(2)}`,
       url: 'https://console.anthropic.com',
     },
     {
@@ -412,12 +426,12 @@ export default function Settings() {
       {/* AI Spend */}
       <CollapsibleSection
         title="AI Spend"
-        subtitle={`${monthLabel} · $${cost.toFixed(2)} of $${spendLimit.toFixed(0)}`}
+        subtitle={`${monthLabel} · ≈ $${cost.toFixed(2)} of $${spendLimit.toFixed(0)}`}
       >
         <div className="bg-white border border-[#CAC4D0] rounded-2xl px-4 py-4 mt-2">
           <div className="flex items-end justify-between mb-3">
             <div>
-              <span className="text-3xl font-bold text-[#1C1B1F]">${cost.toFixed(2)}</span>
+              <span className="text-3xl font-bold text-[#1C1B1F]">≈ ${cost.toFixed(2)}</span>
               <span className="text-sm text-[#79747E] ml-1">/ ${spendLimit.toFixed(0)}</span>
             </div>
             <span className="text-xs text-[#79747E]">{usage.calls ?? 0} {usage.calls === 1 ? 'call' : 'calls'}</span>
@@ -435,8 +449,8 @@ export default function Settings() {
           </div>
 
           <div className="flex gap-4 text-xs text-[#49454F] mb-4">
-            <span>{(usage.sonnet_input ?? 0).toLocaleString()} Sonnet in</span>
-            <span>{(usage.haiku_input ?? 0).toLocaleString()} Haiku in</span>
+            <span>{(usage.by_model?.sonnet?.input ?? 0).toLocaleString()} Sonnet in</span>
+            <span>{(usage.by_model?.haiku?.input ?? 0).toLocaleString()} Haiku in</span>
           </div>
 
           <div className="flex gap-2 mb-4">
@@ -476,7 +490,7 @@ export default function Settings() {
               </button>
             )}
           </div>
-          <p className="text-[10px] text-[#79747E] mt-3 opacity-60">Estimated from local token counts. Check Anthropic console for exact billing.</p>
+          <p className="text-[10px] text-[#79747E] mt-3 opacity-60">Estimate from server-side token counts (incl. cache), rounded up with headroom so it never reads below actual. Anthropic console is the source of truth for exact billing.</p>
         </div>
       </CollapsibleSection>
 

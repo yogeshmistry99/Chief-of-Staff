@@ -3,7 +3,8 @@
 Single source of truth for system state. **Read this at the start of every session.
 Update it at the end of any session that changes anything.**
 
-Last updated: 2026-07-16 (storage inventory verified live against Supabase project `xrmjzglsabnnqqeyubgh`)
+Last updated: 2026-07-26 (AI spend tracking moved server-side; scoring surfaced in-app, review now
+sees completed work, main-screen blocks are primary nav — see the two newest changelog entries)
 
 ---
 
@@ -41,6 +42,7 @@ Last updated: 2026-07-16 (storage inventory verified live against Supabase proje
   - `discussions_${bucket}` — discussions per bucket, one row each for all 7 buckets.
   - `task_notifications` — per-task notifications (64 entries).
   - `google_calendar_auth` — Google OAuth token state.
+  - `ai_usage_${YYYY_MM}` — **THE AI SPEND STORE (added 2026-07-26).** Per-month token/cost totals for the Settings "AI Spend" widget. jsonb: `{input, output, cacheWrite, cacheRead, cost, calls, by_model:{haiku:{…}, sonnet:{…}}}`. Written server-side by every `/api/*` call that spends `ANTHROPIC_API_KEY`, via the atomic `bump_ai_usage(p_key,p_model,p_input,p_output,p_cache_write,p_cache_read,p_cost)` RPC (SECURITY DEFINER, row-locked). Replaces the old per-browser `localStorage.usage_${month}`.
   - **`app_roadmap` — referenced by code (`get_roadmap`/`update_roadmap`) but NO ROW exists yet.** Not set until the roadmap is first saved.
 - **`task_backups`** — task-store snapshots (`label`, `tasks`, `task_count`, `created_at`). **12 rows — currently AT the cap.** Capped at 12 (`MAX_SNAPSHOTS`, pruned on every write in `src/lib/backups.js`).
 - **`knowledge_backups`** — prior values before overwrite (`head_key`, `backed_up_at`, `value`). Written by `update_knowledge`, `update_roadmap`, and `/api/sync-all-buckets` (key `todoist_task_cache_snapshot`). **Capped at 12 (`MAX_KNOWLEDGE_BACKUPS`), prune-on-write at all three insert sites — fixed 2026-07-16.** (This line previously said "grows unbounded," contradicting the rest of the doc; corrected 2026-07-24.)
@@ -58,7 +60,7 @@ Last updated: 2026-07-16 (storage inventory verified live against Supabase proje
 | notifications key | Task notifications | Yes (`task_notifications`) | — |
 | `cos_priority_list` / `cos_priority_last_refreshed` | AI priority list + ts | No | No |
 | `SPEND_LIMIT_KEY` | API spend limit | No | — |
-| API usage/cost key | Accumulated API cost | No | — |
+| ~~`usage_${month}`~~ | ~~Accumulated API cost~~ | **Moved to Supabase `ai_usage_${month}` (2026-07-26)** | — |
 | `LAST_AUTO_BACKUP_KEY` | Last auto-backup date | No | — |
 | `supabase_migrated` | One-time migration flag | No | — |
 
@@ -86,7 +88,9 @@ Last updated: 2026-07-16 (storage inventory verified live against Supabase proje
 ## Recent significant changes (newest first)
 
 - **2026-07-26 — Scoring made visible, review sees completed work, main-screen blocks are now nav.**
-  Five Systems tasks, on branch `claude/calendar-recurring-events-7tsptn`, **not yet merged**.
+  Five Systems tasks. Merged to `main` after the AI Spend work below (merge, not fast-forward —
+  `main` had moved; the only conflict was this changelog, `.mcp.json` was byte-identical on both
+  sides and `src/lib/claude.js` auto-merged cleanly since the two changes touch different regions).
   1. **Scoring surfaced (d6aeb73c + 36469a71 pt 1 — one build; they overlapped).** New
      `src/lib/scoringDisplay.js` holds helpers *extracted* from `ComputedPreview` (which was the
      only place the four scores were rendered, so removing it would have deleted the display
@@ -129,7 +133,40 @@ Last updated: 2026-07-16 (storage inventory verified live against Supabase proje
   unscored/partial/corrupt input, score persistence round-trip, period filtering, block filters).
   **Not yet seen in a browser** — spacing/clipping in the detail drawers is worth an eye.
   Still open: 36469a71 pt 2 (banded tie-break, deferred pending evidence, per the task);
-  094b2e6b stays **PARKED** (only its `.mcp.json --browser chromium` pin was applied).
+  094b2e6b stays **PARKED** (only its `.mcp.json --browser chromium` pin was applied — and that
+  pin had already landed independently on `main` via `74a45e6`, so the two were identical).
+
+- **2026-07-26 — AI Spend widget fixed: server-side tracking + correct pricing + conservative estimate.**
+  The Settings "AI Spend" widget under-reported (app showed $13.13 vs Anthropic console $20.03, which
+  blocked the account). Root causes were multiple, NOT "output isn't tracked" (the streamed chat path
+  already tracked output): (1) **Haiku mis-priced** — hardcoded $0.80/$4.00 vs correct **$1.00/$5.00**
+  (verified live 2026-07-26), and Haiku is the DEFAULT chat model; (2) **all non-streaming calls
+  recorded $0** — `sendMessage` never accumulated, so `rankPriorities` (Sonnet), CoS refresh and Head
+  refresh were free in the widget's eyes; (3) **server/MCP/cron scoring calls** (`aiScoreTask`) were
+  invisible to the browser-only tracker; (4) **cache tokens uncounted**.
+  Decided against the Anthropic Usage & Cost API: it's part of the Admin API, which is *"unavailable
+  for individual accounts"* and needs an org-wide `sk-ant-admin` key — a security downgrade to embed,
+  and its data lags so it can't drive a live spend gate.
+  Fix (server-side, per user's choice): new `api/_lib/pricing.js` (single verified pricing source,
+  incl. cache-write 1.25× / cache-read 0.1×; unknown model → most-expensive fallback) and
+  `api/_lib/usage.js` `recordUsage()`, which computes cost and atomically increments
+  `app_data:ai_usage_${month}` via the new `bump_ai_usage` RPC. Instrumented the three chokepoints that
+  spend the API key: `api/claude.js` stream path (now also sums `cache_creation`/`cache_read`) and
+  non-stream path, and `aiScoreTask` in `api/_lib/taskWrite.js` (covers all task scoring incl. MCP +
+  score-backlog). Client: `getMonthlyUsage()` now reads the Supabase row (async, live via
+  `onSyncChange` on the month key); removed the localStorage `accumulateUsage` path and the client
+  `calcCost` duplication. Widget shows the stored `cost` × **+10% buffer, rounded up** (`SPEND_BUFFER`)
+  so it never reads below actual; label reads "≈ $X" with a note that the console is source of truth.
+  No new serverless function (respects the 12/12 cap — logic lives in `api/_lib`). Verified: pricing
+  unit tests, `bump_ai_usage` aggregation (incl. `by_model`) against live DB, client build.
+  **DEPLOYED to `main`/production 2026-07-26** (Vercel dpl for commit 9990819 READY); the RPC was
+  already live in the shared Supabase project. **Seeded `ai_usage_2026_07` = $20.03 / 195 calls** from
+  the Anthropic console (the real July spend), so the reset-to-$0 didn't hide incurred spend and the
+  limit gate stays honest; real calls now accumulate on top. With the +10% display buffer the widget
+  shows ≈ $22 of $20 (correctly over the limit — raise the limit in Settings if desired). Live
+  end-to-end (real Anthropic call → row increments) still best confirmed by using the app, since the
+  sandbox can't reach prod `/api` (egress-blocked). Cross-device note: spend is now shared across
+  phone/desktop (was per-browser).
 
 - **2026-07-24 — BucketDetail Category grouping re-keyed off the store's `_category`.**
   `groupBySection` (src/pages/BucketDetail.jsx) previously grouped the "Category" sort purely by

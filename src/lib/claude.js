@@ -1,3 +1,5 @@
+import { supabase } from './supabase'
+
 // ─── Calendar change bus ──────────────────────────────────────────────────────
 // Components subscribe to know when a calendar tool mutated Google Calendar.
 
@@ -10,29 +12,23 @@ function notifyCalendarChange() { _calListeners.forEach((fn) => fn()) }
 
 function usageKey() {
   const d = new Date()
-  return `usage_${d.getFullYear()}_${String(d.getMonth() + 1).padStart(2, '0')}`
+  return `ai_usage_${d.getFullYear()}_${String(d.getMonth() + 1).padStart(2, '0')}`
 }
 
-function accumulateUsage({ input_tokens = 0, output_tokens = 0 }, model = '') {
-  const key = usageKey()
-  let cur = { input_tokens: 0, output_tokens: 0, calls: 0, sonnet_input: 0, sonnet_output: 0, haiku_input: 0, haiku_output: 0 }
-  try { cur = { ...cur, ...JSON.parse(localStorage.getItem(key) ?? '{}') } } catch {}
-  cur.input_tokens  = (cur.input_tokens  ?? 0) + input_tokens
-  cur.output_tokens = (cur.output_tokens ?? 0) + output_tokens
-  cur.calls         = (cur.calls         ?? 0) + 1
-  if (model.includes('sonnet')) {
-    cur.sonnet_input  = (cur.sonnet_input  ?? 0) + input_tokens
-    cur.sonnet_output = (cur.sonnet_output ?? 0) + output_tokens
-  } else {
-    cur.haiku_input  = (cur.haiku_input  ?? 0) + input_tokens
-    cur.haiku_output = (cur.haiku_output ?? 0) + output_tokens
+// AI spend is accumulated server-side (every /api/* call that spends the
+// ANTHROPIC_API_KEY records its usage into Supabase app_data:ai_usage_YYYY_MM
+// via the bump_ai_usage RPC). This reads that authoritative monthly total for
+// the Settings widget — captures browser, server, MCP, and cron-triggered spend
+// alike, unlike the old per-browser localStorage tracker.
+export async function getMonthlyUsage() {
+  if (!supabase) return {}
+  try {
+    const { data } = await supabase
+      .from('app_data').select('value').eq('key', usageKey()).single()
+    return data?.value ?? {}
+  } catch {
+    return {}
   }
-  localStorage.setItem(key, JSON.stringify(cur))
-}
-
-export function getMonthlyUsage() {
-  const key = usageKey()
-  try { return JSON.parse(localStorage.getItem(key) ?? '{}') } catch { return {} }
 }
 
 // Streams a response chunk-by-chunk, calling onChunk(text) for each piece.
@@ -69,7 +65,6 @@ export async function sendMessageStream(messages, system, onChunk, tasks = null,
           throw new Error(msg)
         }
         if (evt.text) { full += evt.text; onChunk(evt.text) }
-        if (evt.usage) accumulateUsage(evt.usage, evt.usage.model ?? '')
         if (evt.tasks_updated && onTasksUpdated) onTasksUpdated(evt.tasks_updated)
         if (evt.calendar_changed) notifyCalendarChange()
       } catch (e) {
