@@ -1,10 +1,10 @@
 // Shared presentation helpers for the four priority-scoring fields
 // (consequence / reversibility / compounding / effort) and the computed tier.
 //
-// Extracted from ComputedPreview.jsx so the scoring data stays renderable after
-// the "Computed (preview)" list is removed from the main screen — the preview was
-// the only place these lived, and removing it would have taken the display logic
-// with it. Pure functions only: no React, no side effects.
+// Originally extracted from the "Computed (preview)" list component so the scoring
+// data would stay renderable once that list left the main screen — it was the only
+// place these lived. That component has since been deleted; these helpers are now
+// the single source for scoring display. Pure functions only: no React, no side effects.
 
 import { rankTasks, scoreOf, tierOf, urgencyFactor } from '../../api/_lib/ranking.js'
 

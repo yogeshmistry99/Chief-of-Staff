@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import TaskEditSheet from '../components/TaskEditSheet'
 import ScoringPanel from '../components/ScoringPanel'
+import { useMeasuredHeight } from '../lib/useMeasuredHeight'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { getProjectSections, PROJECTS } from '../lib/todoist'
 import { getCachedTasks, saveToCache, readTasksFromSupabase } from '../lib/taskCache'
@@ -402,7 +403,7 @@ function TaskItem({ task: initialTask, onComplete, index = 0, allTasks = [], buc
   const [removing, setRemoving] = useState(false)
   const [completingAnim, setCompletingAnim] = useState(false)
   const [expanded, setExpanded] = useState(false)
-  const [scoringOpen, setScoringOpen] = useState(false)
+  const [detailRef, detailHeight] = useMeasuredHeight()
   const [editOpen, setEditOpen] = useState(false)
   // Deep-link focus: scroll this row into view + briefly highlight it.
   const rowRef = useRef(null)
@@ -653,17 +654,18 @@ function TaskItem({ task: initialTask, onComplete, index = 0, allTasks = [], buc
         </div>
       )}
 
+      {/* Animates to the content's measured height, so an open scoring panel can
+          never be clipped against the next card. */}
       <div style={{
-        // Grows when the scoring panel is open, or its contents get clipped.
-        maxHeight: expanded ? (scoringOpen ? '460px' : '180px') : '0',
+        maxHeight: expanded ? `${detailHeight}px` : '0',
         overflow: 'hidden',
         transition: 'max-height 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
       }}>
-        <div className="pb-3 pl-8 space-y-1.5">
+        <div ref={detailRef} className="pb-3 pl-8 space-y-1.5">
           {localTask.description && (
             <p className="text-xs text-[#49454F] leading-relaxed">{localTask.description}</p>
           )}
-          <ScoringPanel task={localTask} onToggle={setScoringOpen} className="my-1.5" />
+          <ScoringPanel task={localTask} className="my-1.5" />
           <div className="flex flex-wrap gap-x-3 gap-y-1">
             {localTask.due?.date && (
               <span className="text-xs text-[#79747E]">

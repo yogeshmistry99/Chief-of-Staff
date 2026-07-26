@@ -8,6 +8,7 @@ import { prioritise, scoreTask } from '../lib/priority'
 import { haptic } from '../lib/haptic'
 import { safeSetItem, capRecent } from '../lib/safeStorage'
 import ScoringPanel from '../components/ScoringPanel'
+import { useMeasuredHeight } from '../lib/useMeasuredHeight'
 import ChatInput from '../components/ChatInput'
 import ImageLightbox from '../components/ImageLightbox'
 import EditSheet from '../components/EditSheet'
@@ -245,7 +246,7 @@ function TaskRow({ task, onComplete, index = 0, allTasks = [] }) {
   const [removing, setRemoving] = useState(false)
   const [completingAnim, setCompletingAnim] = useState(false)
   const [expanded, setExpanded] = useState(false)
-  const [scoringOpen, setScoringOpen] = useState(false)
+  const [detailRef, detailHeight] = useMeasuredHeight()
   const [editOpen, setEditOpen] = useState(false)
   const [swipeX, setSwipeX] = useState(0)
   const [isSwiping, setIsSwiping] = useState(false)
@@ -486,18 +487,18 @@ function TaskRow({ task, onComplete, index = 0, allTasks = [] }) {
         </div>
       )}
 
-      {/* Expanded details */}
+      {/* Expanded details — animates to the content's measured height, so an open
+          scoring panel can never be clipped against the next card. */}
       <div style={{
-        // Grows when the scoring panel is open, or its contents get clipped.
-        maxHeight: expanded ? (scoringOpen ? '460px' : '180px') : '0',
+        maxHeight: expanded ? `${detailHeight}px` : '0',
         overflow: 'hidden',
         transition: 'max-height 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
       }}>
-        <div className="pb-3 pl-8 space-y-1.5">
+        <div ref={detailRef} className="pb-3 pl-8 space-y-1.5">
           {localTask.description && (
             <p className="text-xs text-[#49454F] leading-relaxed">{localTask.description}</p>
           )}
-          <ScoringPanel task={localTask} onToggle={setScoringOpen} className="my-1.5" />
+          <ScoringPanel task={localTask} className="my-1.5" />
           <div className="flex flex-wrap gap-x-3 gap-y-1">
             {localTask.due?.date && (
               <span className="text-xs text-[#79747E]">
@@ -785,8 +786,13 @@ export default function Home() {
       empty: 'Nothing due today.' },
     overdue:    { label: 'Overdue',    title: 'Overdue',
       empty: 'Nothing overdue — all caught up.' },
+    // Events shows the upcoming-events card in place of the task list, so its
+    // title/empty are unused — but the entry must exist, since `activeBlock` is
+    // looked up for every filter state and the header reads `.title`.
+    events:     { label: 'Events',     title: 'Upcoming events', empty: null },
   }
   const activeBlock = BLOCK_META[blockFilter ?? 'priorities']
+  const showEvents = blockFilter === 'events'
   const todayEvents  = events.filter((e) => {
     if (e.start?.date) return e.start.date === todayStr
     if (e.start?.dateTime) return new Date(e.start.dateTime).toLocaleDateString('en-CA') === todayStr
@@ -895,16 +901,17 @@ export default function Home() {
             { id: 'events',     label: 'Events',     value: eventsLoading ? '…' : todayEventsActionable.length, color: 'bg-[#D3E4FF] text-[#001D36]' },
             { id: 'overdue',    label: 'Overdue',    value: overdueCount,   color: overdueCount > 0 ? 'bg-red-100 text-red-900' : 'bg-[#C8F5E1] text-[#002115]' },
           ].map(({ id, label, value, color }, i) => {
-            const isActive = id !== 'events' && (blockFilter ?? 'priorities') === id
+            const isActive = (blockFilter ?? 'priorities') === id
             return (
               <button
                 key={id}
                 onClick={() => {
                   haptic.light()
-                  if (id === 'events') { navigate('/calendar'); return }
+                  // Every block filters this screen in place — Events shows the
+                  // upcoming-events card here rather than navigating to Calendar.
                   setBlockFilter(id === 'priorities' ? null : id)
                 }}
-                aria-pressed={id === 'events' ? undefined : isActive}
+                aria-pressed={isActive}
                 className={`rounded-xl p-3 text-left transition-shadow ${color} ${
                   isActive ? 'ring-2 ring-[#6750A4] ring-offset-1' : 'hover:shadow-sm'
                 }`}
@@ -917,7 +924,9 @@ export default function Home() {
           })}
         </div>
 
-        {/* Priority list */}
+        {/* Task list — Priorities / Today / Overdue. Hidden under Events, which
+            shows the upcoming-events card below in its place. */}
+        {!showEvents && (
         <div className="bg-white border border-[#CAC4D0] rounded-2xl p-4 mb-3 shadow-sm">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-semibold text-[#1C1B1F]">{activeBlock.title}</h2>
@@ -967,10 +976,19 @@ export default function Home() {
             <TaskRow key={task.id} task={task} onComplete={removeTask} index={i} allTasks={tasks} />
           ))}
         </div>
+        )}
 
-        {/* Upcoming events */}
+        {/* Upcoming events — scoped to the Events block only. It used to render
+            unconditionally, so it leaked into Priorities / Today / Overdue too. */}
+        {showEvents && (
         <div className="bg-white border border-[#CAC4D0] rounded-2xl p-4 mb-4 shadow-sm">
-          <h2 className="text-sm font-semibold text-[#1C1B1F] mb-3">Upcoming events</h2>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-semibold text-[#1C1B1F]">Upcoming events</h2>
+            <button
+              onClick={() => { haptic.light(); setBlockFilter(null) }}
+              className="text-[11px] font-medium px-2.5 py-1 rounded-full bg-[#F3EDF7] text-[#6750A4] hover:bg-[#EADDFF] transition-colors"
+            >Clear</button>
+          </div>
           {eventsLoading && (
             <div className="space-y-3">
               {[1, 2].map((i) => (
@@ -993,6 +1011,7 @@ export default function Home() {
             </div>
           )}
         </div>
+        )}
       </div>
         <div className="bg-white border-t border-[#CAC4D0] px-4 pt-3 pb-3 safe-bottom flex-shrink-0">
           <ChatInput

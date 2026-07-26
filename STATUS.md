@@ -87,6 +87,42 @@ sees completed work, main-screen blocks are primary nav — see the two newest c
 
 ## Recent significant changes (newest first)
 
+- **2026-07-26 (later) — Two live-testing bugs fixed; ComputedPreview deleted.** Both bugs were
+  regressions from the batch earlier the same day, which was verified by build but never seen in a
+  browser — the gap that produced them.
+  1. **Scoring panel clipping (d6aeb73c) — real fix, not a bigger number.** The task-detail drawers
+     in `Home.jsx` and `BucketDetail.jsx` clamped with a guessed constant
+     (`maxHeight: scoringOpen ? '460px' : '180px'` + `overflow:hidden`), so a task whose
+     description + open scoring panel + metadata exceeded 460px was visibly cut off where the next
+     card began (confirmed live on "Create digital estate document"). Replaced with new
+     `src/lib/useMeasuredHeight.js` — a `ResizeObserver`-backed hook (guarded where the API is
+     absent) that measures the drawer's actual content, so `maxHeight` follows content and cannot
+     clip. The 0.25s transition is preserved. This made the `scoringOpen` state and the `onToggle`
+     prop pass redundant in both pages; both removed **from the pages only**.
+     **`ScoringPanel.jsx` itself is deliberately untouched** — the edit-popup version is confirmed
+     good, so it was not modified; its `onToggle` prop is now an unused optional no-op (trivial
+     cleanup, deliberately not done). Not touched either, being unreported and scoring-panel-free:
+     the fixed clamps at `BucketDetail.jsx` archived row, `Home.jsx` event row, `Calendar.jsx` —
+     the archived row shares the same fragility class and is the next candidate if it ever bites.
+  2. **Block nav (714dd682).** The "Upcoming events" card rendered unconditionally in the
+     priorities tab, so it leaked into Priorities, Today *and* Overdue; meanwhile the Events block
+     navigated away to `/calendar` and so never showed events in place. Events is now a fourth
+     in-place filter state: the task-list card renders only when the filter isn't `events`, and the
+     events card only when it is. Events also gets the active ring and a Clear button. Note the
+     non-obvious bit: `activeBlock = BLOCK_META[blockFilter ?? 'priorities']` and the header reads
+     `.title`, so `BLOCK_META` needed an `events` entry or selecting Events would throw on
+     undefined.
+  3. **`src/components/ComputedPreview.jsx` deleted** (approved). Was unreferenced since the
+     preview left the main screen; helpers already live in `scoringDisplay.js`, and no stored
+     scoring data is affected. Its stale comment reference in `scoringDisplay.js` was updated.
+  Verified: `vite build` passes and 34 assertions pass across four Node suites, including new
+  block→view mapping tests (each of priorities/today/overdue shows the list and no events card;
+  events shows the card and no list; every filter state has a `BLOCK_META` entry so none can
+  crash) and a clamp-vs-measured regression test. Bundle module count went 101→102 — the new hook
+  adds one and deleting ComputedPreview removed none, because it was already unreferenced and
+  therefore never in the module graph. **Still not browser-verified from the sandbox** (egress
+  blocked) — that check remains manual, and is exactly where both of these bugs came from.
+
 - **2026-07-26 — Scoring made visible, review sees completed work, main-screen blocks are now nav.**
   Five Systems tasks. Merged to `main` after the AI Spend work below (merge, not fast-forward —
   `main` had moved; the only conflict was this changelog, `.mcp.json` was byte-identical on both
