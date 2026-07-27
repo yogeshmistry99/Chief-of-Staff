@@ -29,9 +29,29 @@ function withProjectName(t) {
   return { ...t, _projectName: t._projectName ?? PROJECT_NAMES[t.project_id] ?? null }
 }
 
-// ─── Display cache (read-only) ────────────────────────────────────────────────
+// ─── Change bus ───────────────────────────────────────────────────────────────
+// Every write notifies. useTasks() subscribes, so a write anywhere in the tab
+// refreshes every mounted screen — no screen has to remember to refresh.
 
-export function getCachedTasks() {
+const _taskListeners = new Set()
+
+export function onTasksChanged(fn) {
+  _taskListeners.add(fn)
+  return () => _taskListeners.delete(fn)
+}
+
+function notifyTasksChanged() {
+  _taskListeners.forEach((fn) => { try { fn() } catch {} })
+}
+
+// ─── Display cache ────────────────────────────────────────────────────────────
+
+// Instant-paint cache ONLY. Named "peek" on purpose: it is a possibly-stale
+// snapshot, not the task list. Components must use useTasks(), which paints from
+// this and then immediately replaces it with live rows. The old name
+// (getCachedTasks) read like an accessor for the real data, and four screens
+// used it as exactly that and never refreshed.
+export function peekCachedTasks() {
   try {
     const tasks = JSON.parse(localStorage.getItem(CACHE_KEY) ?? '[]')
     return Array.isArray(tasks) ? tasks.map(withProjectName) : []
@@ -54,7 +74,7 @@ function writeCache(tasks) {
 // consistent without a full refetch. Cache-only: it cannot affect the database.
 function patchCache(task) {
   if (!task?.id) return
-  const cur = getCachedTasks()
+  const cur = peekCachedTasks()
   const i = cur.findIndex((t) => t.id === task.id)
   if (i === -1) cur.push(task)
   else cur[i] = task
@@ -62,7 +82,7 @@ function patchCache(task) {
 }
 
 function dropFromCache(id) {
-  writeCache(getCachedTasks().filter((t) => t.id !== id))
+  writeCache(peekCachedTasks().filter((t) => t.id !== id))
 }
 
 // ─── Reads ────────────────────────────────────────────────────────────────────
@@ -89,30 +109,35 @@ export async function readTask(id) {
 export async function createTaskRow(task) {
   const saved = withProjectName(await createTask(supabase, task))
   patchCache(saved)
+  notifyTasksChanged()
   return saved
 }
 
 export async function updateTaskRow(id, patch) {
   const saved = withProjectName(await updateTask(supabase, id, patch))
   patchCache(saved)
+  notifyTasksChanged()
   return saved
 }
 
 export async function archiveTask(id) {
   const saved = withProjectName(await completeTask(supabase, id, true))
   patchCache(saved)
+  notifyTasksChanged()
   return saved
 }
 
 export async function restoreTask(id) {
   const saved = withProjectName(await completeTask(supabase, id, false))
   patchCache(saved)
+  notifyTasksChanged()
   return saved
 }
 
 export async function deleteTaskRow(id) {
   const res = await softDeleteTask(supabase, id)
   dropFromCache(id)
+  notifyTasksChanged()
   return res
 }
 
@@ -138,5 +163,6 @@ export async function restoreTasksFromSnapshot(tasks) {
     }
   }
   await readTasksFromSupabase()
+  notifyTasksChanged()
   return { restored, failed: failures.length, failures }
 }

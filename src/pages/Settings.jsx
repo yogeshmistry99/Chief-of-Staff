@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { getMonthlyUsage } from '../lib/claude'
-import { getLastPullTime, getCachedTasks } from '../lib/taskCache'
+import { getLastPullTime } from '../lib/taskCache'
+import { useTasks } from '../lib/useTasks'
 import { listTasks } from '../../api/_lib/tasksRepo.js'
 import { supabase } from '../lib/supabase'
 import { onSyncChange } from '../lib/sync'
@@ -260,7 +261,10 @@ export default function Settings() {
 
   const [refreshDone, setRefreshDone] = useState(false)
   const [lastPull] = useState(() => getLastPullTime())
-  const [cachedCount, setCachedCount] = useState(() => getCachedTasks().length)
+  // Live count — this used to read the cache once, so the backup count went
+  // stale the moment a task was added anywhere else.
+  const { tasks: liveTasks } = useTasks()
+  const cachedCount = liveTasks.length
 
   function formatTime(iso) {
     if (!iso) return null
@@ -312,7 +316,6 @@ export default function Settings() {
       await restoreBackup(restoreTarget.id)
       const updated = await listBackups()
       setBackups(updated)
-      setCachedCount(getCachedTasks().length)
       setRestoreState('done')
       setRestoreTarget(null)
       setTimeout(() => setRestoreState('idle'), 3000)

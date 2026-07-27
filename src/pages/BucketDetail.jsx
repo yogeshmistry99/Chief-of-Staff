@@ -4,7 +4,8 @@ import ScoringPanel from '../components/ScoringPanel'
 import { useMeasuredHeight, useMeasuredHeights } from '../lib/useMeasuredHeight'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { getProjectSections, PROJECTS } from '../lib/todoist'
-import { getCachedTasks, updateTaskRow, readTasksFromSupabase } from '../lib/taskCache'
+import { useTasks } from '../lib/useTasks'
+import { peekCachedTasks, updateTaskRow, readTasksFromSupabase, onTasksChanged } from '../lib/taskCache'
 import { scoreTask, BUCKET_WEIGHTS } from '../lib/priority'
 import { sendMessageStream, sendMessage, SYSTEM_PROMPTS, REFRESH_PROMPTS } from '../lib/claude'
 import { loadHeadConfig } from '../lib/headConfig'
@@ -905,6 +906,12 @@ export default function BucketDetail() {
   // Deep-link target from a search result (scroll-to + highlight on arrival).
   const focusTaskId = location.state?.focusTaskId ?? null
   const [tasks, setTasks] = useState([])
+  // Live sync: writes from anywhere (chat, another device, MCP) land here too.
+  // BucketDetail passes a bucket-filtered slice downstream, so filter here.
+  const { tasks: liveTasks } = useTasks()
+  useEffect(() => {
+    setTasks(liveTasks.filter((t) => t._projectName === bucket))
+  }, [liveTasks, bucket])
   const [sections, setSections] = useState([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(null)
@@ -925,7 +932,7 @@ export default function BucketDetail() {
   useEffect(() => {
     if (!projectId) return
     // Load from cache immediately for instant display
-    const cached = getCachedTasks().filter((t) => t._projectName === bucket)
+    const cached = peekCachedTasks().filter((t) => t._projectName === bucket)
     if (cached.length) { setTasks(cached); setLoading(false) }
     // Replace with Supabase data (source of truth)
     readTasksFromSupabase().then((all) => {
@@ -984,7 +991,7 @@ export default function BucketDetail() {
     clearNotificationsForSource(bucket)
     try {
       const cfg = loadHeadConfig(bucket)
-      const allTasks = getCachedTasks()
+      const allTasks = (await readTasksFromSupabase()) ?? peekCachedTasks()
       const system = REFRESH_PROMPTS.head(bucket, allTasks, cfg)
       const { content } = await sendMessage(
         [{ role: 'user', content: 'Run the priority refresh now.' }],

@@ -2,13 +2,13 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { PROJECTS } from '../lib/todoist'
 import { scoreTask, BUCKET_WEIGHTS } from '../lib/priority'
-import { getCachedTasks } from '../lib/taskCache'
+import { useTasks } from '../lib/useTasks'
 import { getNotifications } from '../lib/notifications'
 import { BUCKET_META } from '../lib/bucketConfig'
 
 export default function Buckets() {
   const navigate = useNavigate()
-  const tasks = getCachedTasks()
+  const { tasks } = useTasks()
   const [search, setSearch] = useState('')
 
   const allNotifs = getNotifications().filter((n) => n.status === 'pending')

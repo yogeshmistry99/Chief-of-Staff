@@ -170,6 +170,7 @@ export default function TaskEditSheet({ open, onClose, task, allTasks = [], task
   const [subtasks, setSubtasks] = useState([])
   const [newSubtask, setNewSubtask] = useState('')
   const [newSubtaskPriority, setNewSubtaskPriority] = useState(1)
+  const addingSubtask = useRef(false)   // in-flight guard against double-submit
 
   // Inline edit modes
   const [editingContent, setEditingContent] = useState(false)
@@ -354,6 +355,12 @@ export default function TaskEditSheet({ open, onClose, task, allTasks = [], task
 
   async function handleAddSubtask() {
     if (!newSubtask.trim() || !task) return
+    // In-flight guard. Without it a double-tap fired two /api/create-task calls,
+    // each minting its own UUID, so the "same" subtask was created twice with
+    // different ids (seen live: two "Check my whatsapp" rows 0.93s apart). The
+    // old whole-list writes could mask this; per-row writes surface it honestly.
+    if (addingSubtask.current) return
+    addingSubtask.current = true
     try {
       // Construct through the single choke point (/api/create-task → buildTask)
       // and PERSIST to the store — fixes the old bug where subtasks were written
@@ -373,6 +380,7 @@ export default function TaskEditSheet({ open, onClose, task, allTasks = [], task
       await createTaskRow(created)
       setNewSubtask(''); setNewSubtaskPriority(1); haptic.success()
     } catch { haptic.error() }
+    finally { addingSubtask.current = false }
   }
 
   function fmtDue(iso) {
@@ -541,7 +549,7 @@ export default function TaskEditSheet({ open, onClose, task, allTasks = [], task
                   onKeyDown={(e) => { if (e.key === 'Enter') handleAddSubtask() }}
                   placeholder="Add subtask…"
                   className="flex-1 text-sm text-[#1C1B1F] placeholder:text-[#CAC4D0] outline-none bg-transparent" />
-                <button onClick={handleAddSubtask} disabled={!newSubtask.trim()}
+                <button onClick={handleAddSubtask} disabled={!newSubtask.trim() || addingSubtask.current}
                   className="w-7 h-7 rounded-full bg-[#6750A4] disabled:bg-[#CAC4D0] text-white flex items-center justify-center flex-shrink-0 transition-colors">
                   <svg xmlns="http://www.w3.org/2000/svg" height="16" viewBox="0 -960 960 960" width="16" fill="currentColor"><path d="M440-440H200v-80h240v-240h80v240h240v80H520v240h-80v-240Z"/></svg>
                 </button>

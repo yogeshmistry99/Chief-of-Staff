@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { PROJECTS } from '../lib/todoist'
-import { getCachedTasks } from '../lib/taskCache'
+import { useTasks } from '../lib/useTasks'
 import { haptic } from '../lib/haptic'
 import EditSheet from '../components/EditSheet'
 import { onCalendarChange } from '../lib/claude'
@@ -196,6 +196,7 @@ async function fetchEvents(start, end) {
 
 export default function Calendar() {
   const navigate = useNavigate()
+  const { tasks: liveTasks } = useTasks()
   const [tasks, setTasks] = useState([])
   const [events, setEvents] = useState([])
   const [calendarError, setCalendarError] = useState(null)
@@ -248,12 +249,12 @@ export default function Calendar() {
     }
   }, [])
 
-  // Load tasks from cache
+  // Live tasks — re-derived whenever the store changes, so a task created in
+  // the chat or on another device shows up here without a reload.
   useEffect(() => {
-    const cached = getCachedTasks()
-    setTasks(cached.filter((t) => !t.is_completed).map((t) => ({ ...t, _bucket: PROJECT_NAMES[t.project_id] ?? t._projectName })))
+    setTasks(liveTasks.filter((t) => !t.is_completed).map((t) => ({ ...t, _bucket: PROJECT_NAMES[t.project_id] ?? t._projectName })))
     setLoading(false)
-  }, [])
+  }, [liveTasks])
 
   // Load events — window covers both month view and week view
   const loadEvents = useCallback(() => {

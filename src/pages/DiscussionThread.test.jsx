@@ -14,10 +14,15 @@ vi.mock('../lib/headConfig', () => ({
 }))
 
 vi.mock('../lib/taskCache', () => ({
-  getCachedTasks: vi.fn(() => []),
+  peekCachedTasks: vi.fn(() => []),
   readTasksFromSupabase: vi.fn(async () => []),
+  onTasksChanged: vi.fn(() => () => {}),
   createTaskRow: vi.fn(),
   updateTaskRow: vi.fn(),
+}))
+
+vi.mock('../lib/useTasks', () => ({
+  useTasks: vi.fn(() => ({ tasks: [], loading: false, error: null, refresh: vi.fn() })),
 }))
 
 const mockGetDiscussions = vi.fn()

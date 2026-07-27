@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { sendMessageStream, SYSTEM_PROMPTS } from '../lib/claude'
 import { loadHeadConfig } from '../lib/headConfig'
-import { getCachedTasks } from '../lib/taskCache'
+import { useTasks } from '../lib/useTasks'
 import { getDiscussions, saveDiscussion, newDiscussion } from '../lib/discussions'
 import Markdown from '../components/Markdown'
 import ChatInput from '../components/ChatInput'
@@ -23,7 +23,7 @@ export default function DiscussionThread() {
 
   const [editingTitle, setEditingTitle] = useState(isNew)
   const [descOpen, setDescOpen] = useState(false)
-  const [tasks, setTasks] = useState(() => getCachedTasks())
+  const { tasks, refresh: refreshTasks } = useTasks()
   // The task this thread is about, if any — discussions carry an optional taskId.
   const linkedTask = discussion?.taskId ? tasks.find((t) => t.id === discussion.taskId) : null
   const inputRef = useRef(null)
@@ -58,9 +58,10 @@ export default function DiscussionThread() {
           if (!last?.streaming) return prev
           return { ...prev, messages: [...msgs.slice(0, -1), { ...last, content: last.content + chunk }] }
         })
-      }, tasks, (updatedTasks) => {
-        // Display only — the server persisted each affected row itself.
-        setTasks(updatedTasks)
+      }, tasks, () => {
+        // The server persisted each affected row itself; re-read so this screen
+        // (and every other mounted one) reflects what actually landed.
+        refreshTasks()
       })
       setDiscussion((prev) => {
         if (!prev) return prev

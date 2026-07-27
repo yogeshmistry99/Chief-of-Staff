@@ -3,7 +3,8 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { sendMessageStream, sendMessage, SYSTEM_PROMPTS, REFRESH_PROMPTS } from '../lib/claude'
 import ImageLightbox from '../components/ImageLightbox'
 import { loadHeadConfig } from '../lib/headConfig'
-import { getCachedTasks, updateTaskRow, readTasksFromSupabase } from '../lib/taskCache'
+import { useTasks } from '../lib/useTasks'
+import { peekCachedTasks, updateTaskRow, readTasksFromSupabase, onTasksChanged } from '../lib/taskCache'
 import { getNotifications, getNotificationsForTask, saveNotifications, clearNotificationsForSource, dismissNotification, acceptNotification } from '../lib/notifications'
 import NotificationCard, { notifDotClass } from '../components/NotificationCard'
 import { prioritise, scoreTask } from '../lib/priority'
@@ -25,7 +26,14 @@ function extractJSON(text) {
 export default function ChiefPage() {
   const navigate = useNavigate()
   const location = useLocation()
-  const [tasks, setTasks] = useState(() => getCachedTasks())
+  const [tasks, setTasks] = useState(() => peekCachedTasks())
+
+  // Live sync: any write in this tab, any change from another device or the MCP
+  // tools, refreshes this screen. Without this, a screen only ever saw its own
+  // actions — which is how a chat-created task stayed invisible here.
+  const { tasks: liveTasks } = useTasks()
+  useEffect(() => { setTasks(liveTasks) }, [liveTasks])
+
   const [messages, setMessages] = useState(() => {
     try { return JSON.parse(localStorage.getItem('cos_home_messages') ?? '[]') }
     catch { return [] }
@@ -42,7 +50,7 @@ export default function ChiefPage() {
     clearNotificationsForSource('chief')
     try {
       const cfg = loadHeadConfig('chief')
-      const allTasks = getCachedTasks()
+      const allTasks = (await readTasksFromSupabase()) ?? peekCachedTasks()
       const system = REFRESH_PROMPTS.cos(allTasks, cfg)
       const { content } = await sendMessage(
         [{ role: 'user', content: 'Run the priority refresh now.' }],

@@ -35,7 +35,12 @@ function isScored(t) {
 export function urgencyFactor(task, now = new Date()) {
   const due = task?.due?.date
   if (!due) return 1.0
-  const dueMs = new Date(due.slice(0, 10) + 'T23:59:59').getTime()
+  // Explicit Z. Without it this parsed in the RUNTIME's zone, so the same task
+  // got a different urgency in the browser (BST) than on Vercel (UTC) — the
+  // ranking depended on where it was computed. Anchoring to UTC makes both
+  // agree; the cost is that a band boundary sits an hour off BST wall-clock,
+  // which is far less harmful than client and server disagreeing.
+  const dueMs = new Date(due.slice(0, 10) + 'T23:59:59Z').getTime()
   if (Number.isNaN(dueMs)) return 1.0
   const hours = (dueMs - now.getTime()) / 3_600_000
   if (hours <= 48) return 2.0        // overdue or due within 48h

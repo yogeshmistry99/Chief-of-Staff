@@ -189,7 +189,13 @@ export function formatCompletedForPrompt(tasks, since, bucket = null) {
   const done = completedSince(tasks, since, bucket)
   if (!done.length) return 'Nothing recorded as completed in this period.'
   return done.map((t) => {
-    const when = String(t.completed_at).slice(0, 10)
+    // Local calendar date, NOT the raw UTC slice. completed_at is stored in UTC,
+    // so slicing it told the CoS a task finished at 00:30 BST was completed the
+    // PREVIOUS day. Same class as the BST calendar-read bug fixed on 22 July.
+    const d = new Date(t.completed_at)
+    const when = Number.isNaN(d.getTime())
+      ? String(t.completed_at).slice(0, 10)
+      : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
     const where = !bucket && t._projectName ? ` | ${t._projectName}` : ''
     return `  - [${when}${where}] ${t.content}`
   }).join('\n')

@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { pushToSupabase } from '../lib/sync'
 import { useNavigate } from 'react-router-dom'
-import { getCachedTasks, readTasksFromSupabase } from '../lib/taskCache'
+import { useTasks } from '../lib/useTasks'
+import { peekCachedTasks, readTasksFromSupabase } from '../lib/taskCache'
 import { scoreTask } from '../lib/priority'
 import {
   sendMessageStream, SYSTEM_PROMPTS,
@@ -438,6 +439,9 @@ export default function WeeklyReview() {
   const navigate = useNavigate()
   const [step, setStep] = useState(0)
   const [allTasks, setAllTasks] = useState([])
+  // Live sync — a review must never run against a list the store has moved past.
+  const { tasks: liveTasks } = useTasks()
+  useEffect(() => { if (liveTasks.length) setAllTasks(liveTasks) }, [liveTasks])
   const [intention, setIntention] = useState('')
   const [bucketReviews, setBucketReviews] = useState([])
   const [tasksAdded, setTasksAdded] = useState(0)
@@ -447,9 +451,9 @@ export default function WeeklyReview() {
 
   useEffect(() => {
     // Read the authoritative task store (single source of truth) — NOT live
-    // Todoist, which is stale post-migration. getCachedTasks/readTasksFromSupabase
+    // Todoist, which is stale post-migration. peekCachedTasks/readTasksFromSupabase
     // both backfill _projectName.
-    const cached = getCachedTasks()
+    const cached = peekCachedTasks()
     if (cached.length) setAllTasks(cached)
     readTasksFromSupabase().then((t) => { if (t) setAllTasks(t) }).catch(() => {})
   }, [])

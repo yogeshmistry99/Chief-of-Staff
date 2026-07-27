@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { PROJECTS } from '../lib/todoist'
-import { getCachedTasks, readTasksFromSupabase } from '../lib/taskCache'
+import { useTasks } from '../lib/useTasks'
+import { peekCachedTasks, readTasksFromSupabase, onTasksChanged } from '../lib/taskCache'
 import { getNotificationsForTask, dismissNotification, acceptNotification } from '../lib/notifications'
 import NotificationCard, { notifDotClass } from '../components/NotificationCard'
 import { prioritise, scoreTask } from '../lib/priority'
@@ -643,7 +644,14 @@ export default function Home() {
   const [tab, setTab]                 = useState('priorities')
   // null = the CoS priority list; 'today' | 'overdue' = block-filtered lenses.
   const [blockFilter, setBlockFilter] = useState(null)
-  const [tasks, setTasks]             = useState(() => getCachedTasks())
+  const [tasks, setTasks]             = useState(() => peekCachedTasks())
+
+  // Live sync: any write in this tab, any change from another device or the MCP
+  // tools, refreshes this screen. Without this, a screen only ever saw its own
+  // actions — which is how a chat-created task stayed invisible here.
+  const { tasks: liveTasks } = useTasks()
+  useEffect(() => { setTasks(liveTasks) }, [liveTasks])
+
   const [error]                        = useState(null)
   const [lastWeeklyReview, setLastWeeklyReview] = useState(() => {
     try { const s = localStorage.getItem('lastWeeklyReview'); return s ? new Date(s) : null } catch { return null }
@@ -697,7 +705,7 @@ export default function Home() {
         readTasksFromSupabase(),
         fetchCalendarRange(14),
       ])
-      const liveTasks = sbTasks ?? getCachedTasks()
+      const liveTasks = sbTasks ?? peekCachedTasks()
       setTasks(liveTasks)
       const cfg = loadHeadConfig('chief')
       const ranked = await rankPriorities(liveTasks, calEvents, cfg)
