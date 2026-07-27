@@ -3,8 +3,8 @@
 Single source of truth for system state. **Read this at the start of every session.
 Update it at the end of any session that changes anything.**
 
-Last updated: 2026-07-27 (chat can no longer confirm a write it never made; read side finished —
-stale task reads made unexpressible — see the two newest changelog entries)
+Last updated: 2026-07-27 (chat confirmations: no false ✓, and no duplicate ✓; read side finished —
+stale task reads made unexpressible — see the three newest changelog entries)
 
 ---
 
@@ -98,6 +98,25 @@ stale task reads made unexpressible — see the two newest changelog entries)
 ---
 
 ## Recent significant changes (newest first)
+
+- **2026-07-27 — Chat shows a confirmation once, not before and after the tool call.** Deployed
+  (`000064d`, READY). The model narrates the change it is about to make, calls the tool, then
+  states it again, so one created task rendered two identical ✓ lines in a single bubble
+  (observed on "Test task 2"). The streaming path emitted every round's text including rounds
+  that ended in a tool call; the **non-streaming path already discarded that narration**
+  (`finalText` is only set on the round that made no tool call), so streaming was the odd one out.
+  **Why not simply buffer:** whether a round ends in a tool call is only known once the round
+  finishes, so withholding text would make an ordinary tool-free reply — the common case — arrive
+  in one lump. The server instead streams as before and emits `{ drop_chars: n }` telling the
+  client how many characters to retract.
+  **Contract change:** `sendMessageStream`'s `onChunk` now receives `(delta, full)` and callers
+  must render `full`. A caller that accumulates deltas itself cannot see a retraction — all six
+  call sites were converted (Home, ChiefPage, BucketDetail, DiscussionThread, ×3 WeeklyReview);
+  several got simpler, having kept a running string only to re-render it.
+  Verified by replaying the observed transcript through the client logic: the tick line appears
+  exactly once, ordinary streaming still arrives chunk-by-chunk (asserted, not assumed),
+  multi-round tool use collapses to the final answer, and an oversized retraction cannot eat
+  earlier text.
 
 - **2026-07-27 — Chat can no longer confirm a write it never made.** Deployed (`97de68a`, READY).
   **The bug:** the in-app CoS chat replied with a tick confirmation for a task that was never
@@ -450,6 +469,9 @@ stale task reads made unexpressible — see the two newest changelog entries)
   write tool actually succeeded and appends a correction when they disagree
   (`api/_lib/writeClaim.js`). Any new state-changing tool must be added to that module's
   `WRITE_TOOLS` set, or a genuine write will be mistaken for a false confirmation.
+- **`sendMessageStream`'s `onChunk` gives you `(delta, full)` — render `full`.** Accumulating
+  deltas yourself looks equivalent but silently breaks the server's `drop_chars` retraction, and
+  the chat starts double-printing confirmations again.
 - **A tool error is only visible if it is logged.** Tool failures return to the *model* as a
   `tool_result`, not to the server log — so an unlogged failed write is indistinguishable from a
   write that was never attempted (200, clean logs, no row). `runTool` in `api/claude.js` logs both.
