@@ -21,26 +21,44 @@ import { readTasksFromSupabase, peekCachedTasks, onTasksChanged } from './taskCa
 // A screen using this cannot show a list the database has moved past.
 
 let _channel = null
-let _channelRefs = 0
+const _rtListeners = new Set()
 
-// One shared realtime channel for the whole app, ref-counted across mounts.
+// One shared realtime channel for the whole app.
+//
+// `.on()` is attached EXACTLY ONCE, before `subscribe()`, and fans out to a
+// local Set — subscribers join the Set, never the channel.
+//
+// This previously ref-counted and called `.on()` again for each extra mount,
+// which supabase-js rejects by throwing ("cannot add postgres_changes callbacks
+// ... after subscribe()"). App.jsx renders all four tab screens simultaneously,
+// so four useTasks() mount at once and the second one threw during render —
+// taking the entire app down on every load. Do not reintroduce a per-subscriber
+// `.on()`.
 function subscribeRealtime(onChange) {
   if (!supabase) return () => {}
-  _channelRefs++
+  _rtListeners.add(onChange)
+
   if (!_channel) {
-    _channel = supabase
-      .channel('tasks_live')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, onChange)
-      .subscribe()
-  } else {
-    _channel.on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, onChange)
-  }
-  return () => {
-    _channelRefs--
-    if (_channelRefs <= 0 && _channel) {
-      supabase.removeChannel(_channel)
+    // Realtime is a convenience, not a dependency: losing it just means changes
+    // from another device arrive on focus instead of instantly. It must never be
+    // able to break the app, so any failure here degrades rather than throws.
+    try {
+      _channel = supabase
+        .channel('tasks_live')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' },
+          () => _rtListeners.forEach((fn) => { try { fn() } catch {} }))
+        .subscribe()
+    } catch (e) {
+      console.warn('realtime unavailable — falling back to focus/write refresh', e)
       _channel = null
-      _channelRefs = 0
+    }
+  }
+
+  return () => {
+    _rtListeners.delete(onChange)
+    if (_rtListeners.size === 0 && _channel) {
+      try { supabase.removeChannel(_channel) } catch {}
+      _channel = null
     }
   }
 }
