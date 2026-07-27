@@ -99,6 +99,34 @@ sees completed work, main-screen blocks are primary nav — see the two newest c
 
 ## Recent significant changes (newest first)
 
+- **2026-07-27 — Read side finished: stale task reads made unexpressible.** Deployed (`6f1ff55`,
+  READY). The persistence rebuild fixed writes; reads were still per-screen guesswork.
+  **The bug:** Buckets, Calendar, DiscussionThread and Settings called `getCachedTasks()` once at
+  mount and never looked again, so a task created in the chat, QuickAdd, another device or the MCP
+  was **invisible to search** until the user reloaded the right screen. Whether a screen refreshed
+  was an accident of how it was written — which is why 4 of 6 browser checks passed and 2 didn't.
+  **The fix:** new `src/lib/useTasks.js` is the only way a component gets tasks. It paints from the
+  display cache, immediately replaces it with live rows, and re-reads on (a) any write in this tab
+  via a new change bus in `taskCache`, (b) **Postgres realtime on `public.tasks`** — newly enabled;
+  it was only on `app_data` — covering another device or the Claude.ai MCP tools, and (c) tab
+  focus, covering a missed realtime event. All eight screens use it.
+  **`getCachedTasks` → `peekCachedTasks`**, and no screen imports it. The old name read like an
+  accessor for the real data and four screens used it as exactly that; "peek" says what it is.
+  **Also fixed:** Settings' backup count read a mount-time snapshot (stale); subtask-add had no
+  in-flight guard, so a double-tap fired two `/api/create-task` calls each minting its own UUID —
+  two rows for one subtask. Guarded by ref + disabled button. QuickAdd already guarded.
+  **Timezone audit (asked for explicitly):** `isoDate`, `daysDiff` and the Home counters all use
+  **local** getters and were already BST-correct — nothing judges "due today"/overdue off a raw UTC
+  date. Two real defects found and fixed: the completed-date handed to the CoS sliced the raw UTC
+  string, so a task finished 00:30 BST was reported as the **previous day**; and ranking urgency
+  parsed the due date in the *runtime's* zone, so a task ranked differently in the browser (BST)
+  than on Vercel (UTC) — now pinned to UTC so both agree. **Not reproduced:** a UTC timestamp
+  *rendered in the UI* — every display path uses `toLocale*`, which is browser-local. If one is
+  visible, the screen and field are needed to find it.
+  **Data:** the 0.93s-apart duplicate "Check my whatsapp" was soft-deleted (recoverable). The
+  twice-created "Buy birthday gift for Rohan" was **left alone** — those two are ~30 min apart with
+  *different* due dates and priorities, so they are deliberate entries, not a double-submit.
+
 - **2026-07-26/27 — TASK PERSISTENCE REWRITTEN: per-row writes, blob overwrite eliminated.**
   Deployed to production (`5c7214f`, deploy READY) and verified end-to-end against live data.
   **The bug:** the whole task list lived as one JSON array in `app_data.todoist_task_cache`, and
