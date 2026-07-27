@@ -3,6 +3,27 @@ import {
   persistNewTask, persistTaskUpdate, persistTaskCompletion,
 } from './_lib/taskWrite.js'
 import { recordUsage } from './_lib/usage.js'
+import { isSuccessfulWrite, needsCorrection, CORRECTION_TEXT } from './_lib/writeClaim.js'
+
+// Run a tool without letting it take the request down. Most failures already
+// return { error } for the model to surface, but a genuine throw inside
+// executeTool used to propagate out of Promise.all — after the 200 and the SSE
+// headers had already been sent, so the user saw a truncated reply and the
+// server logged nothing useful. Failures are also logged here: previously a
+// tool error went only to the model as a tool_result and never to the server,
+// which made "the write failed" indistinguishable from "no write was attempted"
+// when reading the logs after the fact.
+async function runTool(name, input, tasks) {
+  let result
+  try {
+    result = await executeTool(name, input, tasks)
+  } catch (err) {
+    console.error(`[claude] tool ${name} threw:`, err)
+    result = { error: `${name} failed: ${err.message}` }
+  }
+  if (result?.error) console.warn(`[claude] tool ${name} returned an error:`, result.error)
+  return result
+}
 
 const BUCKETS = ['Finance', 'Health', 'Work', 'Family', 'Home', 'Personal', 'Systems']
 
@@ -371,6 +392,11 @@ export default async function handler(req, res) {
       let totalOutputTokens = 0
       let totalCacheWrite = 0
       let totalCacheRead = 0
+      // Did any state-changing tool actually land this turn, and what did the
+      // model say? Compared at the end so a confirmation with no write behind
+      // it corrects itself instead of quietly misleading the user.
+      let writeSucceeded = false
+      let assistantText = ''
 
       for (let round = 0; round < 5; round++) {
         const upstream = await fetch('https://api.anthropic.com/v1/messages', {
@@ -430,6 +456,7 @@ export default async function handler(req, res) {
                 if (!blocks[index]) continue
                 if (delta.type === 'text_delta') {
                   blocks[index].text += delta.text
+                  assistantText += delta.text
                   res.write(`data: ${JSON.stringify({ text: delta.text })}\n\n`)
                 } else if (delta.type === 'input_json_delta') {
                   blocks[index].input += delta.partial_json
@@ -462,8 +489,9 @@ export default async function handler(req, res) {
           // Execute all tools
           let calendarChanged = false
           const toolResults = await Promise.all(toolUseBlocks.map(async (block) => {
-            const result = await executeTool(block.name, block.input, tasks)
+            const result = await runTool(block.name, block.input, tasks)
             if (result.calendar_changed) calendarChanged = true
+            if (isSuccessfulWrite(block.name, result)) writeSucceeded = true
             return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(result) }
           }))
 
@@ -478,6 +506,14 @@ export default async function handler(req, res) {
         }
 
         break // end_turn or max_tokens — done
+      }
+
+      // The model claimed a change that never happened. Text already streamed
+      // can't be retracted, so append the correction — a false confirmation
+      // that reports itself beats one the user only discovers days later.
+      if (needsCorrection(assistantText, writeSucceeded)) {
+        console.warn('[claude] reply claimed a write but no write tool succeeded:', assistantText.slice(0, 300))
+        res.write(`data: ${JSON.stringify({ text: CORRECTION_TEXT })}\n\n`)
       }
 
       // Record spend server-side (single source of truth for the Settings widget).
@@ -499,6 +535,7 @@ export default async function handler(req, res) {
     let currentMessages = messages
     let finalText = ''
     let nsInput = 0, nsOutput = 0, nsCacheWrite = 0, nsCacheRead = 0
+    let writeSucceeded = false
 
     // Agentic loop — up to 5 rounds of tool use
     for (let i = 0; i < 5; i++) {
@@ -536,7 +573,8 @@ export default async function handler(req, res) {
       }
 
       const toolResults = await Promise.all(toolUseBlocks.map(async (block) => {
-        const result = await executeTool(block.name, block.input, tasks)
+        const result = await runTool(block.name, block.input, tasks)
+        if (isSuccessfulWrite(block.name, result)) writeSucceeded = true
         return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(result) }
       }))
 
@@ -545,6 +583,13 @@ export default async function handler(req, res) {
         { role: 'assistant', content: data.content },
         { role: 'user', content: toolResults },
       ]
+    }
+
+    // Same guard as the streaming branch — nothing is returned to the user
+    // claiming a change that never landed.
+    if (needsCorrection(finalText, writeSucceeded)) {
+      console.warn('[claude] reply claimed a write but no write tool succeeded:', finalText.slice(0, 300))
+      finalText += CORRECTION_TEXT
     }
 
     await recordUsage(requestedModel ?? 'claude-haiku-4-5-20251001', {
