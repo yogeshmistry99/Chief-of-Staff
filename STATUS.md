@@ -3,8 +3,8 @@
 Single source of truth for system state. **Read this at the start of every session.
 Update it at the end of any session that changes anything.**
 
-Last updated: 2026-07-26 (AI spend tracking moved server-side; scoring surfaced in-app, review now
-sees completed work, main-screen blocks are primary nav — see the two newest changelog entries)
+Last updated: 2026-07-27 (chat can no longer confirm a write it never made; read side finished —
+stale task reads made unexpressible — see the two newest changelog entries)
 
 ---
 
@@ -98,6 +98,34 @@ sees completed work, main-screen blocks are primary nav — see the two newest c
 ---
 
 ## Recent significant changes (newest first)
+
+- **2026-07-27 — Chat can no longer confirm a write it never made.** Deployed (`97de68a`, READY).
+  **The bug:** the in-app CoS chat replied with a tick confirmation for a task that was never
+  created. Diagnosed by elimination against the live build: the database, `tasksRepo` and
+  `/api/mcp` are healthy (a task was created and deleted through them), `/api/claude` returned
+  200, `tools: TOOLS` **is** sent on both the streaming and non-streaming requests, and the
+  `create_task` handler is correct. The chat model (Haiku by default) simply **did not call the
+  tool and confirmed anyway**. `SYSTEM_PROMPTS.cos` already carries the rule "no tool result,
+  no ✓" — a prompt is not enforcement.
+  **Not a regression from the persistence work.** `api/claude.js`'s `create_task` handler and the
+  CoS system prompt are byte-identical to `1f007fd` (24 July), which was itself the attempted fix
+  for this same symptom — it fixed only the half where the tool *is* called, and was never
+  verified in a browser.
+  **The fix** (all in `api/claude.js` + new pure module `api/_lib/writeClaim.js`): the handler now
+  tracks whether any state-changing tool reported success in the turn, and if the reply asserts a
+  change when none landed it **appends a visible correction** to the stream. Streamed text can't
+  be retracted, so a false confirmation now reports itself rather than surfacing days later as a
+  missing task. Claim detection is deliberately conservative — first-person past-tense claims,
+  ✓ lines naming a write, and "task/event \<verbed\>"; "shall I create one?" and "you completed 5
+  tasks this week" do not trigger it.
+  Two blind spots closed alongside: tool errors are now **logged server-side** (previously they
+  went only to the model as a `tool_result`, so a failed write and a never-attempted write looked
+  identical in the logs — which is why diagnosing this needed the user to recall what the chat
+  said), and `executeTool` runs through a wrapper so a throw becomes an error result instead of
+  an unhandled rejection after the SSE headers are sent.
+  Deliberately **not** done: switching the chat to Sonnet. It would likely reduce the behaviour
+  but costs materially more per message; the guard works regardless of model, which is the more
+  durable property. `api/_lib/` is excluded from Vercel's function count, so still 12/12.
 
 - **2026-07-27 — Read side finished: stale task reads made unexpressible.** Deployed (`6f1ff55`,
   READY). The persistence rebuild fixed writes; reads were still per-screen guesswork.
@@ -408,7 +436,7 @@ sees completed work, main-screen blocks are primary nav — see the two newest c
 ## Traps and hard-won lessons
 
 - **Supabase project ref is `xrmjzglsabnnqqeyubgh`** (`xrmjzglsabnnqqeyubgh.supabase.co`). Direct HTTP is blocked from the sandbox — query via the Supabase MCP or the app, not `curl`/`fetch`.
-- **The task store key is `todoist_task_cache`** despite the name. It is the live single source of truth in `app_data`, not a Todoist cache. Do not assume Todoist is authoritative.
+- **`app_data.todoist_task_cache` is NO LONGER the task store.** It was the single JSON blob that held every task; since the 2026-07-26 per-row migration the source of truth is the `tasks` table and the blob is a frozen fallback, refreshed weekly from live rows. (Its name never meant Todoist was authoritative — it isn't, and the Todoist paths are retired.)
 - **The weekly backup is a Vercel cron** (`api/cron-weekly-backup.js`, `0 8 * * 0`, Sundays 08:00 UTC) — server-side, no longer dependent on the app being opened. The client-side `maybeRunAutoBackup` (Sunday, browser-gated) remains as a deduped fallback: both paths skip if a `Weekly backup%` snapshot exists in the last 6 days, so a week never stores two. Hobby-plan cron timing is accurate to ~1h and the first fire after a deploy can take up to ~24h to activate.
 - **NEVER write the whole task list.** Tasks are one row per task in `tasks`, written only via
   `api/_lib/tasksRepo.js` with partial UPDATEs. There is deliberately no "save the whole list"
@@ -417,6 +445,14 @@ sees completed work, main-screen blocks are primary nav — see the two newest c
   a frozen fallback, refreshed weekly from live rows.
 - **All task reads must filter `deleted_at is null`.** `tasksRepo` does this; hand-rolled SQL or a
   raw `.from('tasks')` call will resurrect deleted tasks.
+- **The chat model will sometimes claim a write it never made.** A system-prompt rule does not stop
+  it; only checking the tool results does. `api/claude.js` compares the reply against whether a
+  write tool actually succeeded and appends a correction when they disagree
+  (`api/_lib/writeClaim.js`). Any new state-changing tool must be added to that module's
+  `WRITE_TOOLS` set, or a genuine write will be mistaken for a false confirmation.
+- **A tool error is only visible if it is logged.** Tool failures return to the *model* as a
+  `tool_result`, not to the server log — so an unlogged failed write is indistinguishable from a
+  write that was never attempted (200, clean logs, no row). `runTool` in `api/claude.js` logs both.
 - **In-app Head chats cannot set task categories** — their task tools don't expose the field. Use the MCP (via Claude.ai) to set categories.
 - **`*.vercel.app` and direct Supabase HTTP are egress-blocked from the sandbox.** To trigger an `/api/*` endpoint, open the URL in a browser; to read Supabase, use the Supabase MCP tools. Don't conclude "capability unavailable" — it works from the app/browser and via MCP, just not via raw HTTP from here.
 - **`node_modules` can be reclaimed mid-session** (disk allowance). If `vite: not found`, run `npm install` before building.
