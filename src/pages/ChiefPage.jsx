@@ -115,11 +115,11 @@ export default function ChiefPage() {
       const history = [...messages, userMsg]
         .filter((m) => !m.streaming && !m.pending)
         .map(({ role, content }) => ({ role, content }))
-      await sendMessageStream(history, SYSTEM_PROMPTS.cos(tasks, cfg), (chunk) => {
+      await sendMessageStream(history, SYSTEM_PROMPTS.cos(tasks, cfg), (chunk, full) => {
         setMessages((prev) => {
           const last = prev[prev.length - 1]
           if (!last?.streaming) return prev
-          return [...prev.slice(0, -1), { ...last, content: last.content + chunk }]
+          return [...prev.slice(0, -1), { ...last, content: full }]
         })
       }, tasks, (updatedTasks) => {
         // Display only. The server persisted these itself (api/claude.js writes

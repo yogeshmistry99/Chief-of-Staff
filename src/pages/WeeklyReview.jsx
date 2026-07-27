@@ -106,12 +106,9 @@ Completed in ${periodLabel}:
 ${formatCompletedForPrompt(allTasks, periodStart, bucket)}
 
 Take that completed work into account — acknowledge real progress, and don't flag as neglected anything that has just been finished.`
-    sendMessageStream([{ role: 'user', content: prompt }], SYSTEM_PROMPTS.head(bucket, allTasks, cfg), (chunk) => {
-      setAiText((prev) => {
-        const next = prev + chunk
-        reviewTextsRef.current[bucket] = next
-        return next
-      })
+    sendMessageStream([{ role: 'user', content: prompt }], SYSTEM_PROMPTS.head(bucket, allTasks, cfg), (chunk, full) => {
+      reviewTextsRef.current[bucket] = full
+      setAiText(full)
       endRef.current?.scrollIntoView({ behavior: 'smooth' })
     })
       .catch(() => setAiText('Could not load review.'))
@@ -262,9 +259,7 @@ function StepSummary({ intention, bucketReviews, allTasks, onNext, setTasksAdded
     const prompt = `Weekly review complete. ${intentionLine}\n\nAll 7 buckets have been reviewed:\n\n${reviewSummary}\n\nCompleted since the last review (all buckets):\n${completedBlock}\n\nBased on the full task list, what was completed above, and the bucket weighting framework, produce: (1) A one-line acknowledgement of what actually shipped this period. (2) Top 5 priorities for this week ranked by consequence, irreversibility and compounding value. (3) Any cross-bucket conflicts or dependencies to flag. (4) One clarifying question if a decision is needed. Be direct. No waffle.`
 
     const cfg = loadHeadConfig('chief')
-    let fullText = ''
-    sendMessageStream([{ role: 'user', content: prompt }], SYSTEM_PROMPTS.cos(allTasks, cfg), (chunk) => {
-      fullText += chunk
+    sendMessageStream([{ role: 'user', content: prompt }], SYSTEM_PROMPTS.cos(allTasks, cfg), (chunk, fullText) => {
       setMessages([{ role: 'assistant', content: fullText }])
       endRef.current?.scrollIntoView({ behavior: 'smooth' })
     })
@@ -281,12 +276,10 @@ function StepSummary({ intention, bucketReviews, allTasks, onNext, setTasksAdded
     const newMessages = [...messages, { role: 'user', content: userMsg }]
     setMessages(newMessages)
     const cfg = loadHeadConfig('chief')
-    let reply = ''
     await sendMessageStream(
       newMessages.map((m) => ({ role: m.role, content: m.content })),
       SYSTEM_PROMPTS.cos(allTasks, cfg),
-      (chunk) => {
-        reply += chunk
+      (chunk, reply) => {
         setMessages([...newMessages, { role: 'assistant', content: reply }])
         endRef.current?.scrollIntoView({ behavior: 'smooth' })
       }

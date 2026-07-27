@@ -61,11 +61,11 @@ function HeadTab({ bucket, tasks, setTasks, messages, setMessages }) {
       const history = [...messages, userMsg]
         .filter((m) => !m.streaming)
         .map(({ role, content }) => ({ role, content }))
-      await sendMessageStream(history, SYSTEM_PROMPTS.head(bucket, tasks, cfg), (chunk) => {
+      await sendMessageStream(history, SYSTEM_PROMPTS.head(bucket, tasks, cfg), (chunk, full) => {
         setMessages((prev) => {
           const last = prev[prev.length - 1]
           if (!last || !last.streaming) return prev
-          return [...prev.slice(0, -1), { ...last, content: last.content + chunk }]
+          return [...prev.slice(0, -1), { ...last, content: full }]
         })
         endRef.current?.scrollIntoView({ behavior: 'smooth' })
       }, tasks, (updatedTasks) => {

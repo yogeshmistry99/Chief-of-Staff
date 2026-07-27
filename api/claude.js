@@ -429,6 +429,11 @@ export default async function handler(req, res) {
         // Index → accumulated block (text or tool_use)
         const blocks = {}
         let stopReason = null
+        // Text streamed during THIS round. If the round turns out to end in a
+        // tool call, that text was the model narrating what it was about to do
+        // — and it then says the same thing again after the tool result, so the
+        // user sees the confirmation twice. It is retracted below.
+        let roundText = ''
 
         while (true) {
           const { done, value } = await reader.read()
@@ -457,6 +462,7 @@ export default async function handler(req, res) {
                 if (delta.type === 'text_delta') {
                   blocks[index].text += delta.text
                   assistantText += delta.text
+                  roundText += delta.text
                   res.write(`data: ${JSON.stringify({ text: delta.text })}\n\n`)
                 } else if (delta.type === 'input_json_delta') {
                   blocks[index].input += delta.partial_json
@@ -478,6 +484,18 @@ export default async function handler(req, res) {
         }
 
         if (stopReason === 'tool_use') {
+          // Retract this round's narration. Text is streamed as it arrives (so
+          // the reply feels live) and we only learn the round ended in a tool
+          // call once it finishes — so the client is told how many characters
+          // to drop rather than the text being withheld up front. The
+          // non-streaming branch already behaves this way: it keeps only the
+          // text from the round that made no tool call.
+          if (roundText) {
+            res.write(`data: ${JSON.stringify({ drop_chars: roundText.length })}\n\n`)
+            // Keep the claim detector aligned with what the user actually sees.
+            assistantText = assistantText.slice(0, assistantText.length - roundText.length)
+          }
+
           // Build the assistant content array with parsed tool inputs
           const assistantContent = Object.values(blocks).map((b) =>
             b.type === 'tool_use'

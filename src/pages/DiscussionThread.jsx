@@ -48,15 +48,17 @@ export default function DiscussionThread() {
     try {
       const history = withUser.map(({ role, content }) => ({ role, content }))
       const cfg = loadHeadConfig(bucket)
+      // Set from the stream's authoritative text (not accumulated here), so the
+      // saved discussion matches what was displayed after any retraction.
       let full = ''
-      await sendMessageStream(history, SYSTEM_PROMPTS.discussion(bucket, discussion.title, tasks, cfg), (chunk) => {
-        full += chunk
+      await sendMessageStream(history, SYSTEM_PROMPTS.discussion(bucket, discussion.title, tasks, cfg), (chunk, fullText) => {
+        full = fullText
         setDiscussion((prev) => {
           if (!prev) return prev
           const msgs = prev.messages ?? []
           const last = msgs[msgs.length - 1]
           if (!last?.streaming) return prev
-          return { ...prev, messages: [...msgs.slice(0, -1), { ...last, content: last.content + chunk }] }
+          return { ...prev, messages: [...msgs.slice(0, -1), { ...last, content: fullText }] }
         })
       }, tasks, () => {
         // The server persisted each affected row itself; re-read so this screen

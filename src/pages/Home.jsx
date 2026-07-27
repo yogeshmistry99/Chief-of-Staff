@@ -748,11 +748,11 @@ export default function Home() {
     const cfg = loadHeadConfig('chief')
     try {
       const history = [...messages, userMsg].filter((m) => !m.streaming).map(({ role, content }) => ({ role, content }))
-      await sendMessageStream(history, SYSTEM_PROMPTS.cos(tasks, cfg, events), (chunk) => {
+      await sendMessageStream(history, SYSTEM_PROMPTS.cos(tasks, cfg, events), (chunk, full) => {
         setMessages((prev) => {
           const last = prev[prev.length - 1]
           if (!last?.streaming) return prev
-          return [...prev.slice(0, -1), { ...last, content: last.content + chunk }]
+          return [...prev.slice(0, -1), { ...last, content: full }]
         })
       }, tasks, (updatedTasks) => { setTasks(updatedTasks) }, cfg.model || null)
       setMessages((prev) => {

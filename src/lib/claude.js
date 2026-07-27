@@ -34,6 +34,10 @@ export async function getMonthlyUsage() {
 // Streams a response chunk-by-chunk, calling onChunk(text) for each piece.
 // onTasksUpdated(tasks) is called if the server mutated the task list.
 // Returns the full text when done.
+//
+// onChunk(delta, full) — `full` is the authoritative reply so far and is what
+// callers should render. Appending `delta` yourself will double-render text the
+// server later retracts (see drop_chars below).
 export async function sendMessageStream(messages, system, onChunk, tasks = null, onTasksUpdated = null, model = null) {
   const res = await fetch('/api/claude?stream=1', {
     method: 'POST',
@@ -64,7 +68,16 @@ export async function sendMessageStream(messages, system, onChunk, tasks = null,
           try { const parsed = JSON.parse(evt.error); msg = parsed?.error?.message ?? msg } catch {}
           throw new Error(msg)
         }
-        if (evt.text) { full += evt.text; onChunk(evt.text) }
+        if (evt.text) { full += evt.text; onChunk(evt.text, full) }
+        // The server retracts narration it streamed before a tool call — the
+        // model announces the change, calls the tool, then announces it again,
+        // so the user saw the confirmation twice. Callers must render the
+        // SECOND argument, not their own accumulation, or the retraction is
+        // invisible to them.
+        if (evt.drop_chars > 0) {
+          full = full.slice(0, Math.max(0, full.length - evt.drop_chars))
+          onChunk('', full)
+        }
         if (evt.tasks_updated && onTasksUpdated) onTasksUpdated(evt.tasks_updated)
         if (evt.calendar_changed) notifyCalendarChange()
       } catch (e) {
