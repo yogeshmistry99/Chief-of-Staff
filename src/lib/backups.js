@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
-import { getCachedTasks, saveToCache } from './taskCache'
+import { restoreTasksFromSnapshot } from './taskCache'
+import { snapshotTasks } from '../../api/_lib/tasksRepo.js'
 
 const MAX_SNAPSHOTS = 12
 const LAST_AUTO_BACKUP_KEY = 'cos_last_auto_backup'
@@ -18,7 +19,11 @@ export async function listBackups() {
 
 export async function createBackup(label) {
   if (!supabase) throw new Error('Supabase not configured')
-  const tasks = getCachedTasks()
+  // Snapshot LIVE rows, never the browser's display cache. Backing up
+  // localStorage would silently capture whatever this device happened to know,
+  // producing restore points that look fine and restore the wrong thing.
+  const tasks = await snapshotTasks(supabase)
+  if (!tasks.length) throw new Error('Refusing to write an empty backup — task read returned nothing')
   const now = new Date().toISOString()
   const { data, error } = await supabase
     .from('task_backups')
@@ -47,9 +52,10 @@ export async function restoreBackup(id) {
     .single()
   if (error) throw error
 
-  // Replace cache
-  saveToCache(data.tasks ?? [])
-  return { taskCount: (data.tasks ?? []).length, label: data.label }
+  // Upsert every task from the snapshot, one row at a time. Does NOT delete
+  // tasks absent from the snapshot — see restoreTasksFromSnapshot.
+  const res = await restoreTasksFromSnapshot(data.tasks ?? [])
+  return { taskCount: res.restored, failed: res.failed, label: data.label }
 }
 
 export async function deleteBackup(id) {

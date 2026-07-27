@@ -1,4 +1,7 @@
-import { buildTask, enrichNewTask, aiScoreTask, isScored, persistNewTask } from './_lib/taskWrite.js'
+import {
+  buildTask, enrichNewTask, aiScoreTask, isScored,
+  persistNewTask, persistTaskUpdate, persistTaskCompletion,
+} from './_lib/taskWrite.js'
 import { recordUsage } from './_lib/usage.js'
 
 const BUCKETS = ['Finance', 'Health', 'Work', 'Family', 'Home', 'Personal', 'Systems']
@@ -162,37 +165,50 @@ async function executeTool(name, input, tasks) {
   if (name === 'complete_task') {
     const task = tasks.find((t) => t.id === input.task_id)
     if (!task) return { error: `Task not found: ${input.task_id}` }
+    // Persist server-side. This used to mutate only the in-memory array and
+    // rely on the CLIENT to save the whole list back — which is how completions
+    // were lost. The tool now owns its own write and reports only what landed.
+    try {
+      await persistTaskCompletion(input.task_id, true)
+    } catch (err) {
+      return { error: `Task NOT completed — the store write failed: ${err.message}. Tell the user it did not save.` }
+    }
     task.is_completed = true
     task.completed_at = new Date().toISOString()
-    // No Todoist mirror. This used to close the task in Todoist for any id that
-    // was neither a UUID nor `local_` — which caught the ~12 surviving
-    // Todoist-style alphanumeric ids (e.g. 6gmqr49276wqxXGM), NOT just numeric
-    // legacy ones. Worse, a Todoist failure returned an error, so completing one
-    // of those tasks from this chat could fail outright even though the store
-    // write was fine. Todoist is retired and the Supabase store is authoritative,
-    // so completion is store-only for every id format.
     return { success: true, verified: { is_completed: true, content: task.content } }
   }
 
   if (name === 'update_task') {
     const task = tasks.find((t) => t.id === input.task_id)
     if (!task) return { error: `Task not found: ${input.task_id}` }
-    if (input.content !== undefined)  task.content  = input.content
-    if (input.priority !== undefined) task.priority = input.priority
-    if (input.remove_due_date)        task.due      = null
-    else if (input.due_string)        task.due      = { date: input.due_string }
+    // Build a patch of only what the caller actually asked to change, so the
+    // write can't clobber fields it was never told about.
+    const patch = {}
+    if (input.content !== undefined)  patch.content  = input.content
+    if (input.priority !== undefined) patch.priority = input.priority
+    if (input.remove_due_date)        patch.due      = null
+    else if (input.due_string)        patch.due      = { date: input.due_string }
+    Object.assign(task, patch)
     // Lazy backfill: score on touch — fail open, never block the update.
     if (!isScored(task) && !task.is_completed) {
       const scores = await aiScoreTask(task)
-      if (scores) Object.assign(task, scores)
+      if (scores) { Object.assign(task, scores); Object.assign(patch, scores) }
     }
-    // Return the actual resulting state so Claude can verify what changed
+    // Persist server-side; the tool owns its write rather than relying on the
+    // client to save the whole list back.
+    let saved
+    try {
+      saved = await persistTaskUpdate(input.task_id, patch)
+    } catch (err) {
+      return { error: `Task NOT updated — the store write failed: ${err.message}. Tell the user it did not save.` }
+    }
+    // Verify against what the database actually returned, not local state.
     return {
       success: true,
       verified: {
-        content:  task.content,
-        priority: task.priority,
-        due:      task.due ?? null,
+        content:  saved.content,
+        priority: saved.priority,
+        due:      saved.due ?? null,
       },
     }
   }

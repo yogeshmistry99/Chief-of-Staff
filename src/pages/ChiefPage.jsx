@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { sendMessageStream, sendMessage, SYSTEM_PROMPTS, REFRESH_PROMPTS } from '../lib/claude'
 import ImageLightbox from '../components/ImageLightbox'
 import { loadHeadConfig } from '../lib/headConfig'
-import { getCachedTasks, saveToCache } from '../lib/taskCache'
+import { getCachedTasks, updateTaskRow, readTasksFromSupabase } from '../lib/taskCache'
 import { getNotifications, getNotificationsForTask, saveNotifications, clearNotificationsForSource, dismissNotification, acceptNotification } from '../lib/notifications'
 import NotificationCard, { notifDotClass } from '../components/NotificationCard'
 import { prioritise, scoreTask } from '../lib/priority'
@@ -53,12 +53,13 @@ export default function ChiefPage() {
       const result = extractJSON(content)
 
       if (result.priorityUpdates?.length) {
-        const updated = getCachedTasks().map((t) => {
-          const upd = result.priorityUpdates.find((u) => u.taskId === t.id)
-          return upd ? { ...t, priority: upd.priority } : t
-        })
-        saveToCache(updated)
-        setTasks(updated)
+        // One row per changed priority — never a whole-list rewrite.
+        await Promise.all(result.priorityUpdates.map((u) =>
+          updateTaskRow(u.taskId, { priority: u.priority }).catch((e) =>
+            console.warn('priority update failed', u.taskId, e))
+        ))
+        const fresh = await readTasksFromSupabase()
+        if (fresh) setTasks(fresh)
       }
 
       if (result.notifications?.length) {
@@ -113,8 +114,10 @@ export default function ChiefPage() {
           return [...prev.slice(0, -1), { ...last, content: last.content + chunk }]
         })
       }, tasks, (updatedTasks) => {
+        // Display only. The server persisted these itself (api/claude.js writes
+        // each affected row); re-saving the whole array from here is what used
+        // to overwrite the authoritative list with a stale one.
         setTasks(updatedTasks)
-        saveToCache(updatedTasks)
       }, cfg.model || null)
       setMessages((prev) => {
         const last = prev[prev.length - 1]

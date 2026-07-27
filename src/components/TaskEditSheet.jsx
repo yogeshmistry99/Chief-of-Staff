@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { haptic } from '../lib/haptic'
-import { getCachedTasks, saveToCache } from '../lib/taskCache'
+import { createTaskRow, updateTaskRow } from '../lib/taskCache'
 import ScoringPanel from './ScoringPanel'
 
 const P_META = {
@@ -253,10 +253,9 @@ export default function TaskEditSheet({ open, onClose, task, allTasks = [], task
       const edits = { content, priority, description, ...scores, due: due ? { date: due } : task.due }
       const savedTask = { ...task, ...edits }
       onSaved?.(savedTask)
-      // Persist the edit to the task store (single source of truth) — no Todoist.
-      const cached = getCachedTasks()
-      const updated = cached.map((t) => t.id === task.id ? { ...t, ...edits } : t)
-      await saveToCache(updated)
+      // Persist only this task's changed fields. Throws if the write doesn't
+      // land, so the catch below reports failure instead of a false success.
+      await updateTaskRow(task.id, edits)
       if (closeAfter) dismiss()
       else {
         setAutoSaved(true)
@@ -346,9 +345,7 @@ export default function TaskEditSheet({ open, onClose, task, allTasks = [], task
     try {
       // This is an EDIT, so it persists to the task store (single source of
       // truth) rather than /api/create-task, which is construction-only. No Todoist.
-      const cached = getCachedTasks()
-      const updated = cached.map((t) => t.id === editingSubtask.id ? { ...t, content: editingSubtask.content } : t)
-      await saveToCache(updated)
+      await updateTaskRow(editingSubtask.id, { content: editingSubtask.content })
       setSubtasks((prev) => prev.map((s) => s.id === editingSubtask.id ? { ...s, content: editingSubtask.content } : s))
       haptic.success()
     } catch { haptic.error() }
@@ -373,7 +370,7 @@ export default function TaskEditSheet({ open, onClose, task, allTasks = [], task
       if (!res.ok) throw new Error()
       const { task: created } = await res.json()
       setSubtasks((prev) => [...prev, created])
-      await saveToCache([...getCachedTasks(), created])
+      await createTaskRow(created)
       setNewSubtask(''); setNewSubtaskPriority(1); haptic.success()
     } catch { haptic.error() }
   }

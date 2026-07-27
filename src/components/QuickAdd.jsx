@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { haptic } from '../lib/haptic'
 import { PROJECTS } from '../lib/todoist'
-import { getCachedTasks, saveToCache } from '../lib/taskCache'
+import { createTaskRow } from '../lib/taskCache'
 
 const BUCKET_META = {
   Finance:  { emoji: '💰' },
@@ -87,7 +87,8 @@ export default function QuickAdd({ open, onClose, onAdd, initialBucket = 'Work' 
       })
       if (!res.ok) throw new Error()
       const { task } = await res.json()
-      await saveToCache([...getCachedTasks(), task])
+      // /api/create-task only constructs the task; persisting is ours. One row.
+      await createTaskRow(task)
       haptic.success()
       onAdd?.()
       setSaved(true)

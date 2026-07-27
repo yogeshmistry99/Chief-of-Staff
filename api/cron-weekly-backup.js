@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { snapshotTasks } from './_lib/tasksRepo.js'
 
 // Server-side weekly task-store backup. Registered as a Vercel cron in
 // vercel.json (Sundays 08:00 UTC). Replaces the old client-side backup that
@@ -50,11 +51,21 @@ export default async function handler(req, res) {
     }
   }
 
-  // Read the live task store
-  const { data: cacheRow, error: readErr } = await sb
-    .from('app_data').select('value').eq('key', 'todoist_task_cache').single()
-  if (readErr) return res.status(500).json({ error: `Read failed: ${readErr.message}` })
-  const tasks = Array.isArray(cacheRow?.value) ? cacheRow.value : []
+  // Read LIVE task rows. This used to read app_data.todoist_task_cache — now a
+  // frozen fallback — which would have quietly produced weekly "backups" of a
+  // list that never changes again, making every restore point worthless while
+  // still reporting success.
+  let tasks
+  try {
+    tasks = await snapshotTasks(sb)
+  } catch (e) {
+    return res.status(500).json({ error: `Task read failed: ${e.message}` })
+  }
+  // Never write an empty or absurdly small snapshot over the rotation — that
+  // would burn a slot and could push a good backup out of the 12 kept.
+  if (!tasks.length) {
+    return res.status(500).json({ error: 'Refusing to back up: task read returned 0 rows' })
+  }
 
   const now = new Date().toISOString()
   const label = `Weekly backup ${isForced ? '(manual)' : '(cron)'} — ${now.slice(0, 10)}`
@@ -73,5 +84,17 @@ export default async function handler(req, res) {
     pruned = toDelete.length
   }
 
-  return res.status(200).json({ ok: true, label, task_count: tasks.length, pruned, kept: MAX_SNAPSHOTS })
+  // Refresh the frozen fallback blob FROM live rows. app_data.todoist_task_cache
+  // is kept as the emergency fallback but nothing reads it in normal operation;
+  // refreshing it here means the fallback is at most a week stale instead of
+  // frozen at cutover. This is a one-directional derived snapshot — it is never
+  // read back into the write path, so it cannot resurrect the overwrite bug.
+  let fallbackRefreshed = false
+  const { error: fbErr } = await sb.from('app_data').upsert({
+    key: 'todoist_task_cache', value: tasks, updated_at: now,
+  })
+  if (fbErr) console.warn('fallback blob refresh failed', fbErr.message)
+  else fallbackRefreshed = true
+
+  return res.status(200).json({ ok: true, label, task_count: tasks.length, pruned, kept: MAX_SNAPSHOTS, fallbackRefreshed })
 }

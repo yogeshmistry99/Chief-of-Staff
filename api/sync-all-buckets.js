@@ -37,6 +37,21 @@ export default async function handler(req, res) {
     if (token !== apiKey) return res.status(401).json({ error: 'Unauthorized' })
   }
 
+  // RETIRED 2026-07-26. This endpoint bulk-imported from Todoist and merged the
+  // result into app_data.todoist_task_cache as one whole-array write.
+  //
+  // It is disabled rather than ported, on purpose. Todoist has not been the
+  // source of truth since the migration, so running this would merge stale
+  // external data into the live task rows — the precise failure mode the
+  // per-row rewrite exists to prevent. Its UI trigger was already removed; this
+  // closes the endpoint too. The code below is left in place for reference.
+  return res.status(410).json({
+    error: 'sync-all-buckets is retired',
+    reason: 'Tasks live in public.tasks (one row per task). Todoist is not authoritative and importing from it would overwrite live data with stale data.',
+    if_you_really_need_a_bulk_import: 'Write it against api/_lib/tasksRepo.js using per-row createTask/updateTask, so it cannot clobber concurrent edits.',
+  })
+
+  /* eslint-disable no-unreachable */
   const todoistKey = process.env.TODOIST_API_KEY
   if (!todoistKey) return res.status(500).json({ error: 'TODOIST_API_KEY not configured' })
 
@@ -122,4 +137,5 @@ export default async function handler(req, res) {
     final_total: merged.length,
     final_by_bucket,
   })
+  /* eslint-enable no-unreachable */
 }

@@ -4,7 +4,7 @@ import ScoringPanel from '../components/ScoringPanel'
 import { useMeasuredHeight, useMeasuredHeights } from '../lib/useMeasuredHeight'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { getProjectSections, PROJECTS } from '../lib/todoist'
-import { getCachedTasks, saveToCache, readTasksFromSupabase } from '../lib/taskCache'
+import { getCachedTasks, updateTaskRow, readTasksFromSupabase } from '../lib/taskCache'
 import { scoreTask, BUCKET_WEIGHTS } from '../lib/priority'
 import { sendMessageStream, sendMessage, SYSTEM_PROMPTS, REFRESH_PROMPTS } from '../lib/claude'
 import { loadHeadConfig } from '../lib/headConfig'
@@ -68,8 +68,8 @@ function HeadTab({ bucket, tasks, setTasks, messages, setMessages }) {
         })
         endRef.current?.scrollIntoView({ behavior: 'smooth' })
       }, tasks, (updatedTasks) => {
+        // Display only — the server persisted each affected row itself.
         setTasks(updatedTasks)
-        saveToCache(updatedTasks).catch(() => {})
       }, cfg.model || null)
       // Mark streaming done
       setMessages((prev) => {
@@ -995,11 +995,13 @@ export default function BucketDetail() {
 
       // Apply priority updates to cache
       if (result.priorityUpdates?.length) {
-        const updated = getCachedTasks().map((t) => {
-          const upd = result.priorityUpdates.find((u) => u.taskId === t.id)
-          return upd ? { ...t, priority: upd.priority } : t
-        })
-        saveToCache(updated)
+        // One row per changed priority — never a whole-list rewrite.
+        await Promise.all(result.priorityUpdates.map((u) =>
+          updateTaskRow(u.taskId, { priority: u.priority }).catch((e) =>
+            console.warn('priority update failed', u.taskId, e))
+        ))
+        const fresh = await readTasksFromSupabase()
+        if (fresh) setTasks(fresh)
         setTasks(updated.filter((t) => t._projectName === bucket))
       }
 

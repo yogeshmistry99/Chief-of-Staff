@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { aiScoreTask, isScored } from './_lib/taskWrite.js'
+import { listTasks, updateTask } from './_lib/tasksRepo.js'
 
 // Manually-triggered batch scorer: scores the N oldest unscored ACTIVE
 // top-level tasks per call (default 10, max 25), so the backlog gets chipped
@@ -34,9 +35,12 @@ export default async function handler(req, res) {
   const rescore = req.query.rescore === '1' || req.query.rescore === 'true'
   const bucket = typeof req.query.bucket === 'string' ? req.query.bucket : null
 
-  const { data, error } = await sb.from('app_data').select('value').eq('key', 'todoist_task_cache').single()
-  if (error) return res.status(500).json({ error: `Read failed: ${error.message}` })
-  const tasks = Array.isArray(data?.value) ? data.value : []
+  let tasks
+  try {
+    tasks = await listTasks(sb)
+  } catch (e) {
+    return res.status(500).json({ error: `Task read failed: ${e.message}` })
+  }
 
   const matches = (t) => !t.is_completed && !t.parent_id
     && (rescore ? isScored(t) : !isScored(t))
@@ -60,13 +64,17 @@ export default async function handler(req, res) {
     }
   }
 
-  if (scoreById.size) {
-    // Re-read before writing to shrink the clobber window against concurrent
-    // writers, then merge scores by id — never a blind overwrite of edits.
-    const { data: fresh } = await sb.from('app_data').select('value').eq('key', 'todoist_task_cache').single()
-    const current = Array.isArray(fresh?.value) ? fresh.value : tasks
-    const merged = current.map((t) => (scoreById.has(t.id) ? { ...t, ...scoreById.get(t.id) } : t))
-    await sb.from('app_data').upsert({ key: 'todoist_task_cache', value: merged, updated_at: new Date().toISOString() })
+  // Write each task's scores to its own row, touching only the four score
+  // columns. No re-read-and-merge window to lose against any more.
+  for (const [id, scores] of scoreById) {
+    try {
+      await updateTask(sb, id, scores)
+    } catch (e) {
+      results.scored--
+      results.failed++
+      const entry = results.tasks.find((r) => r.id === id)
+      if (entry) entry.error = `score computed but NOT saved: ${e.message}`
+    }
   }
 
   return res.status(200).json(results)

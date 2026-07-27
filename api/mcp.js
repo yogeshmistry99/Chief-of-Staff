@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { buildTask, enrichNewTask, aiScoreTask, isScored, validScore, validEffort, PROJECTS, PROJECT_NAMES } from './_lib/taskWrite.js'
+import * as repo from './_lib/tasksRepo.js'
 
 // ─── Supabase helpers ─────────────────────────────────────────────────────────
 function getSupabase() {
@@ -9,17 +10,14 @@ function getSupabase() {
   return createClient(url, key)
 }
 
-async function getTaskCache(sb) {
+// Tasks live one row per task in public.tasks, via api/_lib/tasksRepo.js.
+// getTaskCache/saveTaskCache (whole-array read + whole-array overwrite) are gone
+// deliberately: every write here now touches a single row.
+async function getAllTasks(sb) {
   if (!sb) return []
-  const { data } = await sb.from('app_data').select('value').eq('key', 'todoist_task_cache').single()
-  const tasks = data?.value
-  if (!Array.isArray(tasks)) return []
-  return tasks.map((t) => ({ ...t, _projectName: t._projectName ?? PROJECT_NAMES[t.project_id] ?? null }))
-}
-
-async function saveTaskCache(sb, tasks) {
-  if (!sb) return
-  await sb.from('app_data').upsert({ key: 'todoist_task_cache', value: tasks, updated_at: new Date().toISOString() })
+  return (await repo.listTasks(sb)).map((t) => ({
+    ...t, _projectName: t._projectName ?? PROJECT_NAMES[t.project_id] ?? null,
+  }))
 }
 
 // Keep only the most recent 12 knowledge_backups rows (matches task_backups).
@@ -75,7 +73,7 @@ async function getHeadConfig(sb, key) {
 
 async function listTasks({ bucket, priority, status, category } = {}) {
   const sb = getSupabase()
-  let tasks = await getTaskCache(sb)
+  let tasks = await getAllTasks(sb)
 
   if (bucket) {
     tasks = tasks.filter((t) => t._projectName?.toLowerCase() === bucket.toLowerCase())
@@ -115,7 +113,7 @@ async function listTasks({ bucket, priority, status, category } = {}) {
 async function getTask({ id }) {
   if (!id) throw new Error('id is required')
   const sb = getSupabase()
-  const tasks = await getTaskCache(sb)
+  const tasks = await getAllTasks(sb)
   const task = tasks.find((t) => t.id === id)
   if (!task) throw new Error(`Task ${id} not found`)
   const subtasks = tasks.filter((t) => t.parent_id === id)
@@ -148,8 +146,7 @@ async function createTask({ name, bucket, priority, due_date, parent_id, descrip
   }))
 
   const sb = getSupabase()
-  const tasks = await getTaskCache(sb)
-  await saveTaskCache(sb, [...tasks, newTask])
+  await repo.createTask(sb, newTask)   // throws if the insert didn't land
 
   return {
     id: newTask.id,
@@ -171,8 +168,7 @@ async function updateTask({ id, name, priority, due_date, description, bucket, c
   if (!id) throw new Error('id is required')
 
   const sb = getSupabase()
-  const tasks = await getTaskCache(sb)
-  const existing = tasks.find((t) => t.id === id)
+  const existing = await repo.getTask(sb, id)
   if (!existing) throw new Error(`Task ${id} not found`)
 
   const body = {}
@@ -189,80 +185,81 @@ async function updateTask({ id, name, priority, due_date, description, bucket, c
     newBucketName = entry[0]
   }
 
-  const updated = { ...existing }
-  if (body.content !== undefined)     updated.content     = body.content
-  if (body.description !== undefined) updated.description = body.description
-  if (body.priority !== undefined)    updated.priority    = body.priority
-  if (due_date === 'remove')          updated.due         = null
-  else if (due_date)                  updated.due         = { date: due_date }
-  if (body.project_id)                updated.project_id  = body.project_id
-
-  const newCategory = category !== undefined ? (category || null) : (existing._category ?? null)
-  const newParentId = parent_id !== undefined ? (parent_id || null) : (existing.parent_id ?? null)
-  const newCompleted = is_completed !== undefined ? !!is_completed : (updated.is_completed ?? existing.is_completed ?? false)
-  // Keep completed_at consistent with the app's own restore/complete behaviour.
-  const newCompletedAt = is_completed !== undefined
-    ? (newCompleted ? (existing.completed_at ?? new Date().toISOString()) : null)
-    : (existing.completed_at ?? null)
-
-  // Scoring fields — explicit inputs win (correctable from Claude.ai);
-  // otherwise keep existing values.
-  const scoring = {
-    consequence: consequence !== undefined ? validScore(consequence) : (existing.consequence ?? null),
-    reversibility: reversibility !== undefined ? validScore(reversibility) : (existing.reversibility ?? null),
-    compounding: compounding !== undefined ? validScore(compounding) : (existing.compounding ?? null),
-    effort: effort !== undefined ? validEffort(effort) : (existing.effort ?? null),
+  // Patch of ONLY what the caller asked to change. Fields the caller didn't
+  // mention are left untouched in the database rather than rewritten from a
+  // snapshot — that's what stops a concurrent edit being clobbered.
+  const patch = {}
+  if (body.content !== undefined)     patch.content     = body.content
+  if (body.description !== undefined) patch.description = body.description
+  if (body.priority !== undefined)    patch.priority    = body.priority
+  if (due_date === 'remove')          patch.due         = null
+  else if (due_date)                  patch.due         = { date: due_date }
+  if (body.project_id) {
+    patch.project_id   = body.project_id
+    patch._projectName = newBucketName
   }
-  const newPinned = pinned !== undefined ? pinned === true : (existing.pinned === true)
+  if (category !== undefined)  patch._category = category || null
+  if (parent_id !== undefined) patch.parent_id = parent_id || null
+  if (pinned !== undefined)    patch.pinned    = pinned === true
+  if (is_completed !== undefined) {
+    patch.is_completed = !!is_completed
+    patch.completed_at = is_completed
+      ? (existing.completed_at ?? new Date().toISOString())
+      : null
+  }
+  if (consequence !== undefined)   patch.consequence   = validScore(consequence)
+  if (reversibility !== undefined) patch.reversibility = validScore(reversibility)
+  if (compounding !== undefined)   patch.compounding   = validScore(compounding)
+  if (effort !== undefined)        patch.effort        = validEffort(effort)
 
-  // Lazy backfill: score on touch. If the task is still unscored after
-  // applying explicit inputs, try one AI scoring pass — fail open.
-  if (!isScored(scoring) && !newCompleted) {
-    const ai = await aiScoreTask({ ...existing, ...updated, _projectName: newBucketName ?? existing._projectName })
+  // Lazy backfill: score on touch. Only writes scores that would otherwise stay
+  // null, and never blocks the update — fail open.
+  const merged = { ...existing, ...patch }
+  const willBeCompleted = patch.is_completed ?? existing.is_completed ?? false
+  if (!isScored(merged) && !willBeCompleted) {
+    const ai = await aiScoreTask({ ...merged, _projectName: newBucketName ?? existing._projectName })
     if (ai) {
-      scoring.consequence = scoring.consequence ?? ai.consequence
-      scoring.reversibility = scoring.reversibility ?? ai.reversibility
-      scoring.compounding = scoring.compounding ?? ai.compounding
-      scoring.effort = scoring.effort ?? ai.effort
+      if (merged.consequence == null)   patch.consequence   = ai.consequence
+      if (merged.reversibility == null) patch.reversibility = ai.reversibility
+      if (merged.compounding == null)   patch.compounding   = ai.compounding
+      if (merged.effort == null)        patch.effort        = ai.effort
     }
   }
 
-  await saveTaskCache(sb, tasks.map((t) =>
-    t.id === id ? { ...t, ...updated, _projectName: newBucketName ?? t._projectName, _category: newCategory, parent_id: newParentId, is_completed: newCompleted, completed_at: newCompletedAt, ...scoring, pinned: newPinned } : t
-  ))
+  // Throws if the row is missing or the write didn't land.
+  const saved = await repo.updateTask(sb, id, patch)
 
+  // Reported from what the database actually returned, not from local state.
   return {
-    id: updated.id ?? id,
-    name: updated.content,
-    bucket: newBucketName ?? existing._projectName ?? null,
-    category: newCategory,
-    parent_id: newParentId,
-    priority: todoistToLabel(updated.priority),
-    due_date: updated.due?.date ?? null,
-    is_completed: newCompleted,
-    consequence: scoring.consequence,
-    reversibility: scoring.reversibility,
-    compounding: scoring.compounding,
-    effort: scoring.effort,
-    pinned: newPinned,
+    id: saved.id,
+    name: saved.content,
+    bucket: saved._projectName ?? null,
+    category: saved._category ?? null,
+    parent_id: saved.parent_id ?? null,
+    priority: todoistToLabel(saved.priority),
+    due_date: saved.due?.date ?? null,
+    is_completed: saved.is_completed === true,
+    consequence: saved.consequence,
+    reversibility: saved.reversibility,
+    compounding: saved.compounding,
+    effort: saved.effort,
+    pinned: saved.pinned === true,
   }
 }
 
 async function completeTask({ id }) {
   if (!id) throw new Error('id is required')
-  const sb = getSupabase()
-  const tasks = await getTaskCache(sb)
-  await saveTaskCache(sb, tasks.map((t) => (t.id === id ? { ...t, is_completed: true } : t)))
-
+  await repo.completeTask(getSupabase(), id, true)   // throws if it didn't land
   return { id, is_completed: true }
 }
 
 async function deleteTask({ id }) {
   if (!id) throw new Error('id is required')
-  const sb = getSupabase()
-  const tasks = await getTaskCache(sb)
-  await saveTaskCache(sb, tasks.filter((t) => t.id !== id))
-
+  // Soft delete: the row stops surfacing anywhere but survives, so an
+  // accidental delete is recoverable. Children are promoted to top-level rather
+  // than left pointing at a hidden parent (which would make them vanish from
+  // parent-grouped views). External contract is unchanged.
+  await repo.softDeleteTask(getSupabase(), id)
   return { id, deleted: true }
 }
 

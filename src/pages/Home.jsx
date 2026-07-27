@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { PROJECTS } from '../lib/todoist'
-import { getCachedTasks, saveToCache, readTasksFromSupabase } from '../lib/taskCache'
+import { getCachedTasks, readTasksFromSupabase } from '../lib/taskCache'
 import { getNotificationsForTask, dismissNotification, acceptNotification } from '../lib/notifications'
 import NotificationCard, { notifDotClass } from '../components/NotificationCard'
 import { prioritise, scoreTask } from '../lib/priority'
@@ -746,7 +746,7 @@ export default function Home() {
           if (!last?.streaming) return prev
           return [...prev.slice(0, -1), { ...last, content: last.content + chunk }]
         })
-      }, tasks, (updatedTasks) => { setTasks(updatedTasks); saveToCache(updatedTasks).catch(() => {}) }, cfg.model || null)
+      }, tasks, (updatedTasks) => { setTasks(updatedTasks) }, cfg.model || null)
       setMessages((prev) => {
         const last = prev[prev.length - 1]
         if (!last?.streaming) return prev

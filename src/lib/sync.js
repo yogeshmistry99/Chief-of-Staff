@@ -39,8 +39,9 @@ function applyToLocalStorage(sbKey, value) {
       localStorage.setItem(`cos_discussions_${bucket}`, JSON.stringify(Array.isArray(value) ? value : []))
     } else if (sbKey === 'last_weekly_review') {
       if (value) localStorage.setItem('lastWeeklyReview', typeof value === 'string' ? value : JSON.stringify(value))
-    } else if (sbKey === 'todoist_task_cache') {
-      localStorage.setItem('todoist_task_cache', JSON.stringify(Array.isArray(value) ? value : []))
+    // NOTE: app_data.todoist_task_cache is deliberately NOT hydrated any more.
+    // Tasks live in public.tasks; that row is a frozen fallback snapshot and
+    // hydrating it would overwrite the display cache with stale data.
     } else if (sbKey === 'todoist_last_pull') {
       if (value) localStorage.setItem('todoist_last_pull', typeof value === 'string' ? value : JSON.stringify(value))
     }

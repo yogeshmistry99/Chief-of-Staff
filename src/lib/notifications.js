@@ -1,5 +1,5 @@
 import { pushToSupabase } from './sync'
-import { getCachedTasks, saveToCache } from './taskCache'
+import { createTaskRow } from './taskCache'
 
 const KEY = 'task_notifications'
 
@@ -44,7 +44,7 @@ export async function acceptNotification(id) {
       })
       if (res.ok) {
         const { task } = await res.json()
-        await saveToCache([...getCachedTasks(), task])
+        await createTaskRow(task)
       }
     } catch { /* leave notification accepted even if task creation fails */ }
   }

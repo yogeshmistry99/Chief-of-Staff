@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { sendMessageStream, SYSTEM_PROMPTS } from '../lib/claude'
 import { loadHeadConfig } from '../lib/headConfig'
-import { getCachedTasks, saveToCache } from '../lib/taskCache'
+import { getCachedTasks } from '../lib/taskCache'
 import { getDiscussions, saveDiscussion, newDiscussion } from '../lib/discussions'
 import Markdown from '../components/Markdown'
 import ChatInput from '../components/ChatInput'
@@ -59,8 +59,8 @@ export default function DiscussionThread() {
           return { ...prev, messages: [...msgs.slice(0, -1), { ...last, content: last.content + chunk }] }
         })
       }, tasks, (updatedTasks) => {
+        // Display only — the server persisted each affected row itself.
         setTasks(updatedTasks)
-        saveToCache(updatedTasks)
       })
       setDiscussion((prev) => {
         if (!prev) return prev

@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { recordUsage } from './usage.js'
+import * as repo from './tasksRepo.js'
 
 // Canonical task construction — THE single choke point for creating a task.
 //
@@ -182,27 +183,45 @@ export async function enrichNewTask(task) {
 }
 
 // ─── Authoritative persistence ────────────────────────────────────────────────
-// Server-side write of a newly-built task to the store (Supabase
-// app_data:todoist_task_cache). Reads the current cache, appends by id
-// (idempotent), and writes. THROWS on any failure so callers surface a real
-// error instead of a false success — no swallowed writes.
-function getSupabaseForWrite() {
+// Server-side task writes. One row per operation, via api/_lib/tasksRepo.js.
+// Everything here THROWS on failure so callers surface a real error instead of
+// a false success.
+//
+// This used to read the whole task array out of app_data, append, and write the
+// whole array back — which lost any task written by another surface in between.
+export function getSupabaseForWrite() {
   const url = process.env.VITE_SUPABASE_URL
   const key = process.env.VITE_SUPABASE_ANON_KEY
   if (!url || !key) return null
   return createClient(url, key)
 }
 
-export async function persistNewTask(task) {
+function sbOrThrow() {
   const sb = getSupabaseForWrite()
   if (!sb) throw new Error('Supabase not configured')
-  const { data, error: readErr } = await sb
-    .from('app_data').select('value').eq('key', 'todoist_task_cache').single()
-  if (readErr) throw new Error(`store read failed: ${readErr.message}`)
-  const tasks = Array.isArray(data?.value) ? data.value : []
-  if (!tasks.some((t) => t.id === task.id)) tasks.push(task)
-  const { error: writeErr } = await sb
-    .from('app_data').upsert({ key: 'todoist_task_cache', value: tasks, updated_at: new Date().toISOString() })
-  if (writeErr) throw new Error(`store write failed: ${writeErr.message}`)
-  return task
+  return sb
+}
+
+export async function persistNewTask(task) {
+  return repo.createTask(sbOrThrow(), task)
+}
+
+export async function persistTaskUpdate(id, patch) {
+  return repo.updateTask(sbOrThrow(), id, patch)
+}
+
+export async function persistTaskCompletion(id, completed = true) {
+  return repo.completeTask(sbOrThrow(), id, completed)
+}
+
+export async function persistTaskDeletion(id) {
+  return repo.softDeleteTask(sbOrThrow(), id)
+}
+
+export async function readAllTasks() {
+  return repo.listTasks(sbOrThrow())
+}
+
+export async function readTaskById(id) {
+  return repo.getTask(sbOrThrow(), id)
 }

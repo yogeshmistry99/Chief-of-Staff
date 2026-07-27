@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { getMonthlyUsage } from '../lib/claude'
 import { getLastPullTime, getCachedTasks } from '../lib/taskCache'
+import { listTasks } from '../../api/_lib/tasksRepo.js'
 import { supabase } from '../lib/supabase'
 import { onSyncChange } from '../lib/sync'
 import { listBackups, createBackup, restoreBackup, fmtBackupDate, fmtLabel } from '../lib/backups'
@@ -246,13 +247,15 @@ export default function Settings() {
   // Subscribe to store changes so completions/reopens re-render without a reload.
   useEffect(() => {
     if (!supabase) return
+    // Read live task rows — the app_data blob is a frozen fallback and would
+    // render a roadmap that quietly stopped updating.
     const refresh = () => {
-      supabase.from('app_data').select('value').eq('key', 'todoist_task_cache').single()
-        .then(({ data }) => { if (data?.value) setRoadmap(buildRoadmapFromTasks(data.value)) })
+      listTasks(supabase)
+        .then((tasks) => setRoadmap(buildRoadmapFromTasks(tasks)))
         .catch(() => {})
     }
     refresh()
-    return onSyncChange('todoist_task_cache', refresh)
+    return onSyncChange('tasks', refresh)
   }, [])
 
   const [refreshDone, setRefreshDone] = useState(false)

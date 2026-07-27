@@ -2,7 +2,7 @@ import { buildTask, enrichNewTask } from './_lib/taskWrite.js'
 
 // Thin task-construction endpoint. Builds a canonical task through the single
 // choke point (buildTask + enrichNewTask) and returns it — it does NOT write
-// to the store; the caller persists it (saveToCache). Used by the app for
+// to the store; the caller persists it (createTaskRow). Used by the app for
 // notification-accept and subtask-add so those paths get the same shape,
 // UUID id, and (future) AI enrichment as MCP/chat-created tasks.
 //

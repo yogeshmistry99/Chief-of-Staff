@@ -15,7 +15,9 @@ vi.mock('../lib/headConfig', () => ({
 
 vi.mock('../lib/taskCache', () => ({
   getCachedTasks: vi.fn(() => []),
-  saveToCache: vi.fn(),
+  readTasksFromSupabase: vi.fn(async () => []),
+  createTaskRow: vi.fn(),
+  updateTaskRow: vi.fn(),
 }))
 
 const mockGetDiscussions = vi.fn()
