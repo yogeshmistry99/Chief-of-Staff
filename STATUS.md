@@ -34,9 +34,21 @@ sees completed work, main-screen blocks are primary nav — see the two newest c
 
 ## Where data lives (highest-value section)
 
-### Supabase tables (verified live 2026-07-16)
+### Supabase tables (tasks verified live 2026-07-26; rest 2026-07-16)
+- **`tasks`** — **THE TASK STORE (since 2026-07-26). One row per task.** 335 rows. PK `id text`
+  (handles all three id formats: 93 UUID, 188 Todoist-style alphanumeric, 54 `local_`).
+  Typed columns incl. the four scoring fields, `parent_id` self-FK `ON DELETE SET NULL`,
+  `section_id`/`section_name`, `deleted_at` (soft delete), `updated_at` via trigger. CHECK
+  constraints on priority (1–4), the three 1–5 scores, effort (S/M/L), and no-self-parent.
+  **Reached ONLY through `api/_lib/tasksRepo.js`** — partial UPDATEs, one row per write, throws
+  when a write doesn't land. **Every read filters `deleted_at is null`.** RLS is `allow all` to
+  PUBLIC (same posture as `app_data`).
+
 - **`app_data`** — key/value store, 19 rows, PK `key`, RLS enabled. Columns: `key` text, `value` jsonb, `updated_at` timestamptz. Keys present:
-  - `todoist_task_cache` — **THE TASK STORE.** Full array of all tasks across all 7 buckets. **245 tasks** as of 2026-07-16. Name is legacy; it is the live source of truth, not a Todoist mirror.
+  - `todoist_task_cache` — **NO LONGER THE TASK STORE (frozen 2026-07-26).** Superseded by the
+    `tasks` table. Kept as the emergency fallback and **refreshed weekly FROM live rows** by
+    `api/cron-weekly-backup.js`, so it can't silently go stale. That refresh is one-directional —
+    nothing reads this row back into the write path. Do not add readers.
   - `todoist_last_pull` — timestamp of last Todoist pull (legacy sync path; last touched 2026-06-23).
   - `head_config_${key}` — per-head config for `chief`, `Finance`, `Health`, `Work`, `Family`, `Home`, `Personal`, `Systems` (8 rows).
   - `discussions_${bucket}` — discussions per bucket, one row each for all 7 buckets.
@@ -53,7 +65,7 @@ sees completed work, main-screen blocks are primary nav — see the two newest c
 | `cos_home_messages` | CoS chat history | **No** | **Yes — last 50**, via `safeSetItem` |
 | `cos_head_${bucket}` | Head chat history per bucket | **No** | **Yes — last 50**, via `safeSetItem` |
 | `cos_discussions_${bucket}` | Discussions per bucket | **Yes** (`discussions_${bucket}`) | No — persists until deleted/completed/archived |
-| `todoist_task_cache` | Task cache (mirror) | Yes | Merge-by-id (dedupe, not a cap) |
+| `todoist_task_cache` | **Read-only display cache** of the `tasks` table — for first paint only. **Never a write source.** | n/a (writes go per-row to `tasks`) | Replaced wholesale on read |
 | `todoist_last_pull` | Last pull timestamp | Yes | — |
 | `head_instructions/context/files/model_${key}` | Head config | Yes (`head_config_${key}`) | — |
 | `lastWeeklyReview` | Last weekly review ts | Yes (`last_weekly_review`) | — |
@@ -86,6 +98,48 @@ sees completed work, main-screen blocks are primary nav — see the two newest c
 ---
 
 ## Recent significant changes (newest first)
+
+- **2026-07-26/27 — TASK PERSISTENCE REWRITTEN: per-row writes, blob overwrite eliminated.**
+  Deployed to production (`5c7214f`, deploy READY) and verified end-to-end against live data.
+  **The bug:** the whole task list lived as one JSON array in `app_data.todoist_task_cache`, and
+  all six write sites did read-whole / modify / write-whole. The client was worst: `saveToCache`
+  merged onto **localStorage** (not the authoritative row) then overwrote it, so any task this
+  browser hadn't seen was erased. A task created by the CoS chat could be written, confirmed, and
+  vanish with no error. Confirmed the 2026-07-09 "saveToCache destructive overwrite" fix treated
+  a symptom of this same mechanism, not the cause.
+  **The fix:** tasks live one row per task in `tasks`, reached only via `api/_lib/tasksRepo.js`.
+  Three properties, which must not be eroded: (1) a write touches one row and only the columns it
+  changes — **partial UPDATE, never whole-row upsert**, so two surfaces editing different fields
+  both survive; (2) every op checks the error **and** rows-affected and throws when a write didn't
+  land; (3) deletes are soft and every read filters `deleted_at is null`.
+  **`saveToCache` was deleted, not reimplemented** — while a write-the-whole-list function exists,
+  something will call it. The four chat callbacks no longer persist at all: `api/claude.js`
+  `complete_task`/`update_task` now write their own rows, so the server owns its writes instead of
+  depending on the client to save the list back (that dependency was itself a silent-loss path).
+  **Every blob reader was repointed** — the staleness class, not just the instance: the weekly
+  cron now snapshots LIVE rows (it would otherwise have produced weekly restore points of a frozen
+  list while reporting success, making every restore point worthless) and refuses to write an empty
+  backup; `backups.createBackup` snapshots live rows instead of localStorage; restore upserts
+  per-row and deliberately does **not** delete tasks absent from the snapshot; Settings' roadmap
+  and `sync.js` hydration read live rows; `score-backlog` writes each score to its own row;
+  `/api/sync-all-buckets` is **retired (410)** because it merged stale Todoist data as a
+  whole-array write.
+  **Schema additions:** `section_id`/`section_name` (103 tasks had a section the bucket grouping
+  falls back to — would have been silently dropped), `deleted_at`, a partial index on live rows,
+  and a no-self-parent CHECK. Migration verified faithful: 335/335 rows, 107 parents, 193 scored,
+  103 sections, 0 dangling parents.
+  **Decisions:** localStorage is a read-only display cache; offline writes **fail visibly** rather
+  than queueing (a replayed queue can apply stale edits over newer ones). Soft-deleting a parent
+  **promotes its children to top-level** rather than cascading — matching the FK's
+  `ON DELETE SET NULL`, so no task ever silently disappears.
+  **Verified:** 30 mapper/anti-clobber assertions (incl. a reproduction of the original bug that
+  fails on the old logic and passes on the new); 6 database-level checks; a scratch-table proof
+  that the recovery script cannot overwrite newer data; and a live create→update→delete through
+  the deployed MCP tools confirming the row landed in `tasks`, a one-field update left every other
+  field untouched, and a deleted task disappears from reads while its row survives.
+  **Recovery script:** `sql/reconcile_blob_to_tasks.sql` — INSERT-only with `ON CONFLICT DO
+  NOTHING`, so it is structurally incapable of overwriting a newer live row. Run at cutover: zero
+  drift found.
 
 - **2026-07-26 (batch 4) — Five autonomy-safe Systems tasks: legacy ID handling removed, all
   fixed max-height clamps converted, egress finding, two verifications.**
@@ -328,7 +382,13 @@ sees completed work, main-screen blocks are primary nav — see the two newest c
 - **Supabase project ref is `xrmjzglsabnnqqeyubgh`** (`xrmjzglsabnnqqeyubgh.supabase.co`). Direct HTTP is blocked from the sandbox — query via the Supabase MCP or the app, not `curl`/`fetch`.
 - **The task store key is `todoist_task_cache`** despite the name. It is the live single source of truth in `app_data`, not a Todoist cache. Do not assume Todoist is authoritative.
 - **The weekly backup is a Vercel cron** (`api/cron-weekly-backup.js`, `0 8 * * 0`, Sundays 08:00 UTC) — server-side, no longer dependent on the app being opened. The client-side `maybeRunAutoBackup` (Sunday, browser-gated) remains as a deduped fallback: both paths skip if a `Weekly backup%` snapshot exists in the last 6 days, so a week never stores two. Hobby-plan cron timing is accurate to ~1h and the first fire after a deploy can take up to ~24h to activate.
-- **BucketDetail passes a bucket-filtered slice** of tasks to everything downstream. Anything it writes to the task store **must merge by id, never overwrite** — a full overwrite wipes the other buckets. (This is exactly the bug fixed on 2026-07-09.)
+- **NEVER write the whole task list.** Tasks are one row per task in `tasks`, written only via
+  `api/_lib/tasksRepo.js` with partial UPDATEs. There is deliberately no "save the whole list"
+  function any more — if you find yourself wanting one, that is the 2026-07-26 data-loss bug trying
+  to come back. Anything that reads `app_data.todoist_task_cache` as a task source is wrong: it is
+  a frozen fallback, refreshed weekly from live rows.
+- **All task reads must filter `deleted_at is null`.** `tasksRepo` does this; hand-rolled SQL or a
+  raw `.from('tasks')` call will resurrect deleted tasks.
 - **In-app Head chats cannot set task categories** — their task tools don't expose the field. Use the MCP (via Claude.ai) to set categories.
 - **`*.vercel.app` and direct Supabase HTTP are egress-blocked from the sandbox.** To trigger an `/api/*` endpoint, open the URL in a browser; to read Supabase, use the Supabase MCP tools. Don't conclude "capability unavailable" — it works from the app/browser and via MCP, just not via raw HTTP from here.
 - **`node_modules` can be reclaimed mid-session** (disk allowance). If `vite: not found`, run `npm install` before building.

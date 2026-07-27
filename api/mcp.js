@@ -434,7 +434,7 @@ const TOOLS = [
   },
   {
     name: 'delete_task',
-    description: 'Permanently delete a task by ID.',
+    description: 'Delete a task by ID. The task stops appearing in every list and lookup immediately. It is a soft delete — the row is retained so an accidental deletion can be recovered by hand, so do not tell the user it is irreversible. Any subtasks are kept and promoted to top-level rather than deleted with the parent.',
     inputSchema: {
       type: 'object',
       properties: { id: { type: 'string', description: 'Task ID to delete' } },
