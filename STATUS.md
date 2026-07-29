@@ -3,8 +3,8 @@
 Single source of truth for system state. **Read this at the start of every session.
 Update it at the end of any session that changes anything.**
 
-Last updated: 2026-07-27 (chat confirmations: no false ✓, and no duplicate ✓; read side finished —
-stale task reads made unexpressible — see the three newest changelog entries)
+Last updated: 2026-07-28 (task capture from CoS/Heads restored — the chat was confirming tasks it
+never saved; plus the earlier confirmation fixes — see the newest changelog entries)
 
 ---
 
@@ -98,6 +98,33 @@ stale task reads made unexpressible — see the three newest changelog entries)
 ---
 
 ## Recent significant changes (newest first)
+
+- **2026-07-28 — Task capture from CoS and the Heads was broken; restored.** Deployed (`f7eaaff`).
+  **Severity: this is the app's foundational action** — logging a task is the first step of the
+  whole workflow, and for a period the chat confirmed tasks and saved none of them. Three different
+  phrasings failed consecutively.
+  **The write path was never at fault.** MCP `create_task` writes to the same table with the same
+  credentials and works. The model was answering with the confirmation sentence *instead of*
+  calling `create_task`.
+  **Cause — the history is a multi-shot demo of the wrong behaviour.** Chat history is persisted
+  and replayed as plain `{role, content}` text, so `tool_use` blocks are stripped before it is
+  sent. The model therefore saw ~25 rounds of *"user asks for a task → assistant writes a ✓ line"*
+  and no example anywhere of a tool being called, and learned the sentence was the action. Creation
+  worked in the morning ("Buy a cap", 16:40 UTC, in the database) and degraded through the day as
+  the history filled — which is the shape of the bug.
+  **Fix, four parts:** (1) `historyForModel()` in `src/lib/claude.js` strips ✓ lines from assistant
+  turns before sending — applied at **all five** chat call sites; nothing is lost because the real
+  task list is injected fresh every message. (2) When a reply claims a change and no write tool
+  succeeded, the server **retries once with `tool_choice: {type:'any'}`** so the model cannot answer
+  with prose, then builds the confirmation from the tool's *verified result* — a ✓ on that path
+  cannot be false. One extra Haiku call, failure path only. (3) All three prompts (cos/head/
+  discussion) now lead with the requirement to call the tool; the ✓ is demoted to a report of a
+  tool result. **The head and discussion prompts previously never mentioned calling a tool at all**,
+  which is why Heads failed too. (4) `create_task`'s description says *when* to call it.
+  **Also fixed:** the priority enum is inverted (`4=P1`), so the model said "P3" while passing `3`,
+  which the app renders as P2. Mapping made explicit.
+  Not done: switching the chat to Sonnet (cost), and server-generating *every* ✓ rather than only on
+  the recovery path (held as the fallback if this isn't enough).
 
 - **2026-07-27 — Chat shows a confirmation once, not before and after the tool call.** Deployed
   (`000064d`, READY). The model narrates the change it is about to make, calls the tool, then
@@ -464,6 +491,11 @@ stale task reads made unexpressible — see the three newest changelog entries)
   a frozen fallback, refreshed weekly from live rows.
 - **All task reads must filter `deleted_at is null`.** `tasksRepo` does this; hand-rolled SQL or a
   raw `.from('tasks')` call will resurrect deleted tasks.
+- **Never send chat history to the model as text-only when tools are involved.** `tool_use` blocks
+  are not persisted, so a raw replay teaches the model that writing "✓ Task created" *is* the
+  action — it then stops calling the tool, and tasks are confirmed but never saved. Build history
+  with `historyForModel()` (`src/lib/claude.js`), which strips ✓ lines from assistant turns. Any new
+  chat surface must use it.
 - **The chat model will sometimes claim a write it never made.** A system-prompt rule does not stop
   it; only checking the tool results does. `api/claude.js` compares the reply against whether a
   write tool actually succeeded and appends a correction when they disagree
