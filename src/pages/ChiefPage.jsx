@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { sendMessageStream, sendMessage, SYSTEM_PROMPTS, REFRESH_PROMPTS } from '../lib/claude'
+import { sendMessageStream, sendMessage, SYSTEM_PROMPTS, REFRESH_PROMPTS, historyForModel } from '../lib/claude'
 import ImageLightbox from '../components/ImageLightbox'
 import { loadHeadConfig } from '../lib/headConfig'
 import { useTasks } from '../lib/useTasks'
@@ -112,9 +112,7 @@ export default function ChiefPage() {
     setMessages((prev) => [...prev, userMsg, { role: 'assistant', content: '', streaming: true }])
     const cfg = loadHeadConfig('chief')
     try {
-      const history = [...messages, userMsg]
-        .filter((m) => !m.streaming && !m.pending)
-        .map(({ role, content }) => ({ role, content }))
+      const history = historyForModel([...messages, userMsg].filter((m) => !m.streaming && !m.pending))
       await sendMessageStream(history, SYSTEM_PROMPTS.cos(tasks, cfg), (chunk, full) => {
         setMessages((prev) => {
           const last = prev[prev.length - 1]

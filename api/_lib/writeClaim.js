@@ -59,6 +59,41 @@ export function claimsWrite(text) {
   return FIRST_PERSON.test(text) || TICK_LINE.test(text) || THING_VERBED.test(text)
 }
 
+// Remove ✓ claim lines from a reply, keeping any genuine prose around them.
+// Used when a false confirmation is replaced by a real, tool-derived one.
+export function stripClaimLines(text) {
+  return String(text ?? '').replace(/^\s*[✓✅].*$/gm, '').replace(/\n{3,}/g, '\n\n').trim()
+}
+
+// Build the confirmation line from what the tool actually verified, so the ✓ on
+// the recovery path is derived from the row that landed rather than written by
+// the model. A confirmation produced here cannot be false.
+export function confirmationLine(name, result) {
+  const v = result?.verified ?? {}
+  if (name === 'create_task') {
+    const bits = [v.bucket, v.due_date ? `due ${v.due_date}` : null].filter(Boolean)
+    return `✓ Task created — ${v.content}${bits.length ? ` (${bits.join(', ')})` : ''}`
+  }
+  if (name === 'complete_task') return `✓ Completed — ${v.content}`
+  if (name === 'update_task') {
+    const bits = [v.priority ? `P${5 - v.priority}` : null, v.due?.date ? `due ${v.due.date}` : null].filter(Boolean)
+    return `✓ Updated — ${v.content}${bits.length ? ` (${bits.join(', ')})` : ''}`
+  }
+  if (name === 'create_calendar_event') {
+    return `✓ Event created — ${v.title}${v.date ? ` (${v.date}${v.start_time ? ` ${v.start_time}` : ''})` : ''}`
+  }
+  if (name === 'update_calendar_event') return `✓ Event updated — ${v.title ?? ''}`.trim()
+  if (name === 'delete_calendar_event') return '✓ Event deleted'
+  return '✓ Done'
+}
+
+// Sent as the corrective turn when forcing the tool call. Deliberately states
+// the rule rather than the specific task — the model still chooses the content.
+export const FORCE_RETRY_PROMPT =
+  'You said you made that change, but you did not call any tool, so nothing was saved. ' +
+  'Call the tool that actually makes the change now, using the details from your previous message. ' +
+  'Do not reply with text.'
+
 export const CORRECTION_TEXT =
   '\n\n⚠️ **Correction: nothing was saved.** I did not actually make that change — ' +
   'no write reached the store. Please ask again.'

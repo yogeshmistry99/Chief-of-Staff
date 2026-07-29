@@ -7,7 +7,7 @@ import { getProjectSections, PROJECTS } from '../lib/todoist'
 import { useTasks } from '../lib/useTasks'
 import { peekCachedTasks, updateTaskRow, readTasksFromSupabase, onTasksChanged } from '../lib/taskCache'
 import { scoreTask, BUCKET_WEIGHTS } from '../lib/priority'
-import { sendMessageStream, sendMessage, SYSTEM_PROMPTS, REFRESH_PROMPTS } from '../lib/claude'
+import { sendMessageStream, sendMessage, SYSTEM_PROMPTS, REFRESH_PROMPTS, historyForModel } from '../lib/claude'
 import { loadHeadConfig } from '../lib/headConfig'
 import { getNotifications, getNotificationsForTask, saveNotifications, clearNotificationsForSource, dismissNotification, acceptNotification } from '../lib/notifications'
 import NotificationCard, { notifDotClass } from '../components/NotificationCard'
@@ -58,9 +58,7 @@ function HeadTab({ bucket, tasks, setTasks, messages, setMessages }) {
     setMessages((prev) => [...prev, { role: 'assistant', content: '', streaming: true }])
     const cfg = loadHeadConfig(bucket)
     try {
-      const history = [...messages, userMsg]
-        .filter((m) => !m.streaming)
-        .map(({ role, content }) => ({ role, content }))
+      const history = historyForModel([...messages, userMsg].filter((m) => !m.streaming))
       await sendMessageStream(history, SYSTEM_PROMPTS.head(bucket, tasks, cfg), (chunk, full) => {
         setMessages((prev) => {
           const last = prev[prev.length - 1]

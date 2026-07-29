@@ -10,6 +10,42 @@ export function onCalendarChange(fn) {
 }
 function notifyCalendarChange() { _calListeners.forEach((fn) => fn()) }
 
+// ─── History sent to the model ────────────────────────────────────────────────
+//
+// Chat history is persisted and replayed as plain {role, content} text — the
+// tool_use and tool_result blocks are NOT stored, so they cannot be replayed.
+// That turned the transcript into a multi-shot demonstration of the WRONG
+// behaviour: ~25 rounds of "user asks for a task → assistant writes
+// '✓ Task created — X'", with no example anywhere of a tool being called. The
+// model learned that writing the sentence IS the action, and stopped calling
+// create_task — so tasks were confirmed and never saved. It worked in the
+// morning and degraded through the day as the history filled up, which is
+// exactly the shape of the bug.
+//
+// Stripping the ✓ lines removes the bad example. Nothing is lost: the real task
+// list is injected fresh into the system prompt on every message, and the
+// prompt already instructs the model to answer questions about what exists from
+// that list rather than from its own previous replies.
+//
+// Only assistant turns are touched. User turns are never modified.
+const CONFIRMATION_LINE = /^\s*[✓✅].*$/gm
+
+export function historyForModel(messages) {
+  const out = []
+  for (const m of messages ?? []) {
+    if (m.role !== 'assistant') { out.push({ role: m.role, content: m.content }); continue }
+    const stripped = String(m.content ?? '')
+      .replace(CONFIRMATION_LINE, '')
+      .replace(/\n{2,}/g, '\n')   // the removed line leaves a blank one behind
+      .trim()
+    // An assistant turn that was ONLY a confirmation carries no information the
+    // model needs — drop it rather than send an empty turn (the API rejects
+    // empty content, and consecutive user turns are valid and get combined).
+    if (stripped) out.push({ role: 'assistant', content: stripped })
+  }
+  return out
+}
+
 function usageKey() {
   const d = new Date()
   return `ai_usage_${d.getFullYear()}_${String(d.getMonth() + 1).padStart(2, '0')}`
@@ -261,16 +297,17 @@ ${formatTasksForCoS(tasks)}
 ${calendarSection}
 When he asks about existing tasks, check the list above. When he adds a new task, acknowledge it and suggest which bucket and priority it belongs in. When he pastes an email, extract actionable tasks. Keep responses short unless depth is needed.
 
-CONFIRMATION RULES — follow exactly after any write action (create, update, complete, delete on a task or calendar event):
-1. You have changed NOTHING unless you actually called the matching tool in THIS turn AND it returned success. If you did not call a tool, you did not do it — never say you did. No tool result, no ✓.
-2. Only confirm success after the tool returns a verified/success result. If the tool returns an error, tell him plainly it was NOT done and quote the reason. Do not paper over it.
-3. Use this format — one line per action, nothing else unless you have something genuinely useful to add:
+TOOL RULES — capturing tasks is the main job of this chat, and it only happens through tools:
+1. To create, update, complete or delete anything, you MUST call the matching tool. Writing a sentence describing the change does not perform it. If he asks for a task — including "I need a task to…", "add a task…", "remind me to…", or describing a problem that should be tracked — call create_task. When in doubt, call it: a task he didn't need is trivially deleted, one that was never saved is lost.
+2. You have changed NOTHING unless you actually called the matching tool in THIS turn AND it returned success. No tool result, no ✓.
+3. Only confirm success after the tool returns a verified/success result. If the tool returns an error, tell him plainly it was NOT done and quote the reason. Do not paper over it.
+4. The ✓ line is a REPORT OF A TOOL RESULT, never the action itself. Once a tool has returned success, use this format — one line per action, nothing else unless you have something genuinely useful to add:
 ✓ [what changed] — [task or event name]
 Examples:
 ✓ Due date removed — Complete Revit 2026 Essential Training
 ✓ Priority set to P1 — Book dentist appointment
 ✓ Task created — Review pension statement
-4. Never write "I've updated..." or "I've removed..." in prose. Just the ✓ line(s), or a plain error line if it failed.
+5. Never write "I've updated..." or "I've removed..." in prose. Just the ✓ line(s), or a plain error line if it failed.
 
 VERIFICATION ON CHALLENGE — if he questions whether a task exists, was created, or has a property (e.g. "did that save?", "make sure it has a date"), do NOT restate your previous message. Re-read the "Current tasks (all 7 buckets)" list above — it is refreshed from the store on every message — and answer from what is actually there right now. If the task is not in that list, tell him it is not there and offer to create it now. If it is there, state its actual saved values (bucket, priority, due date) from the list.` }
     return [...buildKnowledgeSystemBlocks(cfg), base]
@@ -297,15 +334,17 @@ ${formatTasksForPrompt(bucketTasks)}
 
 Be direct, specific, and conversational — write in plain prose, no markdown, no bold text, no headers. Help him think through decisions, surface risks, and identify the highest-leverage actions.
 
-CONFIRMATION RULES — follow exactly after any write action (create, update, complete, delete on a task or calendar event):
-1. Only confirm success after the tool returns a verified result. If the tool returns an error, say so and retry.
-2. Use this format — one line per action, nothing else unless you have something genuinely useful to add:
+TOOL RULES — capturing tasks only happens through tools:
+1. To create, update, complete or delete anything you MUST call the matching tool. Writing a sentence describing the change does not perform it. If he asks for a task — including "I need a task to…", "add a task…", or describing a problem that should be tracked — call create_task. When in doubt, call it.
+2. You have changed NOTHING unless you called the matching tool in THIS turn and it returned success. No tool result, no ✓.
+3. Only confirm success after the tool returns a verified result. If the tool returns an error, say plainly it was NOT done.
+4. The ✓ line is a REPORT OF A TOOL RESULT, never the action itself. Once a tool has returned success, use this format — one line per action, nothing else unless you have something genuinely useful to add:
 ✓ [what changed] — [task or event name]
 Examples:
 ✓ Due date removed — Complete Revit 2026 Essential Training
 ✓ Priority set to P1 — Book dentist appointment
 ✓ Task created — Review pension statement
-3. Never write "I've updated..." or "I've removed..." in prose. Just the ✓ line(s).` }
+5. Never write "I've updated..." or "I've removed..." in prose. Just the ✓ line(s).` }
     return [...buildKnowledgeSystemBlocks(cfg), base]
   },
 
@@ -321,11 +360,13 @@ ${formatTasksForPrompt(bucketTasks)}
 
 Stay focused on this topic. Write in plain conversational prose — no markdown, no bold text, no headers. Help him reach a clear decision or set of actions. When a decision is reached, summarise it clearly in plain sentences.
 
-CONFIRMATION RULES — follow exactly after any write action (create, update, complete, delete on a task or calendar event):
-1. Only confirm success after the tool returns a verified result. If the tool returns an error, say so and retry.
-2. Use this format — one line per action:
+TOOL RULES — capturing tasks only happens through tools:
+1. To create, update, complete or delete anything you MUST call the matching tool. Writing a sentence describing the change does not perform it. If he asks for a task — including "I need a task to…", "add a task…", or describing a problem that should be tracked — call create_task. When in doubt, call it.
+2. You have changed NOTHING unless you called the matching tool in THIS turn and it returned success. No tool result, no ✓.
+3. Only confirm success after the tool returns a verified result. If the tool returns an error, say plainly it was NOT done.
+4. The ✓ line is a REPORT OF A TOOL RESULT, never the action itself. Once a tool has returned success, use this format — one line per action:
 ✓ [what changed] — [task or event name]
-3. Never write "I've updated..." or "I've removed..." in prose. Just the ✓ line(s).` }
+5. Never write "I've updated..." or "I've removed..." in prose. Just the ✓ line(s).` }
     return [...buildKnowledgeSystemBlocks(cfg), base]
   },
 }

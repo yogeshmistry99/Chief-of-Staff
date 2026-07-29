@@ -3,7 +3,60 @@ import {
   persistNewTask, persistTaskUpdate, persistTaskCompletion,
 } from './_lib/taskWrite.js'
 import { recordUsage } from './_lib/usage.js'
-import { isSuccessfulWrite, needsCorrection, CORRECTION_TEXT } from './_lib/writeClaim.js'
+import {
+  isSuccessfulWrite, needsCorrection, claimsWrite, stripClaimLines,
+  confirmationLine, CORRECTION_TEXT, FORCE_RETRY_PROMPT,
+} from './_lib/writeClaim.js'
+
+// Force the write the model claimed but never made.
+//
+// Capturing a task is the app's foundational action, so it must not depend on
+// the model choosing to call a tool. When a reply claims a change and no write
+// tool succeeded, this re-asks with `tool_choice: {type:'any'}` — the model then
+// CANNOT answer with prose, it has to call something. The confirmation is then
+// built from the tool's verified result rather than written by the model, so it
+// cannot be false.
+//
+// One attempt only, and only on the failure path: no extra cost on a request
+// that worked first time.
+async function forceWriteRetry({ apiKey, model, system, messages, claimedText, tasks }) {
+  const upstream = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: 1024,
+      ...(system ? { system } : {}),
+      messages: [
+        ...messages,
+        { role: 'assistant', content: claimedText || '(no text)' },
+        { role: 'user', content: FORCE_RETRY_PROMPT },
+      ],
+      tools: TOOLS,
+      tool_choice: { type: 'any' },
+    }),
+  })
+  if (!upstream.ok) {
+    console.warn('[claude] forced retry failed:', upstream.status, await upstream.text().catch(() => ''))
+    return { wrote: false, lines: [], usage: null }
+  }
+  const data = await upstream.json()
+  const lines = []
+  let wrote = false
+  for (const block of (data.content ?? []).filter((b) => b.type === 'tool_use')) {
+    const result = await runTool(block.name, block.input, tasks)
+    if (isSuccessfulWrite(block.name, result)) {
+      wrote = true
+      lines.push(confirmationLine(block.name, result))
+    }
+  }
+  console.warn(`[claude] forced retry: tool called, write ${wrote ? 'SUCCEEDED' : 'FAILED'}`)
+  return { wrote, lines, usage: data.usage ?? null }
+}
 
 // Run a tool without letting it take the request down. Most failures already
 // return { error } for the model to surface, but a genuine throw inside
@@ -56,12 +109,21 @@ function toGCalDateTime(dateStr, timeStr) {
 const TOOLS = [
   {
     name: 'create_task',
-    description: 'Create a new task in the Life OS task list. To create a subtask, pass the parent task\'s ID as parent_id.',
+    description:
+      'Create a new task in the Life OS task list. CALL THIS whenever he wants something captured, '
+      + 'added, logged, or remembered as a task — including when he describes a problem or a want and '
+      + 'it should be tracked ("I need a task to…", "if I don\'t already have one…", "add a task to…", '
+      + '"remind me to…"). Capturing tasks is the primary purpose of this chat: when in doubt, call it. '
+      + 'Writing "task created" in your reply does NOT create anything — only this tool does. '
+      + 'To create a subtask, pass the parent task\'s ID as parent_id.',
     input_schema: {
       type: 'object',
       properties: {
         content:      { type: 'string', description: 'Task title' },
-        priority:     { type: 'integer', description: '4=P1 (urgent), 3=P2, 2=P3, 1=P4 (someday)', enum: [1,2,3,4] },
+        // NOTE: the scale is INVERTED — 4 is the highest priority, 1 the lowest.
+        // The model used to say "P3" while passing 3 (which the app renders as
+        // P2), so the spoken label disagreed with the saved value.
+        priority:     { type: 'integer', description: 'Inverted scale — pass 4 to mean P1 (urgent), 3 to mean P2, 2 to mean P3, 1 to mean P4 (someday). When you name the priority in your reply, use the P-label, not this number: passing 3 means you must say "P2".', enum: [1,2,3,4] },
         due_string:   { type: 'string', description: 'Due date in ISO format YYYY-MM-DD, e.g. "2026-06-15"' },
         project_name: { type: 'string', description: 'Bucket: Finance, Health, Work, Family, Home, Personal, or Systems', enum: BUCKETS },
         parent_id:    { type: 'string', description: 'ID of the parent task to nest this as a subtask.' },
@@ -526,11 +588,32 @@ export default async function handler(req, res) {
         break // end_turn or max_tokens — done
       }
 
-      // The model claimed a change that never happened. Text already streamed
-      // can't be retracted, so append the correction — a false confirmation
-      // that reports itself beats one the user only discovers days later.
-      if (needsCorrection(assistantText, writeSucceeded)) {
+      // The model claimed a change but called no tool. Don't just report it —
+      // force the tool call so the task actually lands. Only then fall back to
+      // the correction.
+      if (!writeSucceeded && claimsWrite(assistantText)) {
         console.warn('[claude] reply claimed a write but no write tool succeeded:', assistantText.slice(0, 300))
+        const retry = await forceWriteRetry({
+          apiKey,
+          model: requestedModel ?? 'claude-haiku-4-5-20251001',
+          system, messages: currentMessages, claimedText: assistantText, tasks,
+        })
+        if (retry.usage) {
+          totalInputTokens += retry.usage.input_tokens ?? 0
+          totalOutputTokens += retry.usage.output_tokens ?? 0
+        }
+        if (retry.wrote) {
+          writeSucceeded = true
+          // Replace the model's unbacked claim with the tool-derived one, so the
+          // user sees a single confirmation that is true.
+          const replacement = [stripClaimLines(assistantText), ...retry.lines].filter(Boolean).join('\n\n')
+          res.write(`data: ${JSON.stringify({ drop_chars: assistantText.length })}\n\n`)
+          res.write(`data: ${JSON.stringify({ text: replacement })}\n\n`)
+        }
+      }
+
+      // Still nothing saved after the forced attempt — say so plainly.
+      if (needsCorrection(assistantText, writeSucceeded)) {
         res.write(`data: ${JSON.stringify({ text: CORRECTION_TEXT })}\n\n`)
       }
 
@@ -603,12 +686,25 @@ export default async function handler(req, res) {
       ]
     }
 
-    // Same guard as the streaming branch — nothing is returned to the user
-    // claiming a change that never landed.
-    if (needsCorrection(finalText, writeSucceeded)) {
+    // Same recovery as the streaming branch: force the tool call, then fall
+    // back to the correction only if the write still didn't land.
+    if (!writeSucceeded && claimsWrite(finalText)) {
       console.warn('[claude] reply claimed a write but no write tool succeeded:', finalText.slice(0, 300))
-      finalText += CORRECTION_TEXT
+      const retry = await forceWriteRetry({
+        apiKey,
+        model: requestedModel ?? 'claude-haiku-4-5-20251001',
+        system, messages: currentMessages, claimedText: finalText, tasks,
+      })
+      if (retry.usage) {
+        nsInput += retry.usage.input_tokens ?? 0
+        nsOutput += retry.usage.output_tokens ?? 0
+      }
+      if (retry.wrote) {
+        writeSucceeded = true
+        finalText = [stripClaimLines(finalText), ...retry.lines].filter(Boolean).join('\n\n')
+      }
     }
+    if (needsCorrection(finalText, writeSucceeded)) finalText += CORRECTION_TEXT
 
     await recordUsage(requestedModel ?? 'claude-haiku-4-5-20251001', {
       input: nsInput, output: nsOutput, cacheWrite: nsCacheWrite, cacheRead: nsCacheRead,

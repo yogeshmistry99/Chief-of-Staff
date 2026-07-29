@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
-import { sendMessageStream, SYSTEM_PROMPTS } from '../lib/claude'
+import { sendMessageStream, SYSTEM_PROMPTS, historyForModel } from '../lib/claude'
 import { loadHeadConfig } from '../lib/headConfig'
 import { useTasks } from '../lib/useTasks'
 import { getDiscussions, saveDiscussion, newDiscussion } from '../lib/discussions'
@@ -46,7 +46,7 @@ export default function DiscussionThread() {
     const withUser = [...(discussion.messages ?? []), userMsg]
     setDiscussion((prev) => ({ ...prev, messages: [...withUser, { role: 'assistant', content: '', streaming: true }] }))
     try {
-      const history = withUser.map(({ role, content }) => ({ role, content }))
+      const history = historyForModel(withUser)
       const cfg = loadHeadConfig(bucket)
       // Set from the stream's authoritative text (not accumulated here), so the
       // saved discussion matches what was displayed after any retraction.

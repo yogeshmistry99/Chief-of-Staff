@@ -5,7 +5,7 @@ import { useTasks } from '../lib/useTasks'
 import { peekCachedTasks, readTasksFromSupabase } from '../lib/taskCache'
 import { scoreTask } from '../lib/priority'
 import {
-  sendMessageStream, SYSTEM_PROMPTS,
+  sendMessageStream, SYSTEM_PROMPTS, historyForModel,
   reviewPeriodStart, completedSince, formatCompletedForPrompt,
 } from '../lib/claude'
 import { loadHeadConfig } from '../lib/headConfig'
@@ -277,7 +277,7 @@ function StepSummary({ intention, bucketReviews, allTasks, onNext, setTasksAdded
     setMessages(newMessages)
     const cfg = loadHeadConfig('chief')
     await sendMessageStream(
-      newMessages.map((m) => ({ role: m.role, content: m.content })),
+      historyForModel(newMessages),
       SYSTEM_PROMPTS.cos(allTasks, cfg),
       (chunk, reply) => {
         setMessages([...newMessages, { role: 'assistant', content: reply }])

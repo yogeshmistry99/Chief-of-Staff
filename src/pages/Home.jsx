@@ -20,7 +20,7 @@ import { archiveTask } from '../lib/taskCache'
 import { closeTask } from '../lib/todoist'
 import { isoDate, formatTime as fmtTime, formatDuration, getEventAccent } from '../lib/calendarUtils'
 import { onSyncChange } from '../lib/sync'
-import { sendMessageStream, SYSTEM_PROMPTS, onCalendarChange, rankPriorities } from '../lib/claude'
+import { sendMessageStream, SYSTEM_PROMPTS, onCalendarChange, rankPriorities, historyForModel } from '../lib/claude'
 import { loadHeadConfig } from '../lib/headConfig'
 import Markdown from '../components/Markdown'
 
@@ -747,7 +747,7 @@ export default function Home() {
     setMessages((prev) => [...prev, userMsg, { role: 'assistant', content: '', streaming: true }])
     const cfg = loadHeadConfig('chief')
     try {
-      const history = [...messages, userMsg].filter((m) => !m.streaming).map(({ role, content }) => ({ role, content }))
+      const history = historyForModel([...messages, userMsg].filter((m) => !m.streaming))
       await sendMessageStream(history, SYSTEM_PROMPTS.cos(tasks, cfg, events), (chunk, full) => {
         setMessages((prev) => {
           const last = prev[prev.length - 1]
