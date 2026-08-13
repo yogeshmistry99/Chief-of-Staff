@@ -35,6 +35,15 @@ const tabs = [
     ),
   },
   {
+    to: '/property',
+    label: 'Property',
+    icon: () => (
+      <svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 -960 960 960" width="24" fill="currentColor">
+        <path d="M120-120v-560l280-160 280 160v80h160v480H520v-160h-80v160H120Zm80-80h80v-80h-80v80Zm0-160h80v-80h-80v80Zm0-160h80v-80h-80v80Zm160 320h80v-80h-80v80Zm0-160h80v-80h-80v80Zm0-160h80v-80h-80v80Zm240 320h240v-320H600v320Zm120-160h80v-80h-80v80Zm0 160h80v-80h-80v80Z" />
+      </svg>
+    ),
+  },
+  {
     to: '/settings',
     label: 'Settings',
     icon: () => (

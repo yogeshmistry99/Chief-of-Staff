@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom'
-import { Component, useEffect, useRef, useState } from 'react'
+import { Component, Suspense, lazy, useEffect, useRef, useState } from 'react'
 import { haptic } from './lib/haptic'
 import BottomNav from './components/BottomNav'
 import Home from './pages/Home'
@@ -13,6 +13,13 @@ import WeeklyReview from './pages/WeeklyReview'
 import ChiefPage from './pages/ChiefPage'
 import HeadConfig from './pages/HeadConfig'
 import SyncProvider from './components/SyncProvider'
+
+// Lazy — keeps the property feature (and Leaflet, ~240kB) out of the main bundle
+// until the user opens the section. Nothing here loads on first paint of the app.
+const Property = lazy(() => import('./pages/Property'))
+const PropertyExplore = lazy(() => import('./pages/PropertyExplore'))
+const PropertyMap = lazy(() => import('./pages/PropertyMap'))
+const PropertyDetail = lazy(() => import('./pages/PropertyDetail'))
 
 const TABS = [
   { path: '/',          Component: Home },
@@ -31,7 +38,9 @@ function isSubRoute(pathname) {
          pathname.startsWith('/calendar/event') ||
          pathname === '/weekly-review' ||
          pathname === '/chief' ||
-         pathname.startsWith('/chief/')
+         pathname.startsWith('/chief/') ||
+         pathname === '/property' ||
+         pathname.startsWith('/property/')
 }
 
 function TabStrip() {
@@ -147,6 +156,7 @@ function AppInner() {
     return (
       <div className="flex flex-col h-full">
         <div className="flex-1 overflow-y-auto min-h-0">
+          <Suspense fallback={<div className="p-8 text-center text-sm text-[#79747E]">Loading…</div>}>
           <Routes>
             <Route path="/buckets/:bucket"                      element={<BucketDetail />} />
             <Route path="/buckets/:bucket/discussions/:id"      element={<DiscussionThread />} />
@@ -155,8 +165,13 @@ function AppInner() {
             <Route path="/chief"                                element={<ChiefPage />} />
             <Route path="/chief/config"                         element={<HeadConfig />} />
             <Route path="/buckets/:bucket/config"               element={<HeadConfig />} />
+            <Route path="/property"                             element={<Property />} />
+            <Route path="/property/explore"                     element={<PropertyExplore />} />
+            <Route path="/property/map"                         element={<PropertyMap />} />
+            <Route path="/property/:pid"                        element={<PropertyDetail />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
+          </Suspense>
         </div>
         <BottomNav />
       </div>

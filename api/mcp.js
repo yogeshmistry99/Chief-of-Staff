@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { buildTask, enrichNewTask, aiScoreTask, isScored, validScore, validEffort, PROJECTS, PROJECT_NAMES } from './_lib/taskWrite.js'
 import * as repo from './_lib/tasksRepo.js'
+import * as propRepo from './_lib/propertiesRepo.js'
 
 // ─── Supabase helpers ─────────────────────────────────────────────────────────
 function getSupabase() {
@@ -358,6 +359,79 @@ async function listBuckets() {
   }))
 }
 
+// ─── Property tools ─────────────────────────────────────────────────────────────
+// Read/query the property-market store (public.properties / _listings / _events).
+// Lets Claude.ai ask "what's good value right now" without opening the app.
+
+const PROPERTY_BUDGET = 450000
+
+function ppsf(p) {
+  return p.asking_price && p.floor_area_sqft ? Math.round(Number(p.asking_price) / Number(p.floor_area_sqft)) : null
+}
+function propSummary(p) {
+  return {
+    id: p.id, address: p.address, postcode: p.postcode, area: p.area, status: p.status,
+    asking_price: p.asking_price, first_seen_price: p.first_seen_price,
+    floor_area_sqft: p.floor_area_sqft, price_per_sqft: ppsf(p),
+    bedrooms: p.bedrooms, house_type: p.house_type, parking: p.parking,
+    nearest_station_m: p.nearest_station_m, extension_potential: p.extension_potential,
+    decision_state: p.decision_state,
+  }
+}
+
+async function listPropertiesTool({ area, status, decision, max_price } = {}) {
+  const sb = getSupabase()
+  if (!sb) return { error: 'Supabase not configured' }
+  const rows = await propRepo.listProperties(sb, {
+    area: area ?? null, status: status ?? null, decision: decision ?? null,
+    maxPrice: max_price != null ? Number(max_price) : null,
+  })
+  return { count: rows.length, properties: rows.map(propSummary) }
+}
+
+async function getPropertyTool({ id }) {
+  const sb = getSupabase()
+  if (!sb) return { error: 'Supabase not configured' }
+  if (!id) return { error: 'id is required' }
+  const p = await propRepo.getProperty(sb, id)
+  if (!p) return { error: `Property ${id} not found` }
+  const [listings, events] = await Promise.all([
+    propRepo.listingsForProperty(sb, id), propRepo.eventsForProperty(sb, id),
+  ])
+  return { property: { ...propSummary(p), tenure: p.tenure, epc: p.epc, agent: p.primary_agent, notes: p.notes }, listings, events }
+}
+
+async function updatePropertyTool({ id, decision_state, notes, extension_potential } = {}) {
+  const sb = getSupabase()
+  if (!sb) return { error: 'Supabase not configured' }
+  if (!id) return { error: 'id is required' }
+  const patch = {}
+  if (decision_state !== undefined) { patch.decision_state = decision_state; patch.decided_at = new Date().toISOString() }
+  if (notes !== undefined) patch.notes = notes
+  if (extension_potential !== undefined) patch.extension_potential = extension_potential == null ? null : Number(extension_potential)
+  const saved = await propRepo.updateProperty(sb, id, patch)
+  return { success: true, property: propSummary(saved) }
+}
+
+// Value signal for Claude.ai: available, within budget, measured, and cheap per
+// sq ft relative to the local median. Server-side £/sqft heuristic (the app's
+// interactive multi-factor model is client-side); honest and useful for a query.
+async function listOpportunitiesTool({ area, budget } = {}) {
+  const sb = getSupabase()
+  if (!sb) return { error: 'Supabase not configured' }
+  const cap = budget != null ? Number(budget) : PROPERTY_BUDGET
+  const rows = await propRepo.listProperties(sb, { area: area ?? null })
+  const measured = rows.filter((p) => ppsf(p) != null)
+  if (!measured.length) return { count: 0, medianPricePerSqft: null, opportunities: [] }
+  const sorted = [...measured].map(ppsf).sort((a, b) => a - b)
+  const median = sorted[Math.floor(sorted.length / 2)]
+  const opps = measured
+    .filter((p) => p.status === 'available' && Number(p.asking_price) <= cap && ppsf(p) < median * 0.9)
+    .map((p) => ({ ...propSummary(p), pct_below_median_ppsf: Math.round((1 - ppsf(p) / median) * 100) }))
+    .sort((a, b) => a.price_per_sqft - b.price_per_sqft)
+  return { count: opps.length, medianPricePerSqft: median, budget: cap, opportunities: opps }
+}
+
 // ─── Tool registry ────────────────────────────────────────────────────────────
 const TOOLS = [
   {
@@ -491,6 +565,53 @@ const TOOLS = [
       required: ['head'],
     },
   },
+  {
+    name: 'list_properties',
+    description: 'Return tracked properties from the property-market store. Each has a permanent P### identity, current asking price, floor area, £/sq ft, status and your decision state. Optionally filter by area, status (available/under_offer/sold_stc/withdrawn), decision (unreviewed/watch/shortlist/viewing/offer/pass), or a max price.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        area:      { type: 'string', description: 'Area key, e.g. "slough"' },
+        status:    { type: 'string', enum: ['available', 'under_offer', 'sold_stc', 'withdrawn'] },
+        decision:  { type: 'string', enum: ['unreviewed', 'watch', 'shortlist', 'viewing', 'offer', 'pass'] },
+        max_price: { type: 'number', description: 'Only properties at or below this asking price' },
+      },
+    },
+  },
+  {
+    name: 'get_property',
+    description: 'Return one property by its P### id, with its source listings (per portal) and full event history (price changes, status changes, relistings).',
+    inputSchema: {
+      type: 'object',
+      properties: { id: { type: 'string', description: 'Property id, e.g. "P156"' } },
+      required: ['id'],
+    },
+  },
+  {
+    name: 'update_property',
+    description: 'Update the personal decision layer for a property: decision_state, free-text notes, and/or the extension-potential override (0=none,1=loft,2=rear,3=large). Only provided fields change; market facts are never overwritten here.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id:                  { type: 'string', description: 'Property id (required)' },
+        decision_state:      { type: 'string', enum: ['unreviewed', 'watch', 'shortlist', 'viewing', 'offer', 'pass'] },
+        notes:               { type: 'string', description: 'Free-text notes' },
+        extension_potential: { type: 'integer', description: '0 none / 1 loft / 2 rear / 3 large' },
+      },
+      required: ['id'],
+    },
+  },
+  {
+    name: 'list_opportunities',
+    description: 'Return likely value opportunities: available properties within budget whose £/sq ft is materially below the local median. A quick £/sq ft signal (the app has a richer interactive multi-factor model). Sorted cheapest per sq ft first.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        area:   { type: 'string', description: 'Area key, e.g. "slough"' },
+        budget: { type: 'number', description: 'Max asking price (default 450000)' },
+      },
+    },
+  },
 ]
 
 async function callTool(name, args) {
@@ -507,6 +628,10 @@ async function callTool(name, args) {
     case 'list_heads':       return listHeads()
     case 'get_knowledge':   return getKnowledge(args)
     case 'update_knowledge': return updateKnowledge(args)
+    case 'list_properties':    return listPropertiesTool(args)
+    case 'get_property':       return getPropertyTool(args)
+    case 'update_property':    return updatePropertyTool(args)
+    case 'list_opportunities': return listOpportunitiesTool(args)
     default: throw new Error(`Unknown tool: ${name}`)
   }
 }

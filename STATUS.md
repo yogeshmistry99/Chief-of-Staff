@@ -3,8 +3,8 @@
 Single source of truth for system state. **Read this at the start of every session.
 Update it at the end of any session that changes anything.**
 
-Last updated: 2026-07-28 (task capture from CoS/Heads restored — the chat was confirming tasks it
-never saved; plus the earlier confirmation fixes — see the newest changelog entries)
+Last updated: 2026-08-13 (NEW DOMAIN: Property-Market Intelligence — schema, ingestion pipeline,
+interactive factor model, UI section, and MCP tools added; see the newest changelog entry)
 
 ---
 
@@ -59,6 +59,13 @@ never saved; plus the earlier confirmation fixes — see the newest changelog en
 - **`task_backups`** — task-store snapshots (`label`, `tasks`, `task_count`, `created_at`). **12 rows — currently AT the cap.** Capped at 12 (`MAX_SNAPSHOTS`, pruned on every write in `src/lib/backups.js`).
 - **`knowledge_backups`** — prior values before overwrite (`head_key`, `backed_up_at`, `value`). Written by `update_knowledge`, `update_roadmap`, and `/api/sync-all-buckets` (key `todoist_task_cache_snapshot`). **Capped at 12 (`MAX_KNOWLEDGE_BACKUPS`), prune-on-write at all three insert sites — fixed 2026-07-16.** (This line previously said "grows unbounded," contradicting the rest of the doc; corrected 2026-07-24.)
 
+### Property-Market tables (added 2026-08-13)
+- **`properties`** — one row per physical house (`P###`). Source of truth for the property domain.
+  Reached via `api/_lib/propertiesRepo.js` (browser anon + serverless). Realtime-published.
+- **`property_listings`** — per-source listings (`{source}:{id}`), FK → properties (cascade).
+- **`property_events`** — append-only market history, FK → properties (cascade). Never soft-deleted.
+- Client display cache: localStorage `property_cache` (read-only paint, like `todoist_task_cache`).
+
 ### localStorage keys
 | Key | Holds | Supabase mirror | Capped? |
 |---|---|---|---|
@@ -98,6 +105,54 @@ never saved; plus the earlier confirmation fixes — see the newest changelog en
 ---
 
 ## Recent significant changes (newest first)
+
+- **2026-08-13 — NEW DOMAIN: Property-Market Intelligence (first increment).** A self-contained
+  property section added alongside the Life OS task app — it sits above Rightmove/Zoopla/OTM,
+  dedupes each physical house to a permanent `P###`, keeps sold/withdrawn rows as market history,
+  and surfaces value via an interactive factor model. **Zero LLM anywhere in the ingest/analysis
+  loop** (deterministic parsing + plain-JS regression) — a hard requirement for token cost.
+  - **Schema (Supabase):** three new tables — `properties` (one row per physical house: identity
+    `P###`+`pnum`, `area` for future multi-area overlay, physical facts, factor columns
+    `nearest_school_m`/`nearest_station_m`/`extension_potential`, market rollup, and a personal
+    decision layer `decision_state`/`notes`), `property_listings` (one row per source listing),
+    `property_events` (append-only history — new_listing/reduced/status_change/sold_stc/… ). Same
+    conventions as `tasks`: `id text` PK, `set_updated_at` trigger, `deleted_at` soft-delete +
+    partial live-row indexes, CHECK constraints, RLS **allow-all-to-PUBLIC**, `properties` added to
+    the realtime publication. DDL committed at `sql/properties_schema.sql`.
+  - **Data access:** `api/_lib/propertiesRepo.js` mirrors `tasksRepo.js` (partial-UPDATE
+    anti-clobber, throw-on-no-rows, `deleted_at is null` reads, injected client). Browser reads
+    Supabase directly via the anon client — no endpoint.
+  - **Ingestion (`api/_lib/ingest/`, weekly cron):** pluggable source adapters parse the JSON
+    embedded in each portal page (`window.jsonModel` / `PAGE_MODEL` / `__NEXT_DATA__`) — no
+    headless browser, no tokens. Pipeline = discover → identity-resolve (`P###` mint) → diff vs
+    known → record events → geocode (postcodes.io) → factors (haversine to bundled station/school
+    datasets + extension heuristic) → store. Bounded per run (60s). One new endpoint
+    `api/ingest-properties.js` (weekly cron `0 7 * * 1`); the retired `api/sync-all-buckets.js`
+    was **deleted to stay at 12/12** Vercel functions.
+  - **Model (`src/lib/propertyModel.js`, client-side, deterministic):** multivariate OLS
+    (Gauss-Jordan, no dependency) — `price ~ floor_area + Σ switchable factors`
+    (parking/garage/school-dist/station-dist/extension/house-type). Returns £-impact coefficients,
+    R², per-property residual/`pctBelow`, and opportunity buckets. Toggling a factor refits live.
+  - **UI:** new sub-route section `/property` (dashboard+stat-bar+opportunities+filterable list),
+    `/property/explore` (the hero: bespoke-SVG price-vs-area scatter + factor toggles + coefficient
+    readout), `/property/map` (Leaflet + OSM, CircleMarkers), `/property/:pid` (canonical record:
+    price/event history, per-portal sources, decision panel, notes, extension override). 5th
+    BottomNav item. Pages are **lazy-loaded** so Leaflet (~155kB) stays out of the main bundle.
+    New deps: `leaflet`, `react-leaflet` v5.
+  - **MCP tools (in `api/mcp.js`, no new endpoint):** `list_properties`, `get_property`,
+    `update_property` (decision/notes/extension), `list_opportunities` (£/sqft-vs-median signal).
+  - **Verified:** 37 Vitest tests pass (OLS recovers exact coefficients incl. the parking premium;
+    identity/diff/parse/geo/factors; Rightmove fixture parsing); `npm run build` passes; 12/12
+    functions; schema insert→event→FK-cascade round-trip via Supabase MCP; grep confirms no
+    Anthropic/model refs in the property path.
+  - **KNOWN LIMITATION (important):** a live probe confirmed **Rightmove 403s datacenter IPs** — so
+    the weekly scrape will NOT return data from Vercel as-is. Parsing is proven against fixtures;
+    the adapter interface is built so a residential-IP proxy or a paid data API (PropertyData/Patma)
+    can be dropped into `fetchHtml`/the adapters without touching the pipeline. Zoopla/OTM adapters
+    are structurally complete but DEFERRED (their `searchUrl` is null) until confirmed live. The
+    schools factor dataset ships **empty on purpose** (no invented coords) — populate from GIAS to
+    activate the school toggle; stations dataset is real. The Rightmove `locationIdentifier` in
+    `config.js` is a **placeholder** — replace with the real Slough search URL from a browser.
 
 - **2026-07-28 — Task capture from CoS and the Heads was broken; restored.** Deployed (`f7eaaff`).
   **Severity: this is the app's foundational action** — logging a task is the first step of the
@@ -510,3 +565,19 @@ never saved; plus the earlier confirmation fixes — see the newest changelog en
 - **In-app Head chats cannot set task categories** — their task tools don't expose the field. Use the MCP (via Claude.ai) to set categories.
 - **`*.vercel.app` and direct Supabase HTTP are egress-blocked from the sandbox.** To trigger an `/api/*` endpoint, open the URL in a browser; to read Supabase, use the Supabase MCP tools. Don't conclude "capability unavailable" — it works from the app/browser and via MCP, just not via raw HTTP from here.
 - **`node_modules` can be reclaimed mid-session** (disk allowance). If `vite: not found`, run `npm install` before building.
+- **Property scraping is blocked from server IPs.** Rightmove 403s Vercel/datacenter IPs (probed
+  2026-08-13). The ingestion parsing is correct (fixture-tested) but the weekly cron won't pull
+  live data until `fetchHtml` (`api/_lib/ingest/sources/http.js`) goes through a residential-IP
+  proxy or the adapters are swapped for a data API. The pipeline degrades gracefully — a blocked
+  source just yields 0 rows, the run still succeeds. `config.js`'s Rightmove `locationIdentifier`
+  is a placeholder; Zoopla/OTM `searchUrl` are null (deferred).
+- **No LLM in the property ingest/analysis loop — keep it that way.** Parsing is deterministic
+  (embedded-JSON regex) and the value model is plain-JS OLS (`src/lib/propertyModel.js`). Adding an
+  Anthropic call to enrichment/scoring would reintroduce per-listing token cost the design exists
+  to avoid.
+- **Still 12/12 Vercel functions.** `api/ingest-properties.js` was only addable because the retired
+  `api/sync-all-buckets.js` (was a 410 stub) was deleted. The next new endpoint still needs a slot
+  freed first. Property MCP tools live inside `api/mcp.js`; property reads/writes go direct from the
+  browser via the anon client — neither adds a function.
+- **The `properties` realtime channel is `properties_live`** (distinct from tasks' `tasks_live`).
+  Same once-only `.on()`-before-`subscribe()` rule as `useTasks` — don't add per-subscriber `.on()`.

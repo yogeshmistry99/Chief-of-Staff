@@ -2,12 +2,14 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "functions": {
-    "api/claude.js":   { "maxDuration": 60 },
-    "api/calendar.js": { "maxDuration": 30 },
-    "api/todoist.js":  { "maxDuration": 30 }
+    "api/claude.js":            { "maxDuration": 60 },
+    "api/calendar.js":          { "maxDuration": 30 },
+    "api/todoist.js":           { "maxDuration": 30 },
+    "api/ingest-properties.js": { "maxDuration": 60 }
   },
   "crons": [
-    { "path": "/api/cron-weekly-backup", "schedule": "0 8 * * 0" }
+    { "path": "/api/cron-weekly-backup", "schedule": "0 8 * * 0" },
+    { "path": "/api/ingest-properties",  "schedule": "0 7 * * 1" }
   ],
   "headers": [
     {
