@@ -4,7 +4,7 @@ import {
 } from './_lib/google.js'
 import { getEntryByDate, setDriveResult } from './_lib/journalRepo.js'
 import {
-  buildDocumentHtml, driveFileName, narrativeInput, NARRATIVE_SYSTEM,
+  buildDocumentHtml, driveFileName, narrativeInput, NARRATIVE_SYSTEM, cleanNarrative,
 } from './_lib/journalDocument.js'
 import { recordUsage } from './_lib/usage.js'
 
@@ -122,7 +122,10 @@ async function writeNarrative(entry) {
     },
     body: JSON.stringify({
       model: 'claude-sonnet-4-6',
-      max_tokens: 500,
+      // The entry is now the document's main content rather than a one-paragraph
+      // summary, so a long brain dump needs room to be rewritten in full. Still
+      // bounded — the prompt tells it to match his length, not to expand.
+      max_tokens: 1600,
       system: NARRATIVE_SYSTEM,
       messages: [{ role: 'user', content: narrativeInput(entry) }],
     }),
@@ -132,6 +135,6 @@ async function writeNarrative(entry) {
 
   await recordUsage('claude-sonnet-4-6', data.usage)
 
-  const text = data?.content?.find((b) => b.type === 'text')?.text?.trim()
-  return text || null
+  const text = data?.content?.find((b) => b.type === 'text')?.text
+  return cleanNarrative(text)
 }
