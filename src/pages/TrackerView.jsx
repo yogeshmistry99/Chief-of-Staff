@@ -39,17 +39,6 @@ export default function TrackerView() {
 
   useEffect(() => { load() }, [load])
 
-  // Drop a selection the filters have just excluded. Leaving the detail card
-  // open on a record that is no longer in the chart or the table would state,
-  // confidently, that it matches the current filters.
-  useEffect(() => {
-    if (!selected) return
-    const stillHere = rows.some(
-      (r) => r.sheetRow === selected.sheetRow && r.tabIndex === selected.tabIndex,
-    )
-    if (!stillHere) setSelected(null)
-  }, [rows, selected])
-
   // allRows → FILTER → everything else. Applying the filter once here is what
   // guarantees the chart, the table, the stats and the detail card are all
   // describing the same set of properties.
@@ -66,6 +55,22 @@ export default function TrackerView() {
     [tracker, allTrackerRows],
   )
   const activeCount = useMemo(() => activeFilterCount(tracker, filters), [tracker, filters])
+
+  // Drop a selection the filters have just excluded. Leaving the detail card
+  // open on a record that is no longer in the chart or the table would state,
+  // confidently, that it matches the current filters.
+  //
+  // MUST sit below `rows`. A hook's dependency array is evaluated during render,
+  // not deferred with the callback, so referencing a `const` declared further
+  // down throws "Cannot access 'rows' before initialization" and takes the whole
+  // app to the error boundary — which is exactly what it did.
+  useEffect(() => {
+    if (!selected) return
+    const stillHere = rows.some(
+      (r) => r.sheetRow === selected.sheetRow && r.tabIndex === selected.tabIndex,
+    )
+    if (!stillHere) setSelected(null)
+  }, [rows, selected])
 
   const points = useMemo(() => (tracker ? scatterPoints(tracker, rows) : []), [tracker, rows])
   const stats = useMemo(() => (tracker ? summaryStats(tracker, rows, points) : []), [tracker, rows, points])
