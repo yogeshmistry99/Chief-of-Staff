@@ -44,8 +44,15 @@ const openCategory = async (label) => {
   // findBy, not getBy: this is often the first interaction in a test and the
   // tracker's fetch has not resolved yet.
   const panel = await screen.findByRole('button', { name: /^Filters/ })
-  if (!screen.queryByRole('button', { name: new RegExp(`^${label}`) })) fireEvent.click(panel)
-  fireEvent.click(await screen.findByRole('button', { name: new RegExp(`^${label}`) }))
+  const re = new RegExp(`^${label}`)
+  // A category header always carries a hint or a selection after its label
+  // ("Area  9 options ▼"), so excluding an exact-text match separates it from
+  // the colour-picker chip of the same name.
+  const headers = () =>
+    screen.queryAllByRole('button', { name: re }).filter((b) => b.textContent.trim() !== label)
+  if (!headers().length) fireEvent.click(panel)
+  await waitFor(() => expect(headers().length).toBeGreaterThan(0))
+  fireEvent.click(headers()[0])
 }
 
 describe('TrackerView', () => {
@@ -271,6 +278,92 @@ describe('TrackerView', () => {
       // dataset, so filtering removes points without moving the survivors.
       expect(pos).toBe(before[label])
     }
+  })
+
+  const fills = (container) =>
+    Object.fromEntries(
+      [...container.querySelectorAll('circle')].map((c) => [
+        c.querySelector('title')?.textContent ?? '',
+        c.getAttribute('fill'),
+      ]),
+    )
+
+  it('colours the points by a chosen column, with a legend', async () => {
+    const { container } = renderTracker()
+    await screen.findByText('House search')
+    const before = new Set(Object.values(fills(container)))
+    expect(before.size).toBe(1) // one default colour until asked
+
+    await openCategory('Colour')
+    fireEvent.click(await screen.findByRole('button', { name: /^Area$/ }))
+
+    await waitFor(() => expect(new Set(Object.values(fills(container))).size).toBeGreaterThan(1))
+    // Identity is never colour alone: a legend names every colour on screen.
+    const legendNames = [...container.querySelectorAll('span')]
+      .map((s) => s.textContent)
+      .filter(Boolean)
+    expect(legendNames.some((t) => t === 'Langley')).toBe(true)
+  })
+
+  it('does not repaint surviving points when a filter is applied', async () => {
+    const { container } = renderTracker()
+    await screen.findByText('House search')
+    await openCategory('Colour')
+    fireEvent.click(await screen.findByRole('button', { name: /^Area$/ }))
+    await waitFor(() => expect(new Set(Object.values(fills(container))).size).toBeGreaterThan(1))
+    const before = fills(container)
+
+    await openCategory('Area')
+    fireEvent.click(await screen.findByRole('button', { name: /^Langley/ }))
+    await waitFor(() =>
+      expect(container.querySelectorAll('circle').length).toBeLessThan(Object.keys(before).length),
+    )
+
+    // Colour follows the entity, not its rank — a filter must never change the
+    // colour of a point that survived it.
+    for (const [label, fill] of Object.entries(fills(container))) {
+      expect(fill).toBe(before[label])
+    }
+  })
+
+  it('colours by a numeric column as a gradient', async () => {
+    const { container } = renderTracker()
+    await screen.findByText('House search')
+    await openCategory('Colour')
+    fireEvent.click(await screen.findByRole('button', { name: /^Asking price$/ }))
+
+    await waitFor(() => {
+      const used = new Set(Object.values(fills(container)))
+      expect(used.size).toBeGreaterThan(1)
+      // Every fill comes from the one-hue ramp, not the categorical palette.
+      for (const f of used) expect(f.toLowerCase()).toMatch(/^#(9ec5f4|6da7ec|3987e5|256abf|184f95|0d366b)$/)
+    })
+  })
+
+  it('colours only one column at a time', async () => {
+    const { container } = renderTracker()
+    await screen.findByText('House search')
+    await openCategory('Colour')
+    fireEvent.click(await screen.findByRole('button', { name: /^Area$/ }))
+    await waitFor(() => expect(new Set(Object.values(fills(container))).size).toBeGreaterThan(1))
+
+    fireEvent.click(screen.getByRole('button', { name: /^Asking price$/ }))
+    await waitFor(() => {
+      for (const f of new Set(Object.values(fills(container)))) {
+        expect(f.toLowerCase()).toMatch(/^#(9ec5f4|6da7ec|3987e5|256abf|184f95|0d366b)$/)
+      }
+    })
+  })
+
+  it('turns colour off again', async () => {
+    const { container } = renderTracker()
+    await screen.findByText('House search')
+    await openCategory('Colour')
+    fireEvent.click(await screen.findByRole('button', { name: /^Area$/ }))
+    await waitFor(() => expect(new Set(Object.values(fills(container))).size).toBeGreaterThan(1))
+
+    fireEvent.click(screen.getByRole('button', { name: /^Off$/ }))
+    await waitFor(() => expect(new Set(Object.values(fills(container))).size).toBe(1))
   })
 
   it('empties the chart via a price bound without losing the axes', async () => {

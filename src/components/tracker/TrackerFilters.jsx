@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { formatGbp } from '../../lib/sheets'
 import { toggleValue, setRange } from '../../lib/trackerFilters'
+import { chipColor } from '../../lib/trackerColor'
 
 // The filter panel. Collapsed by default so it never competes with the data,
 // but the active count sits on the closed header — a filtered view must never
@@ -66,8 +67,11 @@ function RangeRow({ def, value, onSet }) {
   )
 }
 
-export default function TrackerFilters({ options, state, onChange, activeCount, shown, total }) {
+export default function TrackerFilters({
+  options, state, onChange, activeCount, shown, total, colorBy, onColorBy, colorScale,
+}) {
   const [open, setOpen] = useState(false)
+  const [colorOpen, setColorOpen] = useState(false)
   // Per-category, keyed by column. Independent rather than an accordion —
   // comparing an area against a price band means having both open.
   const [openSections, setOpenSections] = useState({})
@@ -99,6 +103,58 @@ export default function TrackerFilters({ options, state, onChange, activeCount, 
 
       {open && (
         <div className="border-t border-[#F3EDF7]">
+          {/* Colour-by picker. ONE column at a time, by design — two colour
+              encodings on one scatter cannot both be read. */}
+          {onColorBy && (
+            <div className="border-b border-[#F3EDF7]">
+              <button
+                onClick={() => setColorOpen((o) => !o)}
+                className="w-full flex items-center justify-between gap-2 px-3 py-2.5 text-left"
+              >
+                <span className="text-[11px] font-medium text-[#49454F] flex-shrink-0">Colour</span>
+                <span className="flex items-center gap-2 min-w-0">
+                  <span className={`text-[10px] truncate ${colorBy ? 'text-[#6750A4] font-medium' : 'text-[#79747E]'}`}>
+                    {colorBy ? (options.find((o) => o.column === colorBy)?.label ?? colorBy) : 'Off'}
+                  </span>
+                  <span className="text-[10px] text-[#6750A4] flex-shrink-0">{colorOpen ? '▲' : '▼'}</span>
+                </span>
+              </button>
+
+              {colorOpen && (
+                <div className="px-3 pb-3">
+                  <p className="text-[10px] text-[#79747E] mb-1.5">
+                    Colour the chart points by one column.
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    <button
+                      onClick={() => onColorBy(null)}
+                      className={`text-[11px] px-2.5 py-1.5 rounded-full border ${
+                        !colorBy
+                          ? 'bg-[#6750A4] text-white border-[#6750A4] font-medium'
+                          : 'bg-white text-[#49454F] border-[#CAC4D0]'
+                      }`}
+                    >
+                      Off
+                    </button>
+                    {options.map((def) => (
+                      <button
+                        key={def.column}
+                        onClick={() => onColorBy(colorBy === def.column ? null : def.column)}
+                        className={`text-[11px] px-2.5 py-1.5 rounded-full border ${
+                          colorBy === def.column
+                            ? 'bg-[#6750A4] text-white border-[#6750A4] font-medium'
+                            : 'bg-white text-[#49454F] border-[#CAC4D0]'
+                        }`}
+                      >
+                        {def.label ?? def.column}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {options.map((def) => {
             const sel = state[def.column]
             const chosen = selectionLabel(def, sel)
@@ -153,17 +209,32 @@ export default function TrackerFilters({ options, state, onChange, activeCount, 
                       <div className="flex flex-wrap gap-1.5">
                         {def.values.map(({ value, count }) => {
                           const on = (sel ?? []).includes(value)
+                          // When this category is the colour source, its chips
+                          // carry the swatch — so the chips ARE the key.
+                          // A swatch beside the label rather than a coloured
+                          // background: the label keeps its ink colour and stays
+                          // legible, which is also what licenses the two hues
+                          // that fall below 3:1 on white.
+                          const swatch = colorScale?.column === def.column ? chipColor(colorScale, value) : null
                           return (
                             <button
                               key={value}
                               onClick={() => onChange(toggleValue(state, def.column, value))}
-                              className={`text-[11px] px-2.5 py-1.5 rounded-full border ${
+                              className={`flex items-center gap-1.5 text-[11px] px-2.5 py-1.5 rounded-full border ${
                                 on
                                   ? 'bg-[#6750A4] text-white border-[#6750A4] font-medium'
                                   : 'bg-white text-[#49454F] border-[#CAC4D0]'
                               }`}
                             >
-                              {value} <span className={on ? 'opacity-70' : 'text-[#79747E]'}>{count}</span>
+                              {swatch && (
+                                <span
+                                  className="w-[9px] h-[9px] rounded-full flex-shrink-0 ring-1 ring-white"
+                                  style={{ backgroundColor: swatch }}
+                                />
+                              )}
+                              <span>
+                                {value} <span className={on ? 'opacity-70' : 'text-[#79747E]'}>{count}</span>
+                              </span>
                             </button>
                           )
                         })}

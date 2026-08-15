@@ -128,6 +128,27 @@ evening reminder push — see the newest changelog entries)
 
 ## Recent significant changes (newest first)
 
+- **2026-08-15 — Colour the scatter by a chosen column; chips double as the key.** A "Colour"
+  section at the top of the filter panel picks **one** column — two colour encodings on one scatter
+  cannot both be read. Categorical columns get discrete hues and the filter chips in that category
+  gain a matching swatch, so the chips are the key; numeric columns get a one-hue light→dark
+  gradient with a min/max bar. A legend sits under the chart either way.
+  **The palette was computed, not chosen.** A scatter is an *all-pairs* chart — any two points can
+  land side by side, so every pair must be separable, which is a far harder gate than a bar chart's.
+  The standard palette only clears it for **three** slots; its fourth puts yellow beside orange at
+  normal-vision ΔE 13.7, below the floor of 15. Running the validator over every subset found the
+  largest passing set: **blue, yellow, magenta, green, violet** — worst-pair CVD ΔE 13.0, worst-pair
+  normal-vision ΔE 16.3, all checks pass on `#FFFBFE`. **Do not extend this list by eye**; six hues
+  do not clear it. Anything past the fifth commonest value folds into a neutral "Other".
+  **The scale is built from the UNFILTERED rows.** Colour follows the entity, not its rank — scaling
+  to the filtered set would repaint every surviving point whenever a filter changed, and would
+  resize the legend inside the pinned block. A test asserts a survivor's fill is byte-identical
+  across a filter change.
+  Labels stay in ink with a swatch beside them rather than being tinted: two of the five hues sit
+  below 3:1 on white, and a visible label is exactly the relief that licenses them. Markers went to
+  8px with a surface-coloured ring so overlapping points do not read as one blob of a blended
+  colour. 32 new assertions, including the palette constants themselves.
+
 - **2026-08-15 — Record list sorts by tapped column headings, multi-level.** Tap a heading to sort
   by it; tap a second and it becomes the tie-breaker **within** the first. **Precedence is tap
   order**, which is why the sort state is an ordered array rather than a `{column, dir}` pair — the

@@ -8,10 +8,12 @@ import {
 } from '../lib/sheets'
 import { filterOptions, applyFilters, activeFilterCount } from '../lib/trackerFilters'
 import { toggleSort, sortRows, describeSort } from '../lib/trackerSort'
+import { buildColorScale } from '../lib/trackerColor'
 import TrackerTable from '../components/tracker/TrackerTable'
 import TrackerScatter from '../components/tracker/TrackerScatter'
 import TrackerDetail from '../components/tracker/TrackerDetail'
 import TrackerFilters from '../components/tracker/TrackerFilters'
+import TrackerLegend from '../components/tracker/TrackerLegend'
 
 // The generic tracker screen. Everything specific to a tracker comes from its
 // config in src/lib/trackers.js — this file must stay tracker-agnostic, or the
@@ -31,6 +33,8 @@ export default function TrackerView() {
   const [filters, setFilters] = useState({})
   // Ordered: tap order is precedence. See src/lib/trackerSort.js.
   const [sort, setSort] = useState([])
+  // One column at a time — two colour encodings on one scatter cannot both be read.
+  const [colorBy, setColorBy] = useState(null)
   const [tableOpen, setTableOpen] = useState(!tracker?.tableCollapsed)
 
   const load = useCallback(async () => {
@@ -58,6 +62,16 @@ export default function TrackerView() {
     [tracker, allTrackerRows],
   )
   const activeCount = useMemo(() => activeFilterCount(tracker, filters), [tracker, filters])
+
+  // Built from allTrackerRows, never from `rows`. Colour follows the entity, not
+  // its rank: scaling to the filtered set would repaint every surviving point
+  // whenever a filter changed, and would resize the legend inside the pinned
+  // block. Both are silent ways for the chart to start lying.
+  const colorScale = useMemo(() => {
+    if (!colorBy) return null
+    const def = options.find((o) => o.column === colorBy)
+    return def ? buildColorScale(def, allTrackerRows, state.tabs?.[0]?.headers ?? []) : null
+  }, [colorBy, options, allTrackerRows, state.tabs])
 
   // Sorting applies to the TABLE ONLY. `rows` stays in sheet order for the
   // chart, the stats and the compare strip, none of which have an order to
@@ -232,7 +246,9 @@ export default function TrackerView() {
                   config={tracker.scatter}
                   selected={selected}
                   onSelect={(row) => { haptic.light(); setSelected(row) }}
+                  colorFor={colorScale?.colorFor}
                 />
+                <TrackerLegend scale={colorScale} />
                 <p className="text-[10px] text-[#79747E] mt-1 h-[14px] leading-[14px] truncate">
                   {points.length === domainPoints.length
                     ? 'Tap a point to see the full record.'
@@ -261,6 +277,9 @@ export default function TrackerView() {
               activeCount={activeCount}
               shown={rows.length}
               total={allTrackerRows.length}
+              colorBy={colorBy}
+              onColorBy={tracker.view === 'scatter' ? (c) => { haptic.light(); setColorBy(c) } : null}
+              colorScale={colorScale}
             />
           </div>
         )}

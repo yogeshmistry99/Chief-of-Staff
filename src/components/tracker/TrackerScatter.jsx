@@ -26,7 +26,7 @@ function short(n) {
   return String(Math.round(n))
 }
 
-export default function TrackerScatter({ points, domainPoints, config, selected, onSelect }) {
+export default function TrackerScatter({ points, domainPoints, config, selected, onSelect, colorFor }) {
   // THE AXES ARE SCALED TO THE WHOLE DATASET, NOT TO WHAT IS CURRENTLY SHOWN.
   //
   // Rescaling on every filter change makes the chart jump: the same property
@@ -71,12 +71,19 @@ export default function TrackerScatter({ points, domainPoints, config, selected,
 
       {points.map((p, i) => {
         const on = selected && p.row.sheetRow === selected.sheetRow
+        // A row with no value in the coloured column gets the neutral default
+        // rather than a colour that would imply a value it does not have.
+        const c = colorFor?.(p.row) ?? null
+        const fill = on ? '#6750A4' : (c ?? 'rgba(103,80,164,0.45)')
         return (
           <circle
             key={i}
-            cx={sx(p.x)} cy={sy(p.y)} r={on ? 5 : 3}
-            fill={on ? '#6750A4' : 'rgba(103,80,164,0.45)'}
-            stroke={on ? '#fff' : 'none'} strokeWidth={on ? 1.5 : 0}
+            cx={sx(p.x)} cy={sy(p.y)} r={on ? 5 : 4}
+            fill={fill}
+            // A surface-coloured ring separates overlapping marks. On a dense
+            // scatter this is what stops two adjacent points reading as one
+            // larger blob of an in-between colour.
+            stroke="#fff" strokeWidth={on ? 1.5 : 0.6}
             style={{ cursor: 'pointer' }}
             onClick={() => onSelect(p.row)}
           >
