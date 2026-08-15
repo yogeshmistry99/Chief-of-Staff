@@ -28,13 +28,24 @@ export default function ReminderToggle() {
 
   useEffect(() => { refresh() }, [refresh])
 
-  // Nothing to offer if the browser can't do it, or the keys were never set —
-  // an inert switch is worse than no switch.
-  if (!pushSupported() || !isConfigured()) return null
-  if (!status) return null
+  // This control ALWAYS renders, even when it cannot work.
+  //
+  // It used to return null when the browser lacked push support or the VAPID
+  // keys were unset, on the reasoning that an inert switch is worse than no
+  // switch. That was wrong: an invisible switch is worse than both, because
+  // nothing on screen distinguishes "not set up yet" from "shipped broken", and
+  // the first thing it did in real use was leave the user hunting for a control
+  // that had silently removed itself. Unavailable states now say what they need.
+  const supported = pushSupported()
+  const configured = isConfigured()
+  const unavailable = !supported
+    ? 'This browser cannot show reminders. On Android, add the app to your home screen and open it from there.'
+    : !configured
+      ? 'Not set up yet — the VAPID keys are missing from Vercel. Add VAPID_PUBLIC_KEY, VITE_VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY and VAPID_SUBJECT, then redeploy.'
+      : null
 
-  const enabled = status.enabled
-  const blocked = status.permission === 'denied'
+  const enabled = !unavailable && status?.enabled
+  const blocked = status?.permission === 'denied'
 
   async function toggle() {
     if (busy) return
@@ -81,18 +92,20 @@ export default function ReminderToggle() {
         <div className="flex-1 min-w-0">
           <p className="text-sm text-[#1C1B1F]">Evening reminder</p>
           <p className="text-[11px] text-[#79747E] leading-relaxed">
-            {blocked
-              ? 'Blocked in your browser settings for this site.'
-              : enabled
-                ? 'A nudge each evening, only if the day isn’t logged yet.'
-                : 'Get a nudge each evening to log the day.'}
+            {unavailable
+              ? unavailable
+              : blocked
+                ? 'Blocked in your browser settings for this site.'
+                : enabled
+                  ? 'A nudge each evening, only if the day isn’t logged yet.'
+                  : 'Get a nudge each evening to log the day.'}
           </p>
         </div>
         <button
           role="switch"
           aria-checked={enabled}
           aria-label="Evening reminder"
-          disabled={busy || blocked}
+          disabled={busy || blocked || !!unavailable}
           onClick={toggle}
           className={`flex-shrink-0 w-12 h-7 rounded-full transition-colors relative disabled:opacity-40 ${
             enabled ? 'bg-[#6750A4]' : 'bg-[#E7E0EC]'

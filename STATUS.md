@@ -117,15 +117,30 @@ document, trends charts and the evening reminder push — see the newest changel
    `allow all` to PUBLIC and the app URL has no password gate, same posture as `tasks`/`app_data`.
    That was already a standing P1; medical history raises the stakes materially. **Worth resolving
    before this table holds months of entries, not after.** Not a regression — flagged, not fixed.
-7. ~~**The journal's 9pm reminder push (phase 2) is not built.**~~ — BUILT 2026-08-15. All four
-   journal phases are now shipped. **Inert until the VAPID env vars are set in Vercel** (see the
-   changelog entry); the toggle hides itself until then rather than offering something that can't work.
+7. ~~**The journal's 9pm reminder push (phase 2) is not built.**~~ — BUILT 2026-08-15, and the
+   **four VAPID variables are now set in Vercel** (production + preview), so it is live rather than
+   inert. All four journal phases are shipped.
 8. **Cron slots are now 2/2** (weekly backup + journal reminder) — the Vercel Hobby maximum. A third
    scheduled job needs an existing one to absorb it, the same way `api/cron.js` absorbed both.
 
 ---
 
 ## Recent significant changes (newest first)
+
+- **2026-08-15 — Reminder control was rendering as nothing; VAPID keys set.** The user opened the
+  Journal to use the reminder and there was no control at all. Two causes.
+  **The keys had never been set** — confirmed by reading the live project config, which held 12
+  variables and none of the VAPID four. All four are now set (production + preview, encrypted).
+  **And `ReminderToggle` returned `null` in exactly that case**, which was the real defect. It was
+  written that way on the reasoning that an inert switch is worse than no switch; that is wrong. An
+  **invisible** switch is worse than both, because nothing on screen distinguishes "waiting on
+  setup" from "shipped broken". The control now always renders and each unavailable state says what
+  it needs. A test asserts `ReminderToggle` contains no `return null` — no other test can catch
+  this, since a component that renders nothing throws nothing.
+  **Trap worth keeping:** `VITE_*` variables are **inlined into the bundle at build time**, not read
+  at runtime. Setting one in Vercel changes nothing until a new build runs, so env vars must land
+  *before* the deploy that depends on them. Verified here by grepping the built bundle for the
+  public key rather than assuming (and confirming the private key is absent from it).
 
 - **2026-08-15 — Journal phase 2: the evening reminder push.** The journal's last piece — it had no
   way to ask to be written, and the symptoms it tracks are the ones that make remembering unreliable.
@@ -635,6 +650,13 @@ document, trends charts and the evening reminder push — see the newest changel
 - **`authored_at` is not `entry_date` and must stay separate.** It is what makes a backdated entry
   detectable, and the filed document says so. Contemporaneity is an evidential property — a diary
   presented as same-day when it was written a week later is worse than the delay itself.
+- **`VITE_*` env vars are baked into the bundle at BUILD time.** Adding one in Vercel does nothing
+  until a new build runs, so set it *before* pushing the code that reads it — otherwise the deploy
+  ships blind to it and needs a second one. Check by grepping `dist/assets/*.js` for the value, not
+  by assuming.
+- **A UI control that can't work must still render and say why.** Returning `null` when a dependency
+  is missing makes "not set up yet" indistinguishable from "broken", and the user is left hunting
+  for something that removed itself. This already happened once with the reminder toggle.
 - **NEVER add a `fetch` handler or any caching to `public/sw.js`.** The service worker is push-only
   and that is the entire reason it was safe to re-enable after caching broke deployed updates. A
   worker with no `fetch` listener cannot serve stale content; one with a `fetch` listener can, and
