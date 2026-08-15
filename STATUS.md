@@ -3,7 +3,7 @@
 Single source of truth for system state. **Read this at the start of every session.
 Update it at the end of any session that changes anything.**
 
-Last updated: 2026-08-15 (head-injury journal complete — capture, Drive filing, the filed
+Last updated: 2026-08-15 (Google Sheets trackers shipped; head-injury journal complete — capture, Drive filing, the filed
 document, trends charts and the evening reminder push — see the newest changelog entries)
 
 ---
@@ -126,6 +126,29 @@ document, trends charts and the evening reminder push — see the newest changel
 ---
 
 ## Recent significant changes (newest first)
+
+- **2026-08-15 — Google Sheets trackers: one reusable component, four configured instances.**
+  Four self-updating sheets (house search, medical, car values, pub-to-home) now render inside the
+  app. Adding a fifth should mean adding a config object to `src/lib/trackers.js` and nothing else.
+  **Needed a new scope, and it was a hard blocker:** the stored grant was `drive.file`, which covers
+  **only files the app itself created** — so the app could not read any of these hand-made sheets at
+  all. Added `spreadsheets.readonly`; **requires a Google reconnect** (the third). Read-only is
+  deliberate: "no write-back" is a property of the grant, not a rule the code must remember. **Never
+  upgrade this to the read/write `spreadsheets` scope** — a test asserts it is absent.
+  **Uses `spreadsheets.get?includeGridData=true`, NOT `values.get`.** `values.get` returns display
+  text only, so a linked cell (`Open Auto Trader`, `View document`) comes back as that string with
+  the URL silently gone — no error, nothing to notice. Only grid data carries `hyperlink` and
+  `textFormatRuns[].format.link`.
+  **Function count held at 12** — this is `api/google.js?action=sheet`, not a new file.
+  **The parser exists because these sheets are not clean tables:** the header sits on row 1, 2, 3 or
+  5 depending on the tab (so it is per-tab config); merged banner rows sit *inside* the data and are
+  how grouping is expressed (Medical's categories, Car's per-model tabs); blank spacer rows must not
+  end a table; and a trailing banner is a footnote, not a section. All in `api/_lib/sheetTable.js`,
+  pure and fixture-tested since the Sheets API is unreachable from the sandbox.
+  **Tab titles are resolved at fetch time**, not trusted: configs name tabs from each sheet's visible
+  banner heading, which need not equal the tab name. A cheap titles-only call runs first, matches
+  exactly then case/punctuation-insensitively, and on a real miss returns the titles that *do* exist.
+  No writes, no persistence, no cron, no cross-tracker aggregation — fetch on open and on Update.
 
 - **2026-08-15 — Reminder control was rendering as nothing; VAPID keys set.** The user opened the
   Journal to use the reminder and there was no control at all. Two causes.
@@ -650,6 +673,12 @@ document, trends charts and the evening reminder push — see the newest changel
 - **`authored_at` is not `entry_date` and must stay separate.** It is what makes a backdated entry
   detectable, and the filed document says so. Contemporaneity is an evidential property — a diary
   presented as same-day when it was written a week later is worse than the delay itself.
+- **`values.get` silently drops hyperlinks.** Any Sheets read that needs a link must use
+  `spreadsheets.get` with `includeGridData=true`; the display text comes back either way, so the
+  loss is invisible until someone notices a dead "View document". See `api/_lib/google.js`.
+- **`drive.file` cannot read files the app did not create.** It is per-file, not per-Drive. Reading
+  an existing user-made file needs a different scope (`spreadsheets.readonly` here) — and the
+  failure mode is a 404 that looks exactly like a wrong file id.
 - **`VITE_*` env vars are baked into the bundle at BUILD time.** Adding one in Vercel does nothing
   until a new build runs, so set it *before* pushing the code that reads it — otherwise the deploy
   ships blind to it and needs a second one. Check by grepping `dist/assets/*.js` for the value, not

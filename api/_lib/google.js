@@ -14,6 +14,17 @@ export const SCOPES = [
   // Per-file Drive access: the app can only touch files it created itself.
   // Least privilege, and enough to create documents inside a named folder.
   'https://www.googleapis.com/auth/drive.file',
+  // Read-only access to Sheets, for the trackers.
+  //
+  // drive.file above is NOT sufficient for them: it covers only files this app
+  // created, and the tracker spreadsheets were made by hand. Without this scope
+  // every tracker fetch 404s no matter what else is configured.
+  //
+  // READ-ONLY IS THE POINT. The trackers never write back, and using the
+  // read-only scope makes that a property of the grant rather than a rule the
+  // code has to keep remembering. Do not "upgrade" this to the read/write
+  // spreadsheets scope to add a feature — that silently removes the guarantee.
+  'https://www.googleapis.com/auth/spreadsheets.readonly',
 ]
 
 export const AUTH_KEY = 'google_calendar_auth'
@@ -51,6 +62,10 @@ export function hasScope(stored, scope) {
 
 export function hasDriveScope(stored) {
   return hasScope(stored, 'https://www.googleapis.com/auth/drive.file')
+}
+
+export function hasSheetsScope(stored) {
+  return hasScope(stored, 'https://www.googleapis.com/auth/spreadsheets.readonly')
 }
 
 // Exchange the refresh token for a fresh access token, persisting it so the
@@ -185,4 +200,96 @@ export async function driveFileExists(token, fileId) {
   } catch {
     return false
   }
+}
+
+// ─── Sheets ───────────────────────────────────────────────────────────────────
+
+const SHEETS = 'https://sheets.googleapis.com/v4/spreadsheets'
+
+// Read tabs from a spreadsheet WITH their link metadata.
+//
+// This uses spreadsheets.get and NOT values.get, and the difference is the whole
+// reason the trackers work. values.get returns display text only: a cell reading
+// "Open Auto Trader" or "View document" comes back as exactly that string, and
+// the URL behind it is gone with no error and no indication anything was lost.
+// Only grid data carries `hyperlink` and `textFormatRuns[].format.link`.
+//
+// `ranges` is always supplied by the caller's config so a wide sheet cannot pull
+// an unbounded payload, and the fields mask keeps the response to the four
+// things the parser actually reads.
+const GRID_FIELDS = [
+  'properties.title',
+  'sheets(properties(title,index),merges,',
+  'data(rowData(values(formattedValue,hyperlink,',
+  'textFormatRuns(startIndex,format(link(uri)))))))',
+].join('')
+
+export async function sheetsFetchGrid(token, spreadsheetId, ranges = []) {
+  const params = new URLSearchParams({ includeGridData: 'true', fields: GRID_FIELDS })
+  for (const r of ranges) params.append('ranges', r)
+
+  const res = await fetch(`${SHEETS}/${encodeURIComponent(spreadsheetId)}?${params}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  const text = await res.text()
+  let data
+  try { data = text ? JSON.parse(text) : {} } catch { data = { raw: text } }
+
+  if (!res.ok) {
+    const msg = data?.error?.message ?? data.raw ?? `Sheets returned ${res.status}`
+    throw Object.assign(new Error(msg), {
+      status: res.status,
+      // 403 is normally a missing scope; 404 on a real id usually means the same
+      // thing, because a grant that cannot see the file is indistinguishable
+      // from the file not existing.
+      needsReconsent: res.status === 401 || res.status === 403,
+    })
+  }
+  return data
+}
+
+// Resolve requested tab titles against what the spreadsheet actually has.
+//
+// The exact tab titles could not be read when the configs were written, so a
+// mismatch has to be diagnosable: this returns the available titles rather than
+// letting the caller see an empty result and guess.
+export async function sheetsFetchTitles(token, spreadsheetId) {
+  const res = await fetch(
+    `${SHEETS}/${encodeURIComponent(spreadsheetId)}?fields=properties.title,sheets.properties.title`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  )
+  const text = await res.text()
+  let data
+  try { data = text ? JSON.parse(text) : {} } catch { data = { raw: text } }
+  if (!res.ok) {
+    const msg = data?.error?.message ?? data.raw ?? `Sheets returned ${res.status}`
+    throw Object.assign(new Error(msg), {
+      status: res.status,
+      needsReconsent: res.status === 401 || res.status === 403,
+    })
+  }
+  return {
+    title: data?.properties?.title ?? null,
+    titles: (data?.sheets ?? []).map((s) => s?.properties?.title).filter(Boolean),
+  }
+}
+
+// Match a configured tab name against the spreadsheet's real tab titles.
+//
+// The configs name tabs from the sheets' visible banner headings, which are not
+// guaranteed to equal the tab names underneath them, so an exact match cannot be
+// assumed. Tried in order, most to least strict; anything looser than these
+// would risk binding a tracker to the wrong tab, which is worse than an error.
+export function matchTitle(wanted, titles) {
+  const norm = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+  const w = norm(wanted)
+  return titles.find((t) => t === wanted)
+    ?? titles.find((t) => norm(t) === w)
+    ?? titles.find((t) => norm(t).startsWith(w) || w.startsWith(norm(t)))
+    ?? null
+}
+
+export function resolveTabs(titles, wanted) {
+  const resolved = wanted.map((w) => ({ wanted: w, actual: matchTitle(w, titles) }))
+  return { available: titles, resolved, missing: resolved.filter((r) => !r.actual).map((r) => r.wanted) }
 }

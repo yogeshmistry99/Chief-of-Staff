@@ -11,6 +11,7 @@ import Calendar from './pages/Calendar'
 import Journal from './pages/Journal'
 import CalendarEvent from './pages/CalendarEvent'
 import WeeklyReview from './pages/WeeklyReview'
+import TrackerView from './pages/TrackerView'
 import ChiefPage from './pages/ChiefPage'
 import HeadConfig from './pages/HeadConfig'
 import SyncProvider from './components/SyncProvider'
@@ -33,7 +34,8 @@ function isSubRoute(pathname) {
          pathname.startsWith('/calendar/event') ||
          pathname === '/weekly-review' ||
          pathname === '/chief' ||
-         pathname.startsWith('/chief/')
+         pathname.startsWith('/chief/') ||
+         pathname.startsWith('/trackers/')
 }
 
 function TabStrip() {
@@ -154,6 +156,7 @@ function AppInner() {
             <Route path="/buckets/:bucket/discussions/:id"      element={<DiscussionThread />} />
             <Route path="/calendar/event/:id"                   element={<CalendarEvent />} />
             <Route path="/weekly-review"                        element={<WeeklyReview />} />
+            <Route path="/trackers/:key"                        element={<TrackerView />} />
             <Route path="/chief"                                element={<ChiefPage />} />
             <Route path="/chief/config"                         element={<HeadConfig />} />
             <Route path="/buckets/:bucket/config"               element={<HeadConfig />} />
