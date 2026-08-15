@@ -7,6 +7,7 @@ import {
   readEntries, readEntry, writeEntry, onJournalChanged, fileToDrive, driveStatus,
   localDate, shiftDate, seedFromPrevious, isBackdated, driveDocUrl,
 } from '../lib/journal'
+import JournalTrends from '../components/JournalTrends'
 
 // Daily head-injury symptom journal.
 //
@@ -352,6 +353,7 @@ export default function Journal() {
   const [days, setDays] = useState(30)
   const [filing, setFiling] = useState(null)     // outcome of the last filing
   const [drive, setDrive] = useState(null)       // { connected, drive }
+  const [view, setView] = useState('history')    // 'history' | 'trends'
 
   const refresh = useCallback(async () => {
     try {
@@ -419,6 +421,22 @@ export default function Journal() {
       <div className="bg-[#F3EDF7] px-4 pt-4 pb-3 flex-shrink-0">
         <h1 className="text-lg font-semibold text-[#1C1B1F]">Journal</h1>
         <p className="text-xs text-[#79747E]">Daily symptom record</p>
+
+        <div className="flex gap-1.5 mt-3" role="tablist">
+          {[['history', 'History'], ['trends', 'Trends']].map(([key, label]) => (
+            <button
+              key={key}
+              role="tab"
+              aria-selected={view === key}
+              onClick={() => { haptic.light(); setView(key) }}
+              className={`flex-1 py-2 rounded-full text-xs font-medium transition-colors ${
+                view === key ? 'bg-white text-[#1C1B1F] shadow-sm' : 'text-[#49454F]'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto px-4">
@@ -484,6 +502,11 @@ export default function Journal() {
 
         {loading ? (
           <p className="text-sm text-[#79747E] py-4">Loading…</p>
+        ) : view === 'trends' ? (
+          // Mounted only while the tab is open. App.jsx renders every screen in
+          // the swipe strip at once, so an always-mounted chart would be built
+          // on every app load whether or not it is ever looked at.
+          <JournalTrends entries={entries} />
         ) : (
           <>
             {dates.map((d) => (

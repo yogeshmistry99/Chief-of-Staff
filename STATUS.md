@@ -117,8 +117,8 @@ document; plus the earlier task-capture restoration — see the newest changelog
    `allow all` to PUBLIC and the app URL has no password gate, same posture as `tasks`/`app_data`.
    That was already a standing P1; medical history raises the stakes materially. **Worth resolving
    before this table holds months of entries, not after.** Not a regression — flagged, not fixed.
-7. **Journal charts (1c) and the 9pm reminder push (phase 2) are not built.** Push in particular is
-   not just "add a handler": `src/main.jsx` actively **unregisters every service worker on load**
+7. **The journal's 9pm reminder push (phase 2) is not built.** (Charts — 1c — shipped 2026-08-15.)
+   Push is not just "add a handler": `src/main.jsx` actively **unregisters every service worker on load**
    (deliberately — stale caches were blocking updates), so phase 2 reverses an existing decision
    and must re-test the update path. Cron fires on UTC with ~1h jitter, so a 21:00 BST reminder
    drifts to 20:00 GMT in winter unless adjusted seasonally.
@@ -126,6 +126,22 @@ document; plus the earlier task-capture restoration — see the newest changelog
 ---
 
 ## Recent significant changes (newest first)
+
+- **2026-08-15 — Journal phase 1c: trends charts.** A History/Trends toggle on the Journal tab;
+  week / month / 6-month / year windows; any symptom plus an "Overall severity" line, layered up to
+  six at once. Hand-rolled inline SVG — no charting library, +6.7KB.
+  **Two properties are correctness, not styling:** a day with no entry **breaks the line** rather
+  than being interpolated across (a drawn-through line would show a trend nobody observed, in a
+  document read beside a claim), and a **lone entry always renders as a dot** at every zoom level
+  so a single observation cannot vanish into a dense window. `null` (no entry) and `0` (recorded
+  as none) are kept strictly distinct.
+  Sleep quality is drawn **dashed** because it is inverted, and is excluded from the overall mean —
+  `overallSeverity()` is asserted equal to the document's `meanSeverity()`, so the chart and the
+  evidence can't tell different stories.
+  Coverage ("N entries in these 365 days") is shown with the chart: a flat-looking year with nine
+  entries means something very different from one with three hundred.
+  **Mounted only while the Trends tab is open** — `src/App.jsx` renders all five screens in the
+  swipe strip at once, so an always-mounted chart would build on every app load.
 
 - **2026-08-15 — Daily head-injury journal shipped (phases 1a and 1b), confirmed working live.**
   Deployed across `2e40268` (capture), `d3300ac` (Drive filing), `3ada2f5`, `1f29d3c`, `4d8c930`.
@@ -598,6 +614,10 @@ document; plus the earlier task-capture restoration — see the newest changelog
 - **`authored_at` is not `entry_date` and must stay separate.** It is what makes a backdated entry
   detectable, and the filed document says so. Contemporaneity is an evidential property — a diary
   presented as same-day when it was written a week later is worse than the delay itself.
+- **In the journal charts, a gap must stay a gap.** `null` means no entry and `0` means recorded as
+  none — never conflate them, and never interpolate a line across a missing day. `segments()` in
+  `src/lib/journalChart.js` enforces the break; a "smoother" chart that joins across gaps is
+  fabricating observations in a document that goes to a solicitor.
 - **Journal entry text is tidied, never reworded.** Per-symptom notes get sentence case and a full
   stop and nothing more; the model rewrites the free-text dump into his voice, and the verbatim
   original always stays in `free_text`. The words in the record are the evidence.
