@@ -163,15 +163,30 @@ describe('TrackerView', () => {
     expect(within(svg).getByText('Asking price')).toBeInTheDocument()
   })
 
-  it('renders the chart above the filters', async () => {
+  it('renders the chart above the filters, the summary and the table', async () => {
     const { container } = renderTracker()
     await screen.findByText('House search')
     await waitFor(() => expect(container.querySelector('svg')).toBeInTheDocument())
 
     const svg = container.querySelector('svg')
-    const filters = screen.getByRole('button', { name: /^Filters/ })
-    // DOCUMENT_POSITION_FOLLOWING === the filters come after the chart.
-    expect(svg.compareDocumentPosition(filters) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    const after = (el) => svg.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING
+    // Everything that can change size must come after the chart, or applying a
+    // filter would move it.
+    expect(after(screen.getByRole('button', { name: /^Filters/ }))).toBeTruthy()
+    expect(after(screen.getByText('Median price'))).toBeTruthy()
+    expect(after(screen.getByRole('button', { name: /All records/i }))).toBeTruthy()
+  })
+
+  it('pins the chart so it cannot move when filters open', async () => {
+    const { container } = renderTracker()
+    await screen.findByText('House search')
+    await waitFor(() => expect(container.querySelector('svg')).toBeInTheDocument())
+
+    const pinned = container.querySelector('svg').closest('.sticky')
+    expect(pinned).toBeTruthy()
+    expect(pinned.className).toMatch(/top-0/)
+    // Nothing renders before it inside the scrolling area.
+    expect(pinned.previousElementSibling).toBeNull()
   })
 
   it('surfaces a disabled Sheets API with an Enable link and NO reconnect prompt', async () => {

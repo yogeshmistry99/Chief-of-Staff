@@ -51,9 +51,13 @@ export function filterOptions(tracker, rows) {
 // phone — the same reasoning that shaped the journal's tap targets. These become
 // two dropdowns, so a bound is one tap.
 //
-// The configured step is doubled until the list is short enough to scroll
-// comfortably, so a wide price range cannot generate a hundred options.
-export function rangeSteps(nums, step, maxOptions = 18) {
+// The configured step is doubled only if the list would be unusable, as a last
+// resort against a pathological range. THE CAP IS DELIBERATELY GENEROUS: at 18
+// it quietly coarsened £25,000 price steps into £100,000 ones, which is far too
+// blunt for choosing a house and gave no sign it had happened. A native select
+// is a scrollable picker on a phone, so forty entries costs nothing — the
+// configured step should survive unless the range is genuinely absurd.
+export function rangeSteps(nums, step, maxOptions = 40) {
   if (!nums.length || !(step > 0)) return []
   const lo = Math.min(...nums)
   const hi = Math.max(...nums)

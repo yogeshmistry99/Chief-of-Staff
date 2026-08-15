@@ -1,0 +1,123 @@
+import { describe, it, expect } from 'vitest'
+import houseTab from '../pages/__fixtures__/houseTab.json'
+import { getTracker } from './trackers'
+import { allRows } from './sheets'
+import {
+  filterOptions, applyFilters, activeFilterCount, toggleValue, setRange, rangeSteps,
+} from './trackerFilters'
+
+const house = getTracker('house')
+const rows = allRows(house, [houseTab])
+
+describe('rangeSteps', () => {
+  // The regression this file exists for: the option cap silently coarsened the
+  // configured step, turning £25,000 price increments into £100,000 ones with
+  // nothing on screen to say it had happened.
+  const price = [375_000, 1_300_000]
+
+  it('keeps the configured step for a real price range', () => {
+    const s = rangeSteps(price, 25_000)
+    expect(s[1] - s[0]).toBe(25_000)
+  })
+
+  it('keeps the configured step for floor area and £/sq ft', () => {
+    expect(rangeSteps([613, 2469], 100)[1] - rangeSteps([613, 2469], 100)[0]).toBe(100)
+    expect(rangeSteps([299, 902], 50)[1] - rangeSteps([299, 902], 50)[0]).toBe(50)
+  })
+
+  it('spans the data on both sides', () => {
+    const s = rangeSteps(price, 25_000)
+    expect(s[0]).toBeLessThanOrEqual(price[0])
+    expect(s[s.length - 1]).toBeGreaterThanOrEqual(price[1])
+  })
+
+  it('still coarsens rather than emitting thousands of options', () => {
+    const s = rangeSteps([0, 10_000_000], 1)
+    expect(s.length).toBeLessThanOrEqual(41)
+  })
+
+  it('is safe on degenerate input', () => {
+    expect(rangeSteps([], 100)).toEqual([])
+    expect(rangeSteps([5], 0)).toEqual([])
+    expect(rangeSteps([7, 7], 1)).toHaveLength(1)
+  })
+})
+
+describe('filterOptions', () => {
+  it('derives values from the rows, commonest first, with counts', () => {
+    const area = filterOptions(house, rows).find((o) => o.column === 'Area group')
+    expect(area.values.length).toBeGreaterThan(1)
+    const counts = area.values.map((v) => v.count)
+    expect([...counts].sort((a, b) => b - a)).toEqual(counts)
+    expect(counts.reduce((a, b) => a + b, 0)).toBe(rows.length - area.blanks)
+  })
+
+  it('reports blanks so a sparse column cannot silently drop rows', () => {
+    const fa = filterOptions(house, rows).find((o) => o.column === 'Floor area (sq ft)')
+    expect(fa.blanks).toBeGreaterThanOrEqual(0)
+    expect(fa.min).toBeLessThanOrEqual(fa.max)
+  })
+
+  it('is empty for a tracker with no filters configured', () => {
+    expect(filterOptions(getTracker('medical'), rows)).toEqual([])
+  })
+})
+
+describe('applyFilters', () => {
+  const areaOf = (r) => r.cells[1]?.text ?? ''
+
+  it('returns everything when nothing is set', () => {
+    expect(applyFilters(house, rows, {}).length).toBe(rows.length)
+    expect(applyFilters(house, rows, null).length).toBe(rows.length)
+  })
+
+  it('ORs values within a column', () => {
+    const areas = [...new Set(rows.map(areaOf))].filter(Boolean).slice(0, 2)
+    const a = applyFilters(house, rows, { 'Area group': [areas[0]] }).length
+    const b = applyFilters(house, rows, { 'Area group': [areas[1]] }).length
+    expect(applyFilters(house, rows, { 'Area group': areas }).length).toBe(a + b)
+  })
+
+  it('ANDs across columns', () => {
+    const area = areaOf(rows[0])
+    const wide = applyFilters(house, rows, { 'Area group': [area] })
+    const narrow = applyFilters(house, rows, {
+      'Area group': [area],
+      'Asking price': { min: 10_000_000, max: null },
+    })
+    expect(narrow.length).toBeLessThan(wide.length)
+    expect(narrow.length).toBe(0)
+  })
+
+  it('excludes rows with no figure while a bound is active', () => {
+    const fa = filterOptions(house, rows).find((o) => o.column === 'Floor area (sq ft)')
+    const got = applyFilters(house, rows, { 'Floor area (sq ft)': { min: fa.min, max: fa.max } })
+    expect(got.length).toBe(rows.length - fa.blanks)
+  })
+
+  it('treats an empty range as inert', () => {
+    expect(applyFilters(house, rows, { 'Asking price': { min: null, max: null } }).length).toBe(rows.length)
+    expect(activeFilterCount(house, { 'Asking price': { min: null, max: null } })).toBe(0)
+  })
+})
+
+describe('state helpers', () => {
+  it('toggleValue adds, removes, and deletes an emptied key', () => {
+    let s = toggleValue({}, 'Area group', 'Langley')
+    expect(s['Area group']).toEqual(['Langley'])
+    s = toggleValue(s, 'Area group', 'Langley')
+    expect('Area group' in s).toBe(false)
+  })
+
+  it('setRange deletes the key when both bounds clear', () => {
+    let s = setRange({}, 'Asking price', 'min', 400_000)
+    expect(s['Asking price']).toEqual({ min: 400_000, max: null })
+    s = setRange(s, 'Asking price', 'min', null)
+    expect('Asking price' in s).toBe(false)
+  })
+
+  it('activeFilterCount counts columns, not values', () => {
+    expect(activeFilterCount(house, { 'Area group': ['a', 'b'] })).toBe(1)
+    expect(activeFilterCount(house, { 'Area group': ['a'], 'Asking price': { min: 1, max: null } })).toBe(2)
+  })
+})

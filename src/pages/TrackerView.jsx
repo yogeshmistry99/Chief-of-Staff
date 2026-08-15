@@ -191,17 +191,6 @@ export default function TrackerView() {
           </div>
         )}
 
-        {stats.length > 0 && state.ok && (
-          <div className="flex gap-2 my-3 overflow-x-auto">
-            {stats.map((s) => (
-              <div key={s.label} className="flex-1 min-w-[80px] rounded-xl bg-white border border-[#CAC4D0] px-2.5 py-2">
-                <p className="text-[10px] text-[#79747E] leading-tight">{s.label}</p>
-                <p className="text-sm font-semibold text-[#1C1B1F]">{s.value}</p>
-              </div>
-            ))}
-          </div>
-        )}
-
         {/* The chart is PINNED and sits ABOVE the filters.
             Filtering is only useful if you can watch the chart respond to it;
             with the panel below a scrolling chart, opening the filters pushed
@@ -217,7 +206,11 @@ export default function TrackerView() {
                 selected={selected}
                 onSelect={(row) => { haptic.light(); setSelected(row) }}
               />
-              <p className="text-[10px] text-[#79747E] mt-1">
+              {/* Fixed height and no wrapping. This line swaps text as soon as
+                  a filter is applied, and if it ever wrapped to two lines the
+                  card would grow and the chart would shift down — the exact
+                  movement this layout exists to prevent. */}
+              <p className="text-[10px] text-[#79747E] mt-1 h-[14px] leading-[14px] truncate">
                 {points.length === domainPoints.length
                   ? 'Tap a point to see the full record.'
                   : `Showing ${points.length} of ${domainPoints.length} plotted properties.`}
@@ -233,6 +226,22 @@ export default function TrackerView() {
             config={tracker.detail}
             onClose={() => setSelected(null)}
           />
+        )}
+
+        {/* Summary sits BELOW the chart, not above it. Its figures change as
+            you filter, and a value that wrapped to a second line would push the
+            chart down — so nothing that can change size is allowed above the
+            chart at all. The values are also clamped to one line for the same
+            reason, since this strip is itself above the filters. */}
+        {stats.length > 0 && state.ok && (
+          <div className="flex gap-2 my-3 overflow-x-auto">
+            {stats.map((s) => (
+              <div key={s.label} className="flex-1 min-w-[80px] rounded-xl bg-white border border-[#CAC4D0] px-2.5 py-2">
+                <p className="text-[10px] text-[#79747E] leading-tight truncate">{s.label}</p>
+                <p className="text-sm font-semibold text-[#1C1B1F] truncate">{s.value}</p>
+              </div>
+            ))}
+          </div>
         )}
 
         {state.ok && (
