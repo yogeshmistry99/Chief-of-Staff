@@ -163,21 +163,7 @@ describe('TrackerView', () => {
     expect(within(svg).getByText('Asking price')).toBeInTheDocument()
   })
 
-  it('renders the chart above the filters, the summary and the table', async () => {
-    const { container } = renderTracker()
-    await screen.findByText('House search')
-    await waitFor(() => expect(container.querySelector('svg')).toBeInTheDocument())
-
-    const svg = container.querySelector('svg')
-    const after = (el) => svg.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING
-    // Everything that can change size must come after the chart, or applying a
-    // filter would move it.
-    expect(after(screen.getByRole('button', { name: /^Filters/ }))).toBeTruthy()
-    expect(after(screen.getByText('Median price'))).toBeTruthy()
-    expect(after(screen.getByRole('button', { name: /All records/i }))).toBeTruthy()
-  })
-
-  it('pins the chart so it cannot move when filters open', async () => {
+  it('pins the summary AND the chart together, above everything that can resize', async () => {
     const { container } = renderTracker()
     await screen.findByText('House search')
     await waitFor(() => expect(container.querySelector('svg')).toBeInTheDocument())
@@ -185,8 +171,64 @@ describe('TrackerView', () => {
     const pinned = container.querySelector('svg').closest('.sticky')
     expect(pinned).toBeTruthy()
     expect(pinned.className).toMatch(/top-0/)
-    // Nothing renders before it inside the scrolling area.
+    // Nothing renders before it inside the scrolling area, so it cannot be
+    // pushed down by anything.
     expect(pinned.previousElementSibling).toBeNull()
+
+    // Both live readouts are INSIDE the pinned block.
+    expect(pinned.contains(screen.getByText('Median price'))).toBe(true)
+    expect(pinned.contains(container.querySelector('svg'))).toBe(true)
+
+    // Everything that changes height sits after it.
+    const after = (el) => pinned.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING
+    expect(after(screen.getByRole('button', { name: /^Filters/ }))).toBeTruthy()
+    expect(after(screen.getByRole('button', { name: /All records/i }))).toBeTruthy()
+  })
+
+  // A stat's value is the second <p> of the card carrying its label.
+  const statValue = (label) =>
+    screen.getByText(label).parentElement.querySelector('p:last-child').textContent
+
+  it('keeps the pinned block a constant height when a filter is applied', async () => {
+    const { container } = renderTracker()
+    await screen.findByText('House search')
+    await waitFor(() => expect(container.querySelector('svg')).toBeInTheDocument())
+
+    const pinned = container.querySelector('svg').closest('.sticky')
+    // jsdom has no layout, so height is asserted through the things that
+    // determine it: the same number of stat cards, a fixed chart aspect ratio,
+    // and every line of text clamped so none can wrap.
+    const shape = () => ({
+      blocks: pinned.children.length,
+      cards: pinned.querySelectorAll('[class*="min-w-"]').length,
+      viewBox: pinned.querySelector('svg').getAttribute('viewBox'),
+      allClamped: [...pinned.querySelectorAll('p')].every(
+        (p) => p.className.includes('truncate') || p.className.includes('h-['),
+      ),
+    })
+    const before = shape()
+    expect(before.allClamped).toBe(true)
+
+    fireEvent.click(screen.getByRole('button', { name: /^Filters/ }))
+    fireEvent.click(await screen.findByRole('button', { name: /^Langley/ }))
+    await waitFor(() => expect(screen.getByText(/Showing \d+ of \d+/)).toBeInTheDocument())
+
+    expect(shape()).toEqual(before)
+  })
+
+  it('updates the summary figures as filters change — that is why it is pinned', async () => {
+    renderTracker()
+    await screen.findByText('Median price')
+    expect(statValue('Records')).toBe(String(houseTab.rows.length))
+
+    fireEvent.click(screen.getByRole('button', { name: /^Filters/ }))
+    const langley = await screen.findByRole('button', { name: /^Langley/ })
+    const langleyCount = Number(langley.textContent.match(/(\d+)\s*$/)[1])
+    fireEvent.click(langley)
+
+    // The strip is a live readout of the filtered set.
+    await waitFor(() => expect(statValue('Records')).toBe(String(langleyCount)))
+    expect(langleyCount).toBeLessThan(houseTab.rows.length)
   })
 
   it('surfaces a disabled Sheets API with an Enable link and NO reconnect prompt', async () => {

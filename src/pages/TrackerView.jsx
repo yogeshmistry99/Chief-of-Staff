@@ -191,31 +191,44 @@ export default function TrackerView() {
           </div>
         )}
 
-        {/* The chart is PINNED and sits ABOVE the filters.
-            Filtering is only useful if you can watch the chart respond to it;
-            with the panel below a scrolling chart, opening the filters pushed
-            the graph off screen and every chip tap was a change you could not
-            see. */}
-        {tracker.view === 'scatter' && state.ok && (
+        {/* THE PINNED BLOCK: summary strip and chart together, above the filters.
+            Both are live readouts of the current filter, so both have to stay on
+            screen while you adjust it — the median moving as you narrow an area
+            is the point, and a chart you have to scroll back to is a change you
+            cannot see.
+            Nothing in here may change height, or the block would shift under its
+            own content: every value is clamped to one line, and the caption has
+            a fixed height. Kept compact for the same reason it is pinned — this
+            space is spent on every screen of the tracker. */}
+        {state.ok && (stats.length > 0 || tracker.view === 'scatter') && (
           <div className="sticky top-0 z-20 -mx-3 px-3 pt-1 pb-2 bg-[#FFFBFE] border-b border-[#F3EDF7]">
-            <div className="rounded-2xl bg-white border border-[#CAC4D0] p-3">
-              <TrackerScatter
-                points={points}
-                domainPoints={domainPoints}
-                config={tracker.scatter}
-                selected={selected}
-                onSelect={(row) => { haptic.light(); setSelected(row) }}
-              />
-              {/* Fixed height and no wrapping. This line swaps text as soon as
-                  a filter is applied, and if it ever wrapped to two lines the
-                  card would grow and the chart would shift down — the exact
-                  movement this layout exists to prevent. */}
-              <p className="text-[10px] text-[#79747E] mt-1 h-[14px] leading-[14px] truncate">
-                {points.length === domainPoints.length
-                  ? 'Tap a point to see the full record.'
-                  : `Showing ${points.length} of ${domainPoints.length} plotted properties.`}
-              </p>
-            </div>
+            {stats.length > 0 && (
+              <div className="flex gap-1.5 mb-2 overflow-x-auto">
+                {stats.map((s) => (
+                  <div key={s.label} className="flex-1 min-w-[76px] rounded-xl bg-white border border-[#CAC4D0] px-2 py-1.5">
+                    <p className="text-[9px] text-[#79747E] leading-tight truncate">{s.label}</p>
+                    <p className="text-[13px] font-semibold text-[#1C1B1F] leading-tight truncate">{s.value}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {tracker.view === 'scatter' && (
+              <div className="rounded-2xl bg-white border border-[#CAC4D0] p-3">
+                <TrackerScatter
+                  points={points}
+                  domainPoints={domainPoints}
+                  config={tracker.scatter}
+                  selected={selected}
+                  onSelect={(row) => { haptic.light(); setSelected(row) }}
+                />
+                <p className="text-[10px] text-[#79747E] mt-1 h-[14px] leading-[14px] truncate">
+                  {points.length === domainPoints.length
+                    ? 'Tap a point to see the full record.'
+                    : `Showing ${points.length} of ${domainPoints.length} plotted properties.`}
+                </p>
+              </div>
+            )}
           </div>
         )}
 
@@ -226,22 +239,6 @@ export default function TrackerView() {
             config={tracker.detail}
             onClose={() => setSelected(null)}
           />
-        )}
-
-        {/* Summary sits BELOW the chart, not above it. Its figures change as
-            you filter, and a value that wrapped to a second line would push the
-            chart down — so nothing that can change size is allowed above the
-            chart at all. The values are also clamped to one line for the same
-            reason, since this strip is itself above the filters. */}
-        {stats.length > 0 && state.ok && (
-          <div className="flex gap-2 my-3 overflow-x-auto">
-            {stats.map((s) => (
-              <div key={s.label} className="flex-1 min-w-[80px] rounded-xl bg-white border border-[#CAC4D0] px-2.5 py-2">
-                <p className="text-[10px] text-[#79747E] leading-tight truncate">{s.label}</p>
-                <p className="text-sm font-semibold text-[#1C1B1F] truncate">{s.value}</p>
-              </div>
-            ))}
-          </div>
         )}
 
         {state.ok && (

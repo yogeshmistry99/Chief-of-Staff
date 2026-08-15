@@ -128,6 +128,25 @@ evening reminder push — see the newest changelog entries)
 
 ## Recent significant changes (newest first)
 
+- **2026-08-15 — Tracker chart and summary pinned; price steps were silently coarsened.**
+  **The pinned block is summary strip + chart, in that order, above the filters**, and it is the
+  first thing in the scrolling area so nothing can push it down. Both are live readouts of the
+  current filter — the median moving as you narrow an area is the point, and a chart you have to
+  scroll back to is a change you cannot see. **Nothing inside it may change height:** every value is
+  `truncate`d to one line and the caption has a fixed height, because a value wrapping to a second
+  line would shift the block under its own content.
+  **The axes are fixed to the unfiltered plottable set, not to what is shown.** Rescaling per filter
+  made points jump and made any subset fill the frame, so a narrow price band looked identical to
+  the whole market. Filtering now removes points without moving the survivors. The chart keeps its
+  axes when a filter excludes everything rather than collapsing to a message.
+  **`rangeSteps`' option cap was a silent downgrade** — at 18 it doubled £25,000 price steps up to
+  **£100,000**, far too blunt for choosing a house, with nothing on screen to say so. A native
+  select is a scrollable picker on a phone, so the cap is 40: price is £25k (38 options), floor area
+  100 sq ft. **A test now pins the actual step size**, since the failure mode was silent coarsening
+  rather than an error.
+  41 tests, including a point followed across a filter change to prove its exact `cx`/`cy` is
+  unchanged, and structural assertions that the pinned block cannot change height.
+
 - **2026-08-15 — White screen on load (my regression), and the render-test layer that was missing.**
   The filters commit took the **whole app** to the error boundary with *"Cannot access 'p' before
   initialization"*. Cause: the selection-clearing `useEffect` sat **above** `const rows`, and a
