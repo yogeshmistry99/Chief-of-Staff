@@ -242,7 +242,7 @@ function EntryForm({ entryDate, existing, previous, onSaved, onCancel }) {
 
       <div className="flex-shrink-0 px-4 py-3 border-t border-[#F3EDF7] bg-white">
         {error && (
-          <div className="mb-2 px-3 py-2 rounded-xl bg-[#FCEEEE] text-[#8C1D18] text-xs leading-relaxed">
+          <div className="mb-2 px-3 py-2 rounded-xl bg-[#FCEEEE] text-[#8C1D18] text-xs leading-relaxed break-words">
             <strong>Not saved.</strong> {error}
           </div>
         )}
@@ -385,7 +385,7 @@ export default function Journal() {
 
         {filing && (
           <div
-            className={`mt-3 px-3 py-2.5 rounded-xl text-xs leading-relaxed ${
+            className={`mt-3 px-3 py-2.5 rounded-xl text-xs leading-relaxed break-words ${
               filing.ok ? 'bg-[#E8F5E9] text-[#1B5E20]' : 'bg-[#FCEEEE] text-[#8C1D18]'
             }`}
           >
