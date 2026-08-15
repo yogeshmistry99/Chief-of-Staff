@@ -376,7 +376,7 @@ export default function Calendar() {
             {calendarError === 'auth_required' ? (
               <>
                 <p className="text-sm font-semibold text-red-800 mb-1">Google Calendar not connected</p>
-                <a href="/api/google-auth?return=/calendar" className="inline-block text-xs font-semibold px-3 py-1.5 rounded-full bg-[#6750A4] text-white hover:bg-[#5B4397]">
+                <a href="/api/google?action=auth&return=/calendar" className="inline-block text-xs font-semibold px-3 py-1.5 rounded-full bg-[#6750A4] text-white hover:bg-[#5B4397]">
                   Connect Google Calendar
                 </a>
               </>

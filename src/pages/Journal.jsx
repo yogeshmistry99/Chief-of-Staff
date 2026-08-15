@@ -4,7 +4,7 @@ import {
   SYMPTOM_GROUPS, SCALE, PROMPTS, scoreLabel, isInverted,
 } from '../../api/_lib/journalSymptoms.js'
 import {
-  readEntries, readEntry, writeEntry, onJournalChanged,
+  readEntries, readEntry, writeEntry, onJournalChanged, fileToDrive, driveStatus,
   localDate, shiftDate, seedFromPrevious, isBackdated,
 } from '../lib/journal'
 
@@ -137,8 +137,11 @@ function EntryForm({ entryDate, existing, previous, onSaved, onCancel }) {
         free_text: freeText,
         mode: showDetail ? 'full' : 'quick',
       })
+      // The entry is now safely stored. Filing is a separate step whose failure
+      // is reported separately — it can never cost the entry.
       haptic.success()
-      onSaved(saved)
+      const filed = await fileToDrive(entryDate)
+      onSaved(saved, filed)
     } catch (e) {
       haptic.error()
       setError(e.message || 'Could not save. Your entry is still here — try again.')
@@ -302,6 +305,8 @@ export default function Journal() {
   const [error, setError] = useState(null)
   const [editing, setEditing] = useState(null)   // { date, existing, previous }
   const [days, setDays] = useState(30)
+  const [filing, setFiling] = useState(null)     // outcome of the last filing
+  const [drive, setDrive] = useState(null)       // { connected, drive }
 
   const refresh = useCallback(async () => {
     try {
@@ -314,6 +319,8 @@ export default function Journal() {
       setLoading(false)
     }
   }, [])
+
+  useEffect(() => { driveStatus().then(setDrive) }, [])
 
   useEffect(() => {
     refresh()
@@ -356,7 +363,7 @@ export default function Journal() {
         entryDate={editing.date}
         existing={editing.existing}
         previous={editing.previous}
-        onSaved={() => { setEditing(null); refresh() }}
+        onSaved={(_saved, filed) => { setEditing(null); setFiling(filed); refresh() }}
         onCancel={() => setEditing(null)}
       />
     )
@@ -373,6 +380,53 @@ export default function Journal() {
         {error && (
           <div className="my-3 px-3 py-2 rounded-xl bg-[#FCEEEE] text-[#8C1D18] text-xs">
             Couldn't load your entries: {error}
+          </div>
+        )}
+
+        {filing && (
+          <div
+            className={`mt-3 px-3 py-2.5 rounded-xl text-xs leading-relaxed ${
+              filing.ok ? 'bg-[#E8F5E9] text-[#1B5E20]' : 'bg-[#FCEEEE] text-[#8C1D18]'
+            }`}
+          >
+            {filing.ok ? (
+              <>
+                <strong>Saved and filed to Drive.</strong>{' '}
+                {filing.updated ? 'The existing document was updated.' : 'A new document was created.'}
+                {filing.url && (
+                  <>
+                    {' '}
+                    <a href={filing.url} target="_blank" rel="noreferrer" className="underline">
+                      Open it
+                    </a>
+                  </>
+                )}
+              </>
+            ) : (
+              <>
+                <strong>Saved, but not filed to Drive.</strong> {filing.error}
+                <div className="mt-1.5 flex gap-3">
+                  <button
+                    onClick={async () => {
+                      setFiling({ ok: false, error: 'Retrying…' })
+                      setFiling(await fileToDrive(today))
+                    }}
+                    className="underline font-semibold"
+                  >
+                    Try filing again
+                  </button>
+                  <button onClick={() => setFiling(null)} className="underline">Dismiss</button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {drive && drive.connected && !drive.drive && (
+          <div className="mt-3 px-3 py-2.5 rounded-xl bg-[#FFF8E1] text-[#5D4037] text-xs leading-relaxed">
+            <strong>Drive filing isn't enabled yet.</strong> Google is connected for Calendar but
+            hasn't granted Drive access. Entries will still save — reconnect Google in Settings to
+            start filing them.
           </div>
         )}
 

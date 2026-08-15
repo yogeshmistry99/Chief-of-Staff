@@ -74,6 +74,11 @@ export default async function handler(req, res) {
         access_token: tokens.access_token,
         expiry_date: tokens.expires_in ? Date.now() + tokens.expires_in * 1000 : null,
         email: userInfo.email ?? null,
+        // What Google ACTUALLY granted, which is not always what was asked for.
+        // The journal checks this before filing so it can say "reconnect to
+        // grant Drive access" up front rather than failing at Drive with a 403.
+        scope: tokens.scope ?? null,
+        granted_at: new Date().toISOString(),
       },
       updated_at: new Date().toISOString(),
     })

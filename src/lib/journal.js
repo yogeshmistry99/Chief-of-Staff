@@ -71,6 +71,44 @@ export async function writeEntry(entry) {
   return saved
 }
 
+// File a saved entry to Drive.
+//
+// Deliberately SEPARATE from writeEntry: the entry is already safely stored
+// before this runs, so a filing failure can never cost it. This resolves rather
+// than throws — the caller shows the outcome either way, and the endpoint has
+// already recorded the failure against the entry so it stays retryable.
+export async function fileToDrive(entryDate) {
+  try {
+    const res = await fetch('/api/journal', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ entry_date: entryDate }),
+    })
+    const data = await res.json().catch(() => ({}))
+    notifyChanged()
+    if (!res.ok) return { ok: false, error: data.error ?? `Filing failed (${res.status})` }
+    return data
+  } catch (e) {
+    notifyChanged()
+    // A network failure here means we cannot know whether it filed. Say exactly
+    // that rather than guessing; the entry row is the source of truth and the
+    // history list will show its real state on next load.
+    return { ok: false, error: `Could not reach the filing service: ${e.message}` }
+  }
+}
+
+// Whether Google is connected and carries the Drive permission. Lets the UI warn
+// before an entry fails to file rather than after.
+export async function driveStatus() {
+  try {
+    const res = await fetch('/api/google?action=status')
+    if (!res.ok) return { connected: false, drive: false }
+    return await res.json()
+  } catch {
+    return { connected: false, drive: false }
+  }
+}
+
 export async function recordDriveResult(entryDate, result) {
   const out = await setDriveResult(client(), entryDate, result)
   notifyChanged()

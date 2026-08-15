@@ -336,7 +336,7 @@ export default function Settings() {
   async function handleCalendarDisconnect() {
     setCalendarDisconnecting(true)
     try {
-      await fetch('/api/google-disconnect', { method: 'POST' })
+      await fetch('/api/google?action=disconnect', { method: 'POST' })
       setCalendarNotice(null)
       fetchStatus()
     } catch {}
@@ -541,7 +541,7 @@ export default function Settings() {
                       </button>
                     ) : !isLoading && (
                       <a
-                        href="/api/google-auth?return=/settings"
+                        href="/api/google?action=auth&return=/settings"
                         className="inline-block text-xs font-semibold px-3 py-1.5 rounded-full bg-[#6750A4] text-white hover:bg-[#5B4397] transition-colors"
                       >
                         Connect Google Calendar
