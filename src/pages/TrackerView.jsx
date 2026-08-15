@@ -7,6 +7,7 @@ import {
   cellByHeader, textByHeader, toNumber, formatGbp, matchIndexKey,
 } from '../lib/sheets'
 import { filterOptions, applyFilters, activeFilterCount } from '../lib/trackerFilters'
+import { toggleSort, sortRows, describeSort } from '../lib/trackerSort'
 import TrackerTable from '../components/tracker/TrackerTable'
 import TrackerScatter from '../components/tracker/TrackerScatter'
 import TrackerDetail from '../components/tracker/TrackerDetail'
@@ -28,6 +29,8 @@ export default function TrackerView() {
   const [state, setState] = useState({ loading: true })
   const [selected, setSelected] = useState(null)
   const [filters, setFilters] = useState({})
+  // Ordered: tap order is precedence. See src/lib/trackerSort.js.
+  const [sort, setSort] = useState([])
   const [tableOpen, setTableOpen] = useState(!tracker?.tableCollapsed)
 
   const load = useCallback(async () => {
@@ -55,6 +58,15 @@ export default function TrackerView() {
     [tracker, allTrackerRows],
   )
   const activeCount = useMemo(() => activeFilterCount(tracker, filters), [tracker, filters])
+
+  // Sorting applies to the TABLE ONLY. `rows` stays in sheet order for the
+  // chart, the stats and the compare strip, none of which have an order to
+  // disagree about — and keeping one unsorted set means sorting can never be
+  // mistaken for filtering.
+  const sortedRows = useMemo(
+    () => sortRows(state.tabs?.[0]?.headers ?? [], rows, sort),
+    [rows, sort, state.tabs],
+  )
 
   // Drop a selection the filters have just excluded. Leaving the detail card
   // open on a record that is no longer in the chart or the table would state,
@@ -85,13 +97,12 @@ export default function TrackerView() {
   const groups = useMemo(() => {
     if (!tracker || !state.tabs) return []
     const raw = sections(tracker, state.tabs)
-    if (!tracker.filters?.length) return raw
-    // Grouped trackers filter within each section, so configuring filters on one
-    // later cannot silently do nothing.
+    // Grouped trackers filter and sort WITHIN each section — the grouping is
+    // the structure of the sheet, not something a column sort should dissolve.
     return raw
-      .map((g) => ({ ...g, rows: applyFilters(tracker, g.rows, filters) }))
+      .map((g) => ({ ...g, rows: sortRows(g.headers, applyFilters(tracker, g.rows, filters), sort) }))
       .filter((g) => g.rows.length)
-  }, [tracker, state.tabs, filters])
+  }, [tracker, state.tabs, filters, sort])
 
   // Car's ranked dashboard: model → strategy score, shown as a section badge.
   //
@@ -264,6 +275,24 @@ export default function TrackerView() {
           <CompareStrip tracker={tracker} rows={rows} />
         )}
 
+        {/* States the precedence in words. The arrows in the header row say
+            which way each column is going, but the header scrolls sideways and
+            "primary, then secondary" is exactly the part you cannot see when
+            only one of the two columns is on screen. */}
+        {state.ok && sort.length > 0 && (
+          <div className="flex items-center justify-between gap-3 mt-3 px-3 py-2 rounded-xl bg-[#F3EDF7]">
+            <span className="text-[10px] text-[#49454F] min-w-0 break-words">
+              Sorted by {describeSort(sort)}
+            </span>
+            <button
+              onClick={() => { haptic.light(); setSort([]) }}
+              className="text-[10px] font-medium text-[#6750A4] underline flex-shrink-0"
+            >
+              Clear sort
+            </button>
+          </div>
+        )}
+
         {state.ok && tracker.view === 'grouped' ? (
           groups.map((g, i) => (
             <div key={`${g.label}-${i}`} className="mt-4">
@@ -280,6 +309,8 @@ export default function TrackerView() {
                 highlight={tracker.highlight}
                 selected={selected}
                 onSelect={(row) => { haptic.light(); setSelected(row) }}
+                sort={sort}
+                onSort={(c) => { haptic.light(); setSort((s) => toggleSort(s, c)) }}
               />
             </div>
           ))
@@ -305,11 +336,13 @@ export default function TrackerView() {
             {tableOpen && (
               <TrackerTable
                 headers={headers}
-                rows={rows}
+                rows={sortedRows}
                 columns={tracker.columns}
                 highlight={tracker.highlight}
                 selected={selected}
                 onSelect={(row) => { haptic.light(); setSelected(row) }}
+                sort={sort}
+                onSort={(c) => { haptic.light(); setSort((s) => toggleSort(s, c)) }}
               />
             )}
           </div>

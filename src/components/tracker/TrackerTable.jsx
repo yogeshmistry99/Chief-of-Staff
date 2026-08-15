@@ -1,4 +1,5 @@
 import { cellByHeader } from '../../lib/sheets'
+import { sortEntry } from '../../lib/trackerSort'
 
 // A tracker table. Rows are tappable and open the detail card; link cells render
 // as live anchors.
@@ -26,7 +27,7 @@ function LinkCell({ cell }) {
   )
 }
 
-export default function TrackerTable({ headers, rows, columns, highlight, selected, onSelect }) {
+export default function TrackerTable({ headers, rows, columns, highlight, selected, onSelect, sort, onSort }) {
   const cols = (columns ?? headers).filter((c) => headers.includes(c))
 
   if (!rows.length) {
@@ -38,9 +39,39 @@ export default function TrackerTable({ headers, rows, columns, highlight, select
       <table className="w-full text-[11px] border-collapse">
         <thead>
           <tr className="text-left text-[#49454F]">
-            {cols.map((c) => (
-              <th key={c} className="font-medium py-1.5 pr-3 whitespace-nowrap border-b border-[#CAC4D0]">{c}</th>
-            ))}
+            {cols.map((c) => {
+              const s = onSort ? sortEntry(sort, c) : null
+              return (
+                <th
+                  key={c}
+                  aria-sort={s ? (s.dir === 'asc' ? 'ascending' : 'descending') : 'none'}
+                  className="font-medium py-1.5 pr-3 whitespace-nowrap border-b border-[#CAC4D0] align-bottom"
+                >
+                  {onSort ? (
+                    <button
+                      onClick={() => onSort(c)}
+                      // py-1.5 on top of the cell's own padding gets this to a
+                      // usable tap target without making the header row tall.
+                      className={`flex items-center gap-1 py-1.5 text-left ${
+                        s ? 'text-[#6750A4] font-semibold' : 'text-[#49454F]'
+                      }`}
+                    >
+                      {c}
+                      {s && (
+                        <span className="flex-shrink-0">
+                          {s.dir === 'asc' ? '↑' : '↓'}
+                          {/* The rank only appears once more than one column is
+                              sorting — a lone "1" would be noise. */}
+                          {sort.length > 1 && <sup className="ml-0.5">{s.rank}</sup>}
+                        </span>
+                      )}
+                    </button>
+                  ) : (
+                    c
+                  )}
+                </th>
+              )
+            })}
           </tr>
         </thead>
         <tbody>

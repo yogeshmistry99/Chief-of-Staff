@@ -128,6 +128,25 @@ evening reminder push — see the newest changelog entries)
 
 ## Recent significant changes (newest first)
 
+- **2026-08-15 — Record list sorts by tapped column headings, multi-level.** Tap a heading to sort
+  by it; tap a second and it becomes the tie-breaker **within** the first. **Precedence is tap
+  order**, which is why the sort state is an ordered array rather than a `{column, dir}` pair — the
+  order carries the meaning. One heading cycles **ascending → descending → off**, so a single tap
+  target does the whole job on a phone, where there is no right-click.
+  **Numbers are detected strictly** (`src/lib/trackerSort.js`): a cell counts as numeric only if the
+  whole cell is a number. Reusing `toNumber()` would have been wrong — it strips any non-digit, so
+  it reads `SL3` as 3, `P001` as 1 and `2022 (22 reg)` as 202222, giving an order that looks
+  arbitrary and is very hard to distrust. Text falls back to a natural-order compare, so `P2`
+  precedes `P10`.
+  **Blanks always sink, in both directions.** A missing floor area is not the smallest floor area,
+  and reversing a sort must not promote the rows that have no answer. The sort is stable, so full
+  ties keep the sheet's own order.
+  Sorting applies to the **table only** — `rows` stays in sheet order for the chart, stats and
+  compare strip, so sorting can never be mistaken for filtering. Grouped trackers sort **within**
+  each section rather than dissolving the grouping. A "Sorted by X ↑, then Y ↓ · Clear sort" line
+  states the precedence in words, because the header row scrolls sideways and the ranking is exactly
+  what you cannot see when only one of the two columns is on screen. 20 new assertions.
+
 - **2026-08-15 — Filter categories collapse individually.** Seven categories open at once ran well
   past a screen (Property type alone is 17 values), which made the panel something to scroll rather
   than scan and left little room under the pinned chart. Each category is now its own collapsed

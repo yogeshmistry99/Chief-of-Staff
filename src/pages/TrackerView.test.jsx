@@ -149,6 +149,75 @@ describe('TrackerView', () => {
     expect(screen.getByRole('button', { name: /^Asking price/ }).textContent).toMatch(/£.*\+/)
   })
 
+  // Open the record table and read one column out of the rendered rows.
+  const openTable = async () =>
+    fireEvent.click(await screen.findByRole('button', { name: /All records/i }))
+  const columnText = (container, index) =>
+    [...container.querySelectorAll('tbody tr')].map(
+      (tr) => tr.children[index]?.textContent?.trim() ?? '',
+    )
+
+  it('sorts the record list by a tapped heading, and reverses on a second tap', async () => {
+    const { container } = renderTracker()
+    await openTable()
+
+    const money = (s) => Number(s.replace(/[^0-9.]/g, ''))
+    const priceCol = 2 // ID, Address, Asking price
+
+    fireEvent.click(screen.getByRole('button', { name: /^Asking price/ }))
+    await waitFor(() => {
+      const v = columnText(container, priceCol).map(money).filter(Boolean)
+      expect([...v].sort((a, b) => a - b)).toEqual(v)
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: /^Asking price/ }))
+    await waitFor(() => {
+      const v = columnText(container, priceCol).map(money).filter(Boolean)
+      expect([...v].sort((a, b) => b - a)).toEqual(v)
+    })
+  })
+
+  it('a third tap clears that column and the sort line disappears', async () => {
+    renderTracker()
+    await openTable()
+    const head = () => screen.getByRole('button', { name: /^Asking price/ })
+
+    fireEvent.click(head())
+    expect(await screen.findByText(/Sorted by Asking price ↑/)).toBeInTheDocument()
+    fireEvent.click(head())
+    expect(await screen.findByText(/Sorted by Asking price ↓/)).toBeInTheDocument()
+    fireEvent.click(head())
+    await waitFor(() => expect(screen.queryByText(/^Sorted by/)).not.toBeInTheDocument())
+  })
+
+  it('a second heading becomes the tie-breaker, not a replacement', async () => {
+    const { container } = renderTracker()
+    await openTable()
+
+    fireEvent.click(screen.getByRole('button', { name: /^Listing status/ }))
+    fireEvent.click(screen.getByRole('button', { name: /^Asking price/ }))
+
+    // Precedence is stated in tap order.
+    expect(
+      await screen.findByText(/Sorted by Listing status ↑, then Asking price ↑/),
+    ).toBeInTheDocument()
+
+    // And applied that way: statuses stay grouped, prices ascend inside them.
+    const statuses = columnText(container, 5) // …, £/sq ft, Listing status
+    expect([...statuses].sort((a, b) => a.localeCompare(b))).toEqual(statuses)
+  })
+
+  it('Clear sort removes every key at once', async () => {
+    renderTracker()
+    await openTable()
+    fireEvent.click(screen.getByRole('button', { name: /^Listing status/ }))
+    fireEvent.click(screen.getByRole('button', { name: /^Asking price/ }))
+    await screen.findByText(/^Sorted by/)
+
+    fireEvent.click(screen.getByRole('button', { name: /Clear sort/i }))
+    await waitFor(() => expect(screen.queryByText(/^Sorted by/)).not.toBeInTheDocument())
+  })
+
   it('filtering drives the table, not just the count', async () => {
     renderTracker()
     fireEvent.click(await screen.findByRole('button', { name: /All records/i }))
