@@ -127,6 +127,33 @@ document, trends charts and the evening reminder push — see the newest changel
 
 ## Recent significant changes (newest first)
 
+- **2026-08-15 — Trackers now actually load: malformed fields mask fixed, and all four configs
+  corrected against the live sheets.** With the Sheets API enabled, the 403 became a bare **400
+  "Request contains an invalid argument"** — and the cause was mine. `GRID_FIELDS` was an array
+  joined with `''`, which fused `properties.title` into `sheets(` and sent Google
+  `properties.titlesheets(...)`. Google names nothing in that error. **Never split a
+  comma-separated fields mask across array elements**; it is now one string with explicit commas,
+  and the old vs new masks were confirmed 400 vs 200 against the live API.
+  **Then the first real end-to-end run found three wrong configs**, none of which any prior test
+  could have caught — the sheets were unreadable when the configs were written, so they were
+  educated guesses:
+  **the header row is 4, not 3, in House and Pub** (title, description, blank spacer), and 4 not 5
+  on the Car dashboard; and **every Car tab title was wrong** — the real tabs are
+  `Dashboard | Corolla 2.0 | ProCeed GT | CUPRA Leon | Kia EV6 | Passat GTE`, not the model names
+  from each tab's banner. An off-by-one header row parses to **zero headers with no other symptom**,
+  which is why this needed live data rather than reasoning.
+  **The Car strategy-score badge never resolved either.** Sections are labelled by tab title while
+  the dashboard names models in full, so the index tab was fetched and contributed nothing. New
+  `matchIndexKey()` joins them on distinctive words and **returns a match only when it is unique** —
+  which is what stops "Kia EV6" binding to "Kia ProCeed" on the shared "Kia". An ambiguous label
+  yields no badge, because a confident wrong score is worse than an absent one.
+  **Verified against the four live spreadsheets, not fixtures:** House 184 rows / 86 plotted /
+  median £535,000 / 208 links; Medical 74 rows in 13 categories / 68 links; Car badges 9.5, 9, 8.4
+  resolving correctly; Pub 51 rows / 35 headers. Every configured column in all four trackers
+  resolves against real headers. 24 assertions across two new suites.
+  **This closes a long-standing gap: the Sheets API IS reachable from the sandbox** — it was only
+  ever disabled, not blocked. Tracker parsing can be verified against real data here, and should be.
+
 - **2026-08-15 — Trackers were blocked by a disabled Sheets API, and the app blamed the wrong thing.**
   The trackers shipped and immediately failed live with *"Google refused the request — reconnect
   Google in Settings to grant Sheets access."* **The grant was never the problem.** The stored token
@@ -700,6 +727,15 @@ document, trends charts and the evening reminder push — see the newest changel
 - **`values.get` silently drops hyperlinks.** Any Sheets read that needs a link must use
   `spreadsheets.get` with `includeGridData=true`; the display text comes back either way, so the
   loss is invisible until someone notices a dead "View document". See `api/_lib/google.js`.
+- **Never split a Google `fields` mask across array elements joined with `''`.** The separators are
+  load-bearing; a missing comma silently fuses two selectors (`properties.titlesheets(...)`) and
+  Google answers a bare 400 "Request contains an invalid argument" that names nothing. Keep the mask
+  as one string. Check a mask by printing it, not by reading the source lines.
+- **Tracker configs must be verified against the live sheets, and now can be.** The Sheets API is
+  reachable from the sandbox (it was only ever *disabled*, never egress-blocked), so a real fetch +
+  `parseSheet` run is the right check. **A wrong `headerRow` yields zero headers and no other
+  symptom** — every column silently renders blank — and tab titles routinely differ from the banner
+  heading shown inside the tab (`Corolla 2.0`, not `Toyota Corolla`).
 - **A Google 403 has two completely different causes, and only one is fixed by reconnecting.**
   A missing scope and a *disabled API* both answer 403. Telling the user to reconnect for a disabled
   API sends them round a loop that cannot terminate — it happened with Drive, then again with Sheets.

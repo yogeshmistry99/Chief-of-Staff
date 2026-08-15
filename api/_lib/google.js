@@ -268,12 +268,17 @@ const SHEETS = 'https://sheets.googleapis.com/v4/spreadsheets'
 // `ranges` is always supplied by the caller's config so a wide sheet cannot pull
 // an unbounded payload, and the fields mask keeps the response to the four
 // things the parser actually reads.
-const GRID_FIELDS = [
-  'properties.title',
-  'sheets(properties(title,index),merges,',
-  'data(rowData(values(formattedValue,hyperlink,',
-  'textFormatRuns(startIndex,format(link(uri)))))))',
-].join('')
+// Written as one string on purpose. It was previously an array joined with '',
+// which silently fused `properties.title` into `sheets(` and produced
+// `properties.titlesheets(...)` — a malformed mask that Google rejects with a
+// bare 400 "Request contains an invalid argument", naming nothing. Splitting a
+// comma-separated mask across array elements is a trap; the separators matter
+// and an empty join hides their absence.
+const GRID_FIELDS =
+  'properties.title,' +
+  'sheets(properties(title,index),merges,' +
+  'data(rowData(values(formattedValue,hyperlink,' +
+  'textFormatRuns(startIndex,format(link(uri)))))))'
 
 export async function sheetsFetchGrid(token, spreadsheetId, ranges = []) {
   const params = new URLSearchParams({ includeGridData: 'true', fields: GRID_FIELDS })

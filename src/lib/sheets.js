@@ -73,6 +73,38 @@ export function sections(tracker, tabs) {
   return out
 }
 
+// Join a section label to a row in the index tab.
+//
+// These are two different namings of the same thing and they do not match: the
+// Car tracker's sections come from tab titles ("Corolla 2.0", "ProCeed GT")
+// while its index tab names models in full ("Toyota Corolla Touring Sports",
+// "Kia ProCeed GT Shooting Brake"). Exact matching resolves none of them, so the
+// index tab would be fetched and then silently contribute nothing.
+//
+// A MATCH IS ONLY RETURNED WHEN IT IS UNIQUE. Every distinctive word of the
+// label must appear in the candidate, and exactly one candidate may qualify —
+// which is what stops "Kia EV6" binding to "Kia ProCeed" on the shared "kia".
+// An ambiguous label yields null and simply shows no badge, because a confident
+// wrong score is worse than an absent one.
+const NOISE = /^\d*$/
+const words = (s) => String(s ?? '').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean)
+const distinctive = (s) => words(s).filter((w) => w.length >= 3 && !NOISE.test(w))
+
+export function matchIndexKey(label, keys) {
+  const norm = (s) => words(s).join(' ')
+  const exact = keys.find((k) => norm(k) === norm(label))
+  if (exact) return exact
+
+  const need = distinctive(label)
+  if (!need.length) return null
+
+  const hits = keys.filter((k) => {
+    const have = new Set(words(k))
+    return need.every((w) => have.has(w))
+  })
+  return hits.length === 1 ? hits[0] : null
+}
+
 // Points for the scatter view. A row missing either axis is NOT plotted — it is
 // counted, and the count is shown, so a thin chart reads as thin data rather
 // than as a complete picture.

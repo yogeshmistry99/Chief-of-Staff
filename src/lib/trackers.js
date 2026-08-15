@@ -20,7 +20,10 @@ export const TRACKERS = [
     subtitle: '3-bed houses with parking, Slough & surrounds',
     spreadsheetId: '1DnplY2DJOHBeTbr-RYo1R5xVLFGvcEfun6Y9hRHugGU',
     view: 'scatter',
-    tabs: [{ title: 'Property Register', headerRow: 3, range: 'A1:AB400' }],
+    // Header is row 4: a title row, a description row, then a blank spacer.
+    // Verified against the live sheet 2026-08-15 — the whole tracker parses to
+    // zero headers if this is off by one, with no other symptom.
+    tabs: [{ title: 'Property Register', headerRow: 4, range: 'A1:AB400' }],
 
     // Scatter and table are the SAME rows from the SAME tab. The sheet also has
     // a separate "Price vs Floor Area" tab, but driving both off one row set
@@ -89,13 +92,19 @@ export const TRACKERS = [
     // Multi-tab: a ranked summary, then one listings tab per model. The summary
     // supplies rank and strategy score; the listing tabs supply the cars. They
     // are joined on model name.
+    // Tab titles are the sheet's ACTUAL tab names, read from the live
+    // spreadsheet 2026-08-15 — not the model names shown in each tab's banner.
+    // They differ enough ("Corolla 2.0" for Toyota Corolla, "ProCeed GT" for Kia
+    // ProCeed) that no safe fuzzy match reaches them, and deliberately so:
+    // loosening the matcher far enough to bind these would also let it bind the
+    // wrong tab elsewhere, which is worse than an error.
     tabs: [
-      { title: 'Summary', headerRow: 5, range: 'A1:H20', role: 'index' },
-      { title: 'Toyota Corolla', headerRow: 4, range: 'A1:J60' },
-      { title: 'Kia ProCeed', headerRow: 4, range: 'A1:J60' },
+      { title: 'Dashboard', headerRow: 4, range: 'A1:H20', role: 'index' },
+      { title: 'Corolla 2.0', headerRow: 4, range: 'A1:J60' },
+      { title: 'ProCeed GT', headerRow: 4, range: 'A1:J60' },
       { title: 'CUPRA Leon', headerRow: 4, range: 'A1:J60' },
       { title: 'Kia EV6', headerRow: 4, range: 'A1:J60' },
-      { title: 'VW Passat GTE', headerRow: 4, range: 'A1:J60' },
+      { title: 'Passat GTE', headerRow: 4, range: 'A1:J60' },
     ],
     index: { key: 'Model', order: 'Rank', badge: 'Strategy Score' },
 
@@ -115,7 +124,9 @@ export const TRACKERS = [
     subtitle: 'Conversion opportunities and feasibility',
     spreadsheetId: '1XQtU3ynWEYgBVumB5YIRgVJ46notmCNnjKD7y3YDxgw',
     view: 'table',
-    tabs: [{ title: 'Projects', headerRow: 3, range: 'A1:AI80' }],
+    // Header is row 4, same shape as the House register (title, description,
+    // blank spacer). Verified against the live sheet 2026-08-15.
+    tabs: [{ title: 'Projects', headerRow: 4, range: 'A1:AI80' }],
 
     columns: [
       'Project ID', 'Property / Opportunity', 'Town / Area', 'Asking Price (£)',

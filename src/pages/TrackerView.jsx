@@ -4,7 +4,7 @@ import { haptic } from '../lib/haptic'
 import { getTracker } from '../lib/trackers'
 import {
   fetchTracker, allRows, sections, indexTab, scatterPoints, summaryStats,
-  cellByHeader, textByHeader, toNumber, formatGbp,
+  cellByHeader, textByHeader, toNumber, formatGbp, matchIndexKey,
 } from '../lib/sheets'
 import TrackerTable from '../components/tracker/TrackerTable'
 import TrackerScatter from '../components/tracker/TrackerScatter'
@@ -40,17 +40,27 @@ export default function TrackerView() {
   const stats = useMemo(() => (tracker ? summaryStats(tracker, rows, points) : []), [tracker, rows, points])
   const groups = useMemo(() => (tracker && state.tabs ? sections(tracker, state.tabs) : []), [tracker, state.tabs])
 
-  // Car's ranked summary tab: model → strategy score, used as a section badge.
-  const badges = useMemo(() => {
-    if (!tracker?.index || !state.tabs) return {}
+  // Car's ranked dashboard: model → strategy score, shown as a section badge.
+  //
+  // The dashboard names models in full while the sections are named after tabs,
+  // so this is a fuzzy join (matchIndexKey) rather than a lookup — and one that
+  // returns nothing rather than guessing when a label is ambiguous.
+  const badgeFor = useMemo(() => {
+    if (!tracker?.index || !state.tabs) return () => null
     const tab = indexTab(tracker, state.tabs)
-    if (!tab) return {}
-    const out = {}
-    for (const r of tab.rows ?? []) {
-      const name = textByHeader(tab.headers, r, tracker.index.key)
-      if (name) out[name.trim().toLowerCase()] = textByHeader(tab.headers, r, tracker.index.badge)
+    if (!tab) return () => null
+    const entries = (tab.rows ?? [])
+      .map((r) => ({
+        key: textByHeader(tab.headers, r, tracker.index.key),
+        badge: textByHeader(tab.headers, r, tracker.index.badge),
+      }))
+      .filter((e) => e.key)
+    const keys = entries.map((e) => e.key)
+    return (label) => {
+      if (!label) return null
+      const hit = matchIndexKey(label, keys)
+      return hit ? entries.find((e) => e.key === hit)?.badge ?? null : null
     }
-    return out
   }, [tracker, state.tabs])
 
   if (!tracker) {
@@ -171,10 +181,8 @@ export default function TrackerView() {
             <div key={`${g.label}-${i}`} className="mt-4">
               <div className="flex items-baseline justify-between gap-2 mb-1">
                 <h2 className="text-xs font-semibold text-[#1C1B1F]">{g.label ?? 'Other'}</h2>
-                {badges[String(g.label ?? '').trim().toLowerCase()] && (
-                  <span className="text-[10px] text-[#79747E]">
-                    Score {badges[String(g.label ?? '').trim().toLowerCase()]}
-                  </span>
+                {badgeFor(g.label) && (
+                  <span className="text-[10px] text-[#79747E]">Score {badgeFor(g.label)}</span>
                 )}
               </div>
               <TrackerTable
