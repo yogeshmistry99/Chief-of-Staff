@@ -38,6 +38,16 @@ const renderTracker = (key = 'house') =>
 // Imported after the mocks are registered.
 const { default: TrackerView } = await import('./TrackerView')
 
+// Open the panel, then a named category inside it. Categories are collapsed by
+// default, so their controls do not exist until expanded.
+const openCategory = async (label) => {
+  // findBy, not getBy: this is often the first interaction in a test and the
+  // tracker's fetch has not resolved yet.
+  const panel = await screen.findByRole('button', { name: /^Filters/ })
+  if (!screen.queryByRole('button', { name: new RegExp(`^${label}`) })) fireEvent.click(panel)
+  fireEvent.click(await screen.findByRole('button', { name: new RegExp(`^${label}`) }))
+}
+
 describe('TrackerView', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -75,6 +85,7 @@ describe('TrackerView', () => {
 
     fireEvent.click(panel)
     // Chips are labelled "<value> <count>"; Langley exists in the fixture.
+    await openCategory('Area')
     fireEvent.click(await screen.findByRole('button', { name: /^Langley/ }))
 
     await waitFor(() => {
@@ -83,12 +94,67 @@ describe('TrackerView', () => {
     })
   })
 
+  it('collapses every filter category by default, and opens one on tap', async () => {
+    renderTracker()
+    fireEvent.click(await screen.findByRole('button', { name: /^Filters/ }))
+
+    // The categories are listed…
+    expect(screen.getByRole('button', { name: /^Area/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Property type/ })).toBeInTheDocument()
+    // …but none of their controls exist yet. Seven categories open at once ran
+    // well past a screen, which is the reason for this.
+    expect(screen.queryByRole('button', { name: /^Langley/ })).not.toBeInTheDocument()
+    expect(screen.queryAllByRole('combobox')).toHaveLength(0)
+
+    fireEvent.click(screen.getByRole('button', { name: /^Area/ }))
+    expect(await screen.findByRole('button', { name: /^Langley/ })).toBeInTheDocument()
+  })
+
+  it('opens categories independently rather than as an accordion', async () => {
+    renderTracker()
+    await openCategory('Area')
+    fireEvent.click(screen.getByRole('button', { name: /^Asking price/ }))
+
+    // Comparing an area against a price band means having both open.
+    expect(await screen.findByRole('button', { name: /^Langley/ })).toBeInTheDocument()
+    expect(screen.getAllByRole('combobox').length).toBeGreaterThan(0)
+  })
+
+  it('a collapsed category still states that it is filtering', async () => {
+    renderTracker()
+    await openCategory('Area')
+    fireEvent.click(await screen.findByRole('button', { name: /^Langley/ }))
+
+    fireEvent.click(screen.getByRole('button', { name: /^Area/ }))
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: /^Langley/ })).not.toBeInTheDocument(),
+    )
+
+    // Hiding a control must never hide that it is active.
+    expect(screen.getByRole('button', { name: /^Area/ }).textContent).toMatch(/Langley/)
+    // And the panel's own count still reflects it.
+    const header = screen.getByRole('button', { name: /^Filters/ })
+    expect(within(header).getByText(/of \d+/)).toBeInTheDocument()
+  })
+
+  it('shows a range selection on the collapsed category header', async () => {
+    renderTracker()
+    await openCategory('Asking price')
+    const [minPrice] = screen.getAllByRole('combobox')
+    const lowest = [...minPrice.options].map((o) => o.value).filter(Boolean)[0]
+    fireEvent.change(minPrice, { target: { value: lowest } })
+
+    fireEvent.click(screen.getByRole('button', { name: /^Asking price/ }))
+    await waitFor(() => expect(screen.queryAllByRole('combobox')).toHaveLength(0))
+    expect(screen.getByRole('button', { name: /^Asking price/ }).textContent).toMatch(/£.*\+/)
+  })
+
   it('filtering drives the table, not just the count', async () => {
     renderTracker()
     fireEvent.click(await screen.findByRole('button', { name: /All records/i }))
     const before = screen.getAllByRole('row').length
 
-    fireEvent.click(screen.getByRole('button', { name: /^Filters/ }))
+    await openCategory('Area')
     fireEvent.click(await screen.findByRole('button', { name: /^Langley/ }))
 
     await waitFor(() => expect(screen.getAllByRole('row').length).toBeLessThan(before))
@@ -96,7 +162,7 @@ describe('TrackerView', () => {
 
   it('clears filters back to the full set', async () => {
     renderTracker()
-    fireEvent.click(await screen.findByRole('button', { name: /^Filters/ }))
+    await openCategory('Area')
     fireEvent.click(await screen.findByRole('button', { name: /^Langley/ }))
     fireEvent.click(await screen.findByText(/Clear all filters/i))
 
@@ -122,7 +188,7 @@ describe('TrackerView', () => {
     await waitFor(() => expect(container.querySelectorAll('circle').length).toBeGreaterThan(0))
     const before = plotted(container)
 
-    fireEvent.click(screen.getByRole('button', { name: /^Filters/ }))
+    await openCategory('Area')
     fireEvent.click(await screen.findByRole('button', { name: /^Langley/ }))
 
     await waitFor(() =>
@@ -140,7 +206,7 @@ describe('TrackerView', () => {
 
   it('empties the chart via a price bound without losing the axes', async () => {
     const { container } = renderTracker()
-    fireEvent.click(await screen.findByRole('button', { name: /^Filters/ }))
+    await openCategory('Asking price')
 
     // Take the highest offered bound from the DOM rather than inventing a
     // number — a value that is not one of the generated options would leave the
@@ -209,7 +275,7 @@ describe('TrackerView', () => {
     const before = shape()
     expect(before.allClamped).toBe(true)
 
-    fireEvent.click(screen.getByRole('button', { name: /^Filters/ }))
+    await openCategory('Area')
     fireEvent.click(await screen.findByRole('button', { name: /^Langley/ }))
     await waitFor(() => expect(screen.getByText(/Showing \d+ of \d+/)).toBeInTheDocument())
 
@@ -221,7 +287,7 @@ describe('TrackerView', () => {
     await screen.findByText('Median price')
     expect(statValue('Records')).toBe(String(houseTab.rows.length))
 
-    fireEvent.click(screen.getByRole('button', { name: /^Filters/ }))
+    await openCategory('Area')
     const langley = await screen.findByRole('button', { name: /^Langley/ })
     const langleyCount = Number(langley.textContent.match(/(\d+)\s*$/)[1])
     fireEvent.click(langley)

@@ -128,6 +128,17 @@ evening reminder push — see the newest changelog entries)
 
 ## Recent significant changes (newest first)
 
+- **2026-08-15 — Filter categories collapse individually.** Seven categories open at once ran well
+  past a screen (Property type alone is 17 values), which made the panel something to scroll rather
+  than scan and left little room under the pinned chart. Each category is now its own collapsed
+  section; they open **independently, not as an accordion**, because comparing an area against a
+  price band means having both open.
+  **A closed category still states itself** — its selection when it has one (`Langley +2`,
+  `£450,000+`), otherwise what is inside it (`9 options`, `£375,000 – £1,300,000`). Hiding a control
+  must never hide that it is active, the same rule as the panel's own count.
+  The blank-count note moved into the expanded body and now says what it means: *"79 of 184 records
+  have no value here and are excluded while a bound is set."*
+
 - **2026-08-15 — Tracker chart and summary pinned; price steps were silently coarsened.**
   **The pinned block is summary strip + chart, in that order, above the filters**, and it is the
   first thing in the scrolling area so nothing can push it down. Both are live readouts of the
