@@ -97,6 +97,16 @@ export async function fileToDrive(entryDate) {
   }
 }
 
+// Link to a filed entry's document.
+//
+// Every entry is filed as a native Google Doc, so the canonical URL is
+// derivable from the stored file id — no extra Drive call and nothing new to
+// store. Returns null for a missing id so a caller can't render a dead link.
+export function driveDocUrl(fileId) {
+  if (!fileId) return null
+  return `https://docs.google.com/document/d/${encodeURIComponent(fileId)}/edit`
+}
+
 // Whether Google is connected and carries the Drive permission. Lets the UI warn
 // before an entry fails to file rather than after.
 export async function driveStatus() {

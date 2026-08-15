@@ -5,7 +5,7 @@ import {
 } from '../../api/_lib/journalSymptoms.js'
 import {
   readEntries, readEntry, writeEntry, onJournalChanged, fileToDrive, driveStatus,
-  localDate, shiftDate, seedFromPrevious, isBackdated,
+  localDate, shiftDate, seedFromPrevious, isBackdated, driveDocUrl,
 } from '../lib/journal'
 
 // Daily head-injury symptom journal.
@@ -163,7 +163,20 @@ function EntryForm({ entryDate, existing, previous, onSaved, onCancel }) {
               {answered > reviewed && ` · ${answered - reviewed} carried over`}
             </p>
           </div>
-          <button onClick={onCancel} className="text-sm text-[#6750A4]">Close</button>
+          <div className="flex items-center gap-3 flex-shrink-0">
+            {existing?.drive_status === 'filed' && driveDocUrl(existing.drive_file_id) && (
+              <a
+                href={driveDocUrl(existing.drive_file_id)}
+                target="_blank"
+                rel="noreferrer"
+                onClick={() => haptic.light()}
+                className="text-sm text-[#6750A4] underline"
+              >
+                View filed document
+              </a>
+            )}
+            <button onClick={onCancel} className="text-sm text-[#6750A4]">Close</button>
+          </div>
         </div>
 
         {backdated && (
@@ -258,6 +271,16 @@ function EntryForm({ entryDate, existing, previous, onSaved, onCancel }) {
   )
 }
 
+// ─── Link to the filed document ───────────────────────────────────────────────
+
+function DocIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" height="20" viewBox="0 -960 960 960" width="20" fill="currentColor">
+      <path d="M320-240h320v-80H320v80Zm0-160h320v-80H320v80ZM240-80q-33 0-56.5-23.5T160-160v-640q0-33 23.5-56.5T240-880h320l240 240v480q0 33-23.5 56.5T720-80H240Zm280-520v-200H240v640h480v-440H520ZM240-800v200-200 640-640Z" />
+    </svg>
+  )
+}
+
 // ─── History list ─────────────────────────────────────────────────────────────
 
 function HistoryRow({ entry, date, onOpen }) {
@@ -271,29 +294,51 @@ function HistoryRow({ entry, date, onOpen }) {
       })()
     : null
 
+  // The row is a div, not a button: the document link is an anchor, and an
+  // anchor nested inside a button is invalid and makes the two tap targets
+  // fight each other. Two siblings instead — body opens the editor, icon opens
+  // the filed document.
+  const docUrl = logged && entry.drive_status === 'filed' ? driveDocUrl(entry.drive_file_id) : null
+
   return (
-    <button
-      onClick={() => { haptic.light(); onOpen(date) }}
-      className="w-full flex items-center gap-3 py-3 border-b border-[#F3EDF7] text-left"
-    >
-      <span
-        className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${logged ? 'bg-[#6750A4]' : 'bg-[#E7E0EC]'}`}
-        aria-hidden
-      />
-      <span className="flex-1 min-w-0">
-        <span className="block text-sm text-[#1C1B1F]">{TODAY_LABEL(date)}</span>
-        <span className="block text-xs text-[#79747E]">
-          {logged
-            ? <>Logged{avg != null && ` · average ${avg.toFixed(1)}`}{isBackdated(entry) && ' · written later'}</>
-            : 'Not logged'}
+    <div className="flex items-center border-b border-[#F3EDF7]">
+      <button
+        onClick={() => { haptic.light(); onOpen(date) }}
+        className="flex-1 min-w-0 flex items-center gap-3 py-3 text-left"
+      >
+        <span
+          className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${logged ? 'bg-[#6750A4]' : 'bg-[#E7E0EC]'}`}
+          aria-hidden
+        />
+        <span className="flex-1 min-w-0">
+          <span className="block text-sm text-[#1C1B1F]">{TODAY_LABEL(date)}</span>
+          <span className="block text-xs text-[#79747E]">
+            {logged
+              ? <>Logged{avg != null && ` · average ${avg.toFixed(1)}`}{isBackdated(entry) && ' · written later'}</>
+              : 'Not logged'}
+          </span>
         </span>
-      </span>
+      </button>
+
       {logged && entry.drive_status === 'failed' && (
-        <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#FCEEEE] text-[#8C1D18] flex-shrink-0">
+        <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#FCEEEE] text-[#8C1D18] flex-shrink-0 ml-2">
           Not filed
         </span>
       )}
-    </button>
+
+      {docUrl && (
+        <a
+          href={docUrl}
+          target="_blank"
+          rel="noreferrer"
+          onClick={() => haptic.light()}
+          aria-label={`Open the filed document for ${TODAY_LABEL(date)}`}
+          className="flex-shrink-0 w-11 h-11 flex items-center justify-center text-[#6750A4] rounded-full"
+        >
+          <DocIcon />
+        </a>
+      )}
+    </div>
   )
 }
 
