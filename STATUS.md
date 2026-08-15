@@ -3,8 +3,9 @@
 Single source of truth for system state. **Read this at the start of every session.
 Update it at the end of any session that changes anything.**
 
-Last updated: 2026-08-15 (Google Sheets trackers shipped; head-injury journal complete — capture, Drive filing, the filed
-document, trends charts and the evening reminder push — see the newest changelog entries)
+Last updated: 2026-08-15 (Google Sheets trackers now live and verified against the real sheets, with filtering and a
+collapsed House table; head-injury journal complete — capture, Drive filing, the filed document, trends charts and the
+evening reminder push — see the newest changelog entries)
 
 ---
 
@@ -126,6 +127,30 @@ document, trends charts and the evening reminder push — see the newest changel
 ---
 
 ## Recent significant changes (newest first)
+
+- **2026-08-15 — Tracker filtering, and the House table collapsed by default.** 184 rows buried the
+  chart that is the point of the House tracker, so its table now opens on demand
+  (`tableCollapsed` in config). **Conditional render, not a max-height clamp** — the clamped drawers
+  elsewhere in this app clipped their own content, and a 184-row table has no height worth guessing.
+  **Filters are config-driven (`filters: [...]`), so they work for any tracker**, and the row set is
+  filtered **once, upstream**: scatter, table, summary strip and detail card all derive from it and
+  therefore cannot disagree about what is being shown — the same single-row-set property the
+  trackers were built with. Grouped views filter within each section, so configuring filters on a
+  grouped tracker later cannot silently do nothing.
+  **Options are derived from the loaded rows, never hardcoded** — these sheets gain values by hand,
+  and a fixed list would quietly stop offering new ones while looking complete.
+  Columns were chosen against the live register: `Decision status` is excluded because all 184 rows
+  read "Unreviewed" (it could only filter to everything or nothing), and `Tenure`/`Bathrooms`/`EPC`
+  because they are under 40% filled.
+  **Ranges are two dropdowns, not a slider** — a slider needs a precise drag, the same reasoning
+  that shaped the journal's tap targets. **A range bound excludes rows with no figure**, so the
+  control states its blank count (79 of 184 rows have no floor area) rather than letting them
+  vanish; the shown/total count sits on the collapsed header so a filtered view can never be
+  mistaken for a complete one; and a selection the filters exclude is dropped rather than left
+  asserting it still matches.
+  15 assertions against the live 184-row register (OR within a column, AND across columns,
+  open-ended bounds, blank handling, stats tracking the filtered set). **Not browser-verified** —
+  layout and tap targets need an eye.
 
 - **2026-08-15 — Trackers now actually load: malformed fields mask fixed, and all four configs
   corrected against the live sheets.** With the Sheets API enabled, the 403 became a bare **400
