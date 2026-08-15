@@ -55,6 +55,14 @@ const openCategory = async (label) => {
   fireEvent.click(headers()[0])
 }
 
+// Tap the colour toggle that lives on a category's own row.
+const colorByCategory = async (label) => {
+  const btn = () => screen.queryByRole('button', { name: `Colour the chart by ${label}` })
+  if (!btn()) fireEvent.click(await screen.findByRole('button', { name: /^Filters/ }))
+  await waitFor(() => expect(btn()).toBeTruthy())
+  fireEvent.click(btn())
+}
+
 describe('TrackerView', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -294,8 +302,7 @@ describe('TrackerView', () => {
     const before = new Set(Object.values(fills(container)))
     expect(before.size).toBe(1) // one default colour until asked
 
-    await openCategory('Colour')
-    fireEvent.click(await screen.findByRole('button', { name: /^Area$/ }))
+    await colorByCategory('Area')
 
     await waitFor(() => expect(new Set(Object.values(fills(container))).size).toBeGreaterThan(1))
     // Identity is never colour alone: a legend names every colour on screen.
@@ -308,8 +315,7 @@ describe('TrackerView', () => {
   it('does not repaint surviving points when a filter is applied', async () => {
     const { container } = renderTracker()
     await screen.findByText('House search')
-    await openCategory('Colour')
-    fireEvent.click(await screen.findByRole('button', { name: /^Area$/ }))
+    await colorByCategory('Area')
     await waitFor(() => expect(new Set(Object.values(fills(container))).size).toBeGreaterThan(1))
     const before = fills(container)
 
@@ -329,8 +335,7 @@ describe('TrackerView', () => {
   it('colours by a numeric column as a gradient', async () => {
     const { container } = renderTracker()
     await screen.findByText('House search')
-    await openCategory('Colour')
-    fireEvent.click(await screen.findByRole('button', { name: /^Asking price$/ }))
+    await colorByCategory('Asking price')
 
     await waitFor(() => {
       const used = new Set(Object.values(fills(container)))
@@ -343,11 +348,10 @@ describe('TrackerView', () => {
   it('colours only one column at a time', async () => {
     const { container } = renderTracker()
     await screen.findByText('House search')
-    await openCategory('Colour')
-    fireEvent.click(await screen.findByRole('button', { name: /^Area$/ }))
+    await colorByCategory('Area')
     await waitFor(() => expect(new Set(Object.values(fills(container))).size).toBeGreaterThan(1))
 
-    fireEvent.click(screen.getByRole('button', { name: /^Asking price$/ }))
+    await colorByCategory('Asking price')
     await waitFor(() => {
       for (const f of new Set(Object.values(fills(container)))) {
         expect(f.toLowerCase()).toMatch(/^#(9ec5f4|6da7ec|3987e5|256abf|184f95|0d366b)$/)
@@ -358,11 +362,11 @@ describe('TrackerView', () => {
   it('turns colour off again', async () => {
     const { container } = renderTracker()
     await screen.findByText('House search')
-    await openCategory('Colour')
-    fireEvent.click(await screen.findByRole('button', { name: /^Area$/ }))
+    await colorByCategory('Area')
     await waitFor(() => expect(new Set(Object.values(fills(container))).size).toBeGreaterThan(1))
 
-    fireEvent.click(screen.getByRole('button', { name: /^Off$/ }))
+    // The same button again turns it off.
+    await colorByCategory('Area')
     await waitFor(() => expect(new Set(Object.values(fills(container))).size).toBe(1))
   })
 

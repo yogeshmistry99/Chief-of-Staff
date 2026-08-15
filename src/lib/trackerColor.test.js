@@ -4,7 +4,7 @@ import { getTracker } from './trackers'
 import { allRows } from './sheets'
 import { filterOptions } from './trackerFilters'
 import {
-  buildColorScale, chipColor, CATEGORICAL, SEQUENTIAL, OTHER_COLOR, MAX_CATEGORIES,
+  buildColorScale, chipColor, CATEGORICAL, SEQUENTIAL, OTHER_COLOR, MAX_CATEGORIES, SAFE_CATEGORIES,
 } from './trackerColor'
 
 const house = getTracker('house')
@@ -18,13 +18,25 @@ describe('the palette itself', () => {
   // this app's surface. They are asserted here because the failure mode of
   // "just add another colour" is silent: the chart still renders, it is simply
   // no longer readable by everyone.
-  it('is capped at five, the largest all-pairs-safe set found', () => {
-    expect(CATEGORICAL).toHaveLength(5)
-    expect(MAX_CATEGORIES).toBe(5)
+  it('opens with the validated all-pairs-safe set, in that order', () => {
+    // The first five are the measured-safe subset; everything after is the
+    // greedy max-separation extension. Reordering the opening five silently
+    // makes small categories less readable.
+    expect(CATEGORICAL.slice(0, 5)).toEqual(['#2a78d6', '#eda100', '#e87ba4', '#008300', '#4a3aa7'])
   })
 
-  it('is the validated set, in the validated order', () => {
-    expect(CATEGORICAL).toEqual(['#2a78d6', '#eda100', '#e87ba4', '#008300', '#4a3aa7'])
+  it('declares where colour stops being reliable', () => {
+    expect(SAFE_CATEGORIES).toBe(7)
+    expect(CATEGORICAL.length).toBeGreaterThan(SAFE_CATEGORIES)
+  })
+
+  it('has no duplicate slots — every value must get its own colour', () => {
+    expect(new Set(CATEGORICAL).size).toBe(CATEGORICAL.length)
+    expect(MAX_CATEGORIES).toBe(CATEGORICAL.length)
+  })
+
+  it('covers the largest category in the live register (17 property types)', () => {
+    expect(CATEGORICAL.length).toBeGreaterThanOrEqual(17)
   })
 
   it('does not contain orange beside yellow — the pair that fails the floor', () => {
@@ -63,15 +75,11 @@ describe('buildColorScale — categorical', () => {
     for (const x of same) expect(scale.colorFor(x)).toBe(scale.colorFor(r))
   })
 
-  it('folds everything past the fifth value into a neutral Other', () => {
-    // Property type has 17 values in the live register.
+  it('gives every value in a large category its own colour', () => {
     const many = buildColorScale(defOf('Property type'), rows, H)
-    expect(many.legend.length).toBeLessThanOrEqual(MAX_CATEGORIES + 1)
-    if (many.overflow > 0) {
-      const other = many.legend[many.legend.length - 1]
-      expect(other.color).toBe(OTHER_COLOR)
-      expect(other.label).toMatch(/^Other/)
-    }
+    const named = many.legend.filter((e) => e.color !== OTHER_COLOR)
+    expect(new Set(named.map((e) => e.color)).size).toBe(named.length)
+    expect(many.overflow).toBe(0) // the palette covers this register outright
   })
 
   it('never colours a blank cell', () => {

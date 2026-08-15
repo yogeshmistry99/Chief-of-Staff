@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { formatGbp } from '../../lib/sheets'
 import { toggleValue, setRange } from '../../lib/trackerFilters'
-import { chipColor } from '../../lib/trackerColor'
+import { chipColor, SAFE_CATEGORIES } from '../../lib/trackerColor'
 
 // The filter panel. Collapsed by default so it never competes with the data,
 // but the active count sits on the closed header — a filtered view must never
@@ -71,7 +71,6 @@ export default function TrackerFilters({
   options, state, onChange, activeCount, shown, total, colorBy, onColorBy, colorScale,
 }) {
   const [open, setOpen] = useState(false)
-  const [colorOpen, setColorOpen] = useState(false)
   // Per-category, keyed by column. Independent rather than an accordion —
   // comparing an area against a price band means having both open.
   const [openSections, setOpenSections] = useState({})
@@ -103,58 +102,6 @@ export default function TrackerFilters({
 
       {open && (
         <div className="border-t border-[#F3EDF7]">
-          {/* Colour-by picker. ONE column at a time, by design — two colour
-              encodings on one scatter cannot both be read. */}
-          {onColorBy && (
-            <div className="border-b border-[#F3EDF7]">
-              <button
-                onClick={() => setColorOpen((o) => !o)}
-                className="w-full flex items-center justify-between gap-2 px-3 py-2.5 text-left"
-              >
-                <span className="text-[11px] font-medium text-[#49454F] flex-shrink-0">Colour</span>
-                <span className="flex items-center gap-2 min-w-0">
-                  <span className={`text-[10px] truncate ${colorBy ? 'text-[#6750A4] font-medium' : 'text-[#79747E]'}`}>
-                    {colorBy ? (options.find((o) => o.column === colorBy)?.label ?? colorBy) : 'Off'}
-                  </span>
-                  <span className="text-[10px] text-[#6750A4] flex-shrink-0">{colorOpen ? '▲' : '▼'}</span>
-                </span>
-              </button>
-
-              {colorOpen && (
-                <div className="px-3 pb-3">
-                  <p className="text-[10px] text-[#79747E] mb-1.5">
-                    Colour the chart points by one column.
-                  </p>
-                  <div className="flex flex-wrap gap-1.5">
-                    <button
-                      onClick={() => onColorBy(null)}
-                      className={`text-[11px] px-2.5 py-1.5 rounded-full border ${
-                        !colorBy
-                          ? 'bg-[#6750A4] text-white border-[#6750A4] font-medium'
-                          : 'bg-white text-[#49454F] border-[#CAC4D0]'
-                      }`}
-                    >
-                      Off
-                    </button>
-                    {options.map((def) => (
-                      <button
-                        key={def.column}
-                        onClick={() => onColorBy(colorBy === def.column ? null : def.column)}
-                        className={`text-[11px] px-2.5 py-1.5 rounded-full border ${
-                          colorBy === def.column
-                            ? 'bg-[#6750A4] text-white border-[#6750A4] font-medium'
-                            : 'bg-white text-[#49454F] border-[#CAC4D0]'
-                        }`}
-                      >
-                        {def.label ?? def.column}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
           {options.map((def) => {
             const sel = state[def.column]
             const chosen = selectionLabel(def, sel)
@@ -162,26 +109,55 @@ export default function TrackerFilters({
 
             return (
               <div key={def.column} className="border-b border-[#F3EDF7] last:border-b-0">
-                <button
-                  onClick={() => setOpenSections((s) => ({ ...s, [def.column]: !s[def.column] }))}
-                  className="w-full flex items-center justify-between gap-2 px-3 py-2.5 text-left"
-                >
-                  <span className="text-[11px] font-medium text-[#49454F] flex-shrink-0">
-                    {def.label ?? def.column}
-                  </span>
-                  <span className="flex items-center gap-2 min-w-0">
-                    <span
-                      className={`text-[10px] truncate ${
-                        chosen ? 'text-[#6750A4] font-medium' : 'text-[#79747E]'
+                {/* A row, not a button: the colour toggle is its own tap target
+                    and a button cannot legally nest inside another. */}
+                <div className="flex items-center gap-1 pr-2">
+                  <button
+                    onClick={() => setOpenSections((s) => ({ ...s, [def.column]: !s[def.column] }))}
+                    className="flex-1 min-w-0 flex items-center justify-between gap-2 px-3 py-2.5 text-left"
+                  >
+                    <span className="text-[11px] font-medium text-[#49454F] flex-shrink-0">
+                      {def.label ?? def.column}
+                    </span>
+                    <span className="flex items-center gap-2 min-w-0">
+                      <span
+                        className={`text-[10px] truncate ${
+                          chosen ? 'text-[#6750A4] font-medium' : 'text-[#79747E]'
+                        }`}
+                      >
+                        {chosen ?? restingHint(def)}
+                      </span>
+                      <span className="text-[10px] text-[#6750A4] flex-shrink-0">
+                        {isOpen ? '▲' : '▼'}
+                      </span>
+                    </span>
+                  </button>
+
+                  {/* Colour by THIS category. Exclusive: choosing one drops the
+                      previous, because two colour encodings on one scatter
+                      cannot both be read. */}
+                  {onColorBy && (
+                    <button
+                      onClick={() => onColorBy(colorBy === def.column ? null : def.column)}
+                      aria-pressed={colorBy === def.column}
+                      aria-label={`Colour the chart by ${def.label ?? def.column}`}
+                      className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 border ${
+                        colorBy === def.column
+                          ? 'border-2 border-[#6750A4] bg-[#EADDFF]'
+                          : 'border-[#CAC4D0] bg-white'
                       }`}
                     >
-                      {chosen ?? restingHint(def)}
-                    </span>
-                    <span className="text-[10px] text-[#6750A4] flex-shrink-0">
-                      {isOpen ? '▲' : '▼'}
-                    </span>
-                  </span>
-                </button>
+                      <span
+                        className="w-[14px] h-[14px] rounded-full"
+                        style={{
+                          background:
+                            'conic-gradient(#2a78d6,#00c1cf,#008300,#eda100,#ff3b5a,#e87ba4,#4a3aa7,#2a78d6)',
+                          opacity: colorBy === def.column ? 1 : 0.55,
+                        }}
+                      />
+                    </button>
+                  )}
+                </div>
 
                 {isOpen && (
                   <div className="px-3 pb-3">
@@ -192,6 +168,14 @@ export default function TrackerFilters({
                       <p className="text-[10px] text-[#79747E] mb-1.5">
                         {def.blanks} of {total} records have no value here
                         {def.type === 'range' ? ' and are excluded while a bound is set.' : '.'}
+                      </p>
+                    )}
+
+                    {colorBy === def.column && def.type !== 'range'
+                      && def.values.length > SAFE_CATEGORIES && (
+                      <p className="text-[10px] text-[#79747E] mb-1.5">
+                        {def.values.length} colours — past about {SAFE_CATEGORIES} some will look
+                        alike. Tap a chip to isolate one on the chart.
                       </p>
                     )}
 

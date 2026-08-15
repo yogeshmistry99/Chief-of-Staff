@@ -128,6 +128,25 @@ evening reminder push — see the newest changelog entries)
 
 ## Recent significant changes (newest first)
 
+- **2026-08-15 — Colour moved onto each filter category, and the palette extended to 18.** The
+  separate "Colour" section is gone: every category row now carries its own colour toggle (a small
+  colour-wheel button), still exclusive — choosing one drops the previous, because two colour
+  encodings on one scatter cannot both be read. The coloured category's chips carry the swatches, so
+  the chips are the key. The header row had to become a flex row rather than a button, since a
+  button cannot legally nest inside another.
+  **Every value now gets its own colour** — the palette runs to 18, which covers the largest live
+  category (17 property types) outright, so nothing folds into "Other" in practice.
+  **The honest limit, measured and recorded:** the first five slots clear every all-pairs gate
+  (normal-vision ΔE 16.3); seven still do; **eight drops to 14.2, below the floor of 15; seventeen
+  is 7.8, about half the floor.** Past ~7 the hues are not reliably tellable apart — a property of
+  eyes, not of the list, and no palette fixes it. This was the user's explicit call after the limit
+  was raised. It is mitigated, not ignored: every swatch sits beside its own label on a chip, tapping
+  a chip isolates that value on the chart, and the panel says so in place ("17 colours — past about
+  7 some will look alike"). **Do not remove the labels and leave the colour.**
+  Slots past the validated five were generated in OKLCH inside the light-mode band and chosen
+  greedily by worst-case distance across normal, protan and deutan vision — so the ordering is
+  load-bearing: the commonest values get the most distinguishable colours.
+
 - **2026-08-15 — Colour the scatter by a chosen column; chips double as the key.** A "Colour"
   section at the top of the filter panel picks **one** column — two colour encodings on one scatter
   cannot both be read. Categorical columns get discrete hues and the filter chips in that category

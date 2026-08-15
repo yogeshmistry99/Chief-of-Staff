@@ -3,24 +3,43 @@ import { numericValue } from './trackerSort'
 
 // Colouring the scatter by one column.
 //
-// ── Why these five hues, and why only five ────────────────────────────────────
+// ── The palette, and an honest note about its limits ──────────────────────────
 // A scatter is an "all pairs" chart: any two points can end up side by side, so
-// EVERY pair of colours must be separable, not just neighbouring ones in a
-// legend. That is a much harder gate than a bar chart's, and it is why this list
-// is short. The five below were selected by running the palette validator over
-// every subset of the reference palette and keeping the largest that clears the
-// all-pairs gates on this app's surface (#FFFBFE):
+// EVERY pair of colours must be separable, not just neighbours in a legend.
 //
-//   worst-pair CVD ΔE 13.0 (protan) · worst-pair normal-vision ΔE 16.3 — PASS
+// MEASURED, NOT CHOSEN. The first five slots are the largest subset of the
+// reference palette that clears every all-pairs gate on this app's surface
+// (CVD ΔE 13.0, normal-vision ΔE 16.3). The rest were generated in OKLCH inside
+// the light-mode lightness band and selected greedily — each new slot is the
+// colour whose worst-case distance (normal, protan and deutan) to everything
+// already chosen is largest. So the ordering is not decorative: the commonest
+// values get the most distinguishable colours.
 //
-// The obvious "just take the first N of the standard palette" fails: its fourth
-// slot puts yellow next to orange, at normal-vision ΔE 13.7 — below the floor of
-// 15, meaning full-colour readers cannot reliably tell them apart. Do not extend
-// this list by eye. Re-run the validator; six hues do not clear it.
-export const CATEGORICAL = ['#2a78d6', '#eda100', '#e87ba4', '#008300', '#4a3aa7']
+// Where it stops being reliable, stated plainly rather than buried:
+//
+//   slots  worst normal-vision ΔE   verdict
+//     5           16.3              passes every gate
+//     7           16.3              passes every gate
+//     8           14.2              below the 15 floor
+//    17            7.8              about half the floor
+//
+// Past SAFE_CATEGORIES the hues are no longer reliably tellable apart — that is
+// a property of eyes, not of this list, and no palette fixes it. It is allowed
+// here because every swatch sits beside its own label on a chip, and tapping
+// that chip isolates the value on the chart: identity is carried by the label
+// and by filtering, with colour as the fast visual grouping. Do not remove the
+// labels and leave the colour.
+export const CATEGORICAL = [
+  '#2a78d6', '#eda100', '#e87ba4', '#008300', '#4a3aa7', '#39b5ff',
+  '#b2006b', '#3435ff', '#006c96', '#ff3b5a', '#4390ff', '#009163',
+  '#e41000', '#009ed9', '#00c1cf', '#005dca', '#00cd5f', '#0085b7',
+]
 
-// Anything past the fifth commonest value. Neutral by design — "Other" is not a
-// series, and giving it a hue would imply it were one.
+// Beyond this many values in one category, colours start to look alike. The UI
+// says so where it happens rather than pretending otherwise.
+export const SAFE_CATEGORIES = 7
+
+// Only for a category with more distinct values than the palette has slots.
 export const OTHER_COLOR = '#8E8E93'
 export const OTHER_LABEL = 'Other'
 export const MAX_CATEGORIES = CATEGORICAL.length
