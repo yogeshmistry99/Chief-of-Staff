@@ -3,8 +3,8 @@
 Single source of truth for system state. **Read this at the start of every session.
 Update it at the end of any session that changes anything.**
 
-Last updated: 2026-07-28 (task capture from CoS/Heads restored — the chat was confirming tasks it
-never saved; plus the earlier confirmation fixes — see the newest changelog entries)
+Last updated: 2026-08-15 (daily head-injury journal shipped — capture, Drive filing and the filed
+document; plus the earlier task-capture restoration — see the newest changelog entries)
 
 ---
 
@@ -14,7 +14,11 @@ never saved; plus the earlier confirmation fixes — see the newest changelog en
 - Vercel serverless functions under `/api/*` (Node, ESM) provide the backend.
 - Supabase (Postgres 17, region eu-central-1) is the persistence layer: tasks, knowledge, discussions, backups.
 - `/api/mcp.js` is an MCP server (JSON-RPC) exposing task/knowledge tools to Claude.ai as a custom connector.
-- GitHub is version control; Vercel auto-deploys `main`. Working branch: `claude/cool-lovelace-89c1nz`.
+- GitHub is version control; Vercel auto-deploys `main`. Working branch: `claude/calendar-recurring-events-7tsptn`.
+- **`api/*.js` is at 12/12 — the Vercel Hobby function cap.** Adding an `api/*.js` file fails the
+  deploy. `api/_lib/*` is excluded from the count, which is why shared logic lives there. Vercel
+  cron paths accept query strings, so one function can serve several jobs (`api/cron.js?job=…`).
+  Hobby also allows only **2 cron jobs**.
 
 ---
 
@@ -44,6 +48,17 @@ never saved; plus the earlier confirmation fixes — see the newest changelog en
   when a write doesn't land. **Every read filters `deleted_at is null`.** RLS is `allow all` to
   PUBLIC (same posture as `app_data`).
 
+- **`journal_entries`** — **THE HEAD-INJURY JOURNAL (added 2026-08-15). One row per day.**
+  `entry_date date NOT NULL UNIQUE` (the database itself prevents a duplicate day), `symptoms jsonb`
+  (`{key: {score 0-4, note, carried}}`), `prompts jsonb`, `free_text text`, `mode text`,
+  `authored_at` (first save — deliberately distinct from `entry_date`, so a backdated entry is
+  detectable), `updated_at`, `revision int`, `drive_file_id`, `drive_status`
+  (`pending`/`filed`/`failed`), `drive_error`, `document_md` (the HTML as filed).
+  **Reached ONLY through `api/_lib/journalRepo.js`** — every write `.select()`s the row back and
+  **throws if the database returned nothing**, so the UI never confirms a save it cannot prove.
+  Serves three purposes at once: clinical record, evidence in the Irwin Mitchell claim, and
+  personal pattern-noticing. **See open bug 6 — this is special category health data.**
+
 - **`app_data`** — key/value store, 19 rows, PK `key`, RLS enabled. Columns: `key` text, `value` jsonb, `updated_at` timestamptz. Keys present:
   - `todoist_task_cache` — **NO LONGER THE TASK STORE (frozen 2026-07-26).** Superseded by the
     `tasks` table. Kept as the emergency fallback and **refreshed weekly FROM live rows** by
@@ -53,7 +68,11 @@ never saved; plus the earlier confirmation fixes — see the newest changelog en
   - `head_config_${key}` — per-head config for `chief`, `Finance`, `Health`, `Work`, `Family`, `Home`, `Personal`, `Systems` (8 rows).
   - `discussions_${bucket}` — discussions per bucket, one row each for all 7 buckets.
   - `task_notifications` — per-task notifications (64 entries).
-  - `google_calendar_auth` — Google OAuth token state.
+  - `google_calendar_auth` — Google OAuth token state. **Now a misnomer: the grant covers Drive
+    too** (scopes are `calendar`, `userinfo.email`, `drive.file`). **Deliberately not renamed** —
+    renaming a live key for cosmetic accuracy is the exact trap `todoist_task_cache` taught. The
+    granted `scope` string is stored so the app can detect a pre-Drive grant and ask for a
+    reconnect *before* filing 403s rather than after.
   - `ai_usage_${YYYY_MM}` — **THE AI SPEND STORE (added 2026-07-26).** Per-month token/cost totals for the Settings "AI Spend" widget. jsonb: `{input, output, cacheWrite, cacheRead, cost, calls, by_model:{haiku:{…}, sonnet:{…}}}`. Written server-side by every `/api/*` call that spends `ANTHROPIC_API_KEY`, via the atomic `bump_ai_usage(p_key,p_model,p_input,p_output,p_cache_write,p_cache_read,p_cost)` RPC (SECURITY DEFINER, row-locked). Replaces the old per-browser `localStorage.usage_${month}`.
   - **`app_roadmap` — referenced by code (`get_roadmap`/`update_roadmap`) but NO ROW exists yet.** Not set until the roadmap is first saved.
 - **`task_backups`** — task-store snapshots (`label`, `tasks`, `task_count`, `created_at`). **12 rows — currently AT the cap.** Capped at 12 (`MAX_SNAPSHOTS`, pruned on every write in `src/lib/backups.js`).
@@ -94,10 +113,60 @@ never saved; plus the earlier confirmation fixes — see the newest changelog en
 3. **Head chats can't set task categories** — the in-app Head chat task tools (`api/claude.js`) do not expose the `category` field, though the MCP tools do. Categories can only be set via the MCP (Claude.ai), not from in-app chats.
 4. **Legacy Todoist code still present** — `api/todoist.js` proxy, `src/lib/todoist.js`, and `update/complete/delete` in `api/mcp.js` still call Todoist for all-numeric (legacy) task IDs. New tasks are UUID and Supabase-only. Full Todoist removal is unfinished.
 5. ~~**Weekly backup is browser-and-Sunday-gated**~~ — FIXED 2026-07-16. Now a Vercel cron (`api/cron-weekly-backup.js`, `0 8 * * 0`). The old client-side `maybeRunAutoBackup` still exists as a harmless fallback.
+6. **P1 — `journal_entries` is special category health data behind no authentication.** RLS is
+   `allow all` to PUBLIC and the app URL has no password gate, same posture as `tasks`/`app_data`.
+   That was already a standing P1; medical history raises the stakes materially. **Worth resolving
+   before this table holds months of entries, not after.** Not a regression — flagged, not fixed.
+7. **Journal charts (1c) and the 9pm reminder push (phase 2) are not built.** Push in particular is
+   not just "add a handler": `src/main.jsx` actively **unregisters every service worker on load**
+   (deliberately — stale caches were blocking updates), so phase 2 reverses an existing decision
+   and must re-test the update path. Cron fires on UTC with ~1h jitter, so a 21:00 BST reminder
+   drifts to 20:00 GMT in winter unless adjusted seasonally.
 
 ---
 
 ## Recent significant changes (newest first)
+
+- **2026-08-15 — Daily head-injury journal shipped (phases 1a and 1b), confirmed working live.**
+  Deployed across `2e40268` (capture), `d3300ac` (Drive filing), `3ada2f5`, `1f29d3c`, `4d8c930`.
+  A fifth tab: 17 symptoms scored 0–4, optional per-symptom notes, three prompted questions, an
+  open text box; history with an entry/missed indicator, always editable.
+  **Why the design is what it is:** the injury being recorded (cognitive fatigue, reduced executive
+  function) *is* the design constraint — a form that feels like work won't get used on the days the
+  data matters most. Hence tap targets rather than sliders (a slider needs a precise drag), five
+  collapsible groups rather than a list of seventeen, and quick mode as the default.
+  **Scale: 0–4, None/Mild/Moderate/Severe/Very severe — the Rivermead Post-Concussion Symptoms
+  Questionnaire scale**, so a neurologist reads a recognised instrument rather than an invented one.
+  The 17 items are Yogesh's own; only the scale is borrowed.
+  **Persistence guarantee, and it is the point of the feature:** every write reads the row back and
+  throws if the database returned nothing. **Saving and Drive filing are separate steps with
+  separate outcomes** — the entry is stored *before* filing is attempted, so a filing failure can
+  never cost it; the failure is written to the row, shown in the history list, and retryable.
+  **Filing:** native Google Docs (unlimited automatic version history — .docx revisions can be
+  pruned by Drive unless `keepForever`), into *06 - Personal Evidence / Symptoms & Personal
+  Statements*, named `YY.MM.DD - Yogesh Mistry - Head Injury Journal` to match the convention
+  already in the case folder. A re-save `files.update`s the same file — never a duplicate.
+  **Function count stayed at 12** by merging `google-auth` + `google-disconnect` into
+  `api/google.js?action=…` and `cron-weekly-backup` into `api/cron.js?job=…`.
+  **`api/google-callback.js` was deliberately NOT merged** — its path is the OAuth redirect URI
+  registered in Google Cloud Console.
+  Two live blockers found and cleared: the Drive API was never enabled on Cloud project
+  1096995773348 (user-side), and the resulting long error URL overflowed its card (`3ada2f5`).
+
+- **2026-08-15 — The filed document rewritten to be his journal rather than a report about him**
+  (`4d8c930`). Georgia → Arial. The narrative moved to the top and became the document; the score
+  table sits under it as reference data. The model's brief changed from third-person clinical
+  summary to **rewriting his brain dump in his own established voice** — first person, past tense,
+  British English, specific about times and durations, connecting a symptom to what it stopped him
+  doing — matched to the existing case-file journal. Prompt answers are woven into the prose, so
+  the separate Reflections section is gone. Caveats removed on request: the Rivermead preamble, the
+  "generated from the recorded data" label, the version-history note.
+  **The backdating line stays** ("Written on <date>" when `authored_at` and `entry_date` differ) —
+  that is not a caveat, it is the contemporaneity of the record, and a diary presented as same-day
+  when it wasn't is worse than the delay.
+  **Division of labour is deliberate and load-bearing:** every figure in the table is rendered from
+  the stored row, and the model is handed severity *words* rather than numbers, so it has no figure
+  it could transpose. A wrong number in a symptom diary is a factual error in evidence.
 
 - **2026-07-28 — Task capture from CoS and the Heads was broken; restored.** Deployed (`f7eaaff`).
   **Severity: this is the app's foundational action** — logging a task is the first step of the
@@ -510,3 +579,25 @@ never saved; plus the earlier confirmation fixes — see the newest changelog en
 - **In-app Head chats cannot set task categories** — their task tools don't expose the field. Use the MCP (via Claude.ai) to set categories.
 - **`*.vercel.app` and direct Supabase HTTP are egress-blocked from the sandbox.** To trigger an `/api/*` endpoint, open the URL in a browser; to read Supabase, use the Supabase MCP tools. Don't conclude "capability unavailable" — it works from the app/browser and via MCP, just not via raw HTTP from here.
 - **`node_modules` can be reclaimed mid-session** (disk allowance). If `vite: not found`, run `npm install` before building.
+- **The journal has NO local cache and NO offline queue — that is deliberate, not an omission.**
+  A cached entry that looks saved but isn't, or a queued write replayed later over a newer edit,
+  are both exactly the failure this feature cannot have. Offline means the save fails *visibly*
+  and the entry stays on screen to retry. Do not "improve" it by adding a cache.
+- **Never let the model near a journal figure.** Scores and severity labels are rendered from the
+  stored row; `narrativeInput()` hands the model severity *words* only, so there is no number it
+  could transpose. A wrong figure in a symptom diary is a factual error in evidence, and the
+  document is disclosed in a personal injury claim.
+- **`sleep_quality` is inverted — 4 means GOOD sleep**, the opposite of every other item. It is
+  excluded from `meanSeverity()`; averaging it in silently cancels out real symptom load. Any new
+  chart, mean or summary must check `isInverted()`.
+- **Do not merge journal symptoms that look like duplicates.** Tinnitus vs noise sensitivity
+  (internal sound vs sensitivity to external), fatigue vs sleep quality (he sleeps well and still
+  wakes exhausted), people at work vs at home. Each carries a `why` note in
+  `api/_lib/journalSymptoms.js` recording the reason. They are distinct in his experience and in
+  the clinical record.
+- **`authored_at` is not `entry_date` and must stay separate.** It is what makes a backdated entry
+  detectable, and the filed document says so. Contemporaneity is an evidential property — a diary
+  presented as same-day when it was written a week later is worse than the delay itself.
+- **Journal entry text is tidied, never reworded.** Per-symptom notes get sentence case and a full
+  stop and nothing more; the model rewrites the free-text dump into his voice, and the verbatim
+  original always stays in `free_text`. The words in the record are the evidence.
