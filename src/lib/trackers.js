@@ -47,6 +47,28 @@ export const TRACKERS = [
       { label: 'Records', stat: 'count' },
     ],
 
+    // Filters narrow ONE row set, so the scatter, the table and the summary
+    // strip always describe the same properties.
+    //
+    // Chosen against the live register rather than guessed: every column here is
+    // well populated and has values worth separating. Deliberately excluded —
+    // `Decision status` (all 184 rows read "Unreviewed", so it can only ever
+    // filter to everything or nothing), and `Tenure` / `Bathrooms` / `EPC`
+    // (under 40% filled, so a bound would hide most of the register).
+    filters: [
+      { column: 'Area group', label: 'Area', type: 'select' },
+      { column: 'Listing status', label: 'Status', type: 'select' },
+      { column: 'Property type', label: 'Property type', type: 'select' },
+      { column: 'Quality grade', label: 'Data quality grade', type: 'select' },
+      { column: 'Asking price', label: 'Asking price', type: 'range', format: 'gbp', step: 25_000 },
+      { column: 'Floor area (sq ft)', label: 'Floor area (sq ft)', type: 'range', step: 100 },
+      { column: '£/sq ft', label: '£ per sq ft', type: 'range', format: 'gbp', step: 50 },
+    ],
+
+    // 184 rows is a lot to scroll past to reach anything else, and the chart is
+    // the point of this tracker. The table opens on demand.
+    tableCollapsed: true,
+
     columns: ['ID', 'Address / listing location', 'Asking price', 'Floor area (sq ft)', '£/sq ft', 'Listing status'],
 
     detail: {

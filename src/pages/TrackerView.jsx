@@ -6,9 +6,11 @@ import {
   fetchTracker, allRows, sections, indexTab, scatterPoints, summaryStats,
   cellByHeader, textByHeader, toNumber, formatGbp, matchIndexKey,
 } from '../lib/sheets'
+import { filterOptions, applyFilters, activeFilterCount } from '../lib/trackerFilters'
 import TrackerTable from '../components/tracker/TrackerTable'
 import TrackerScatter from '../components/tracker/TrackerScatter'
 import TrackerDetail from '../components/tracker/TrackerDetail'
+import TrackerFilters from '../components/tracker/TrackerFilters'
 
 // The generic tracker screen. Everything specific to a tracker comes from its
 // config in src/lib/trackers.js — this file must stay tracker-agnostic, or the
@@ -25,6 +27,8 @@ export default function TrackerView() {
 
   const [state, setState] = useState({ loading: true })
   const [selected, setSelected] = useState(null)
+  const [filters, setFilters] = useState({})
+  const [tableOpen, setTableOpen] = useState(!tracker?.tableCollapsed)
 
   const load = useCallback(async () => {
     if (!tracker) return
@@ -35,10 +39,46 @@ export default function TrackerView() {
 
   useEffect(() => { load() }, [load])
 
-  const rows = useMemo(() => (tracker && state.tabs ? allRows(tracker, state.tabs) : []), [tracker, state.tabs])
+  // Drop a selection the filters have just excluded. Leaving the detail card
+  // open on a record that is no longer in the chart or the table would state,
+  // confidently, that it matches the current filters.
+  useEffect(() => {
+    if (!selected) return
+    const stillHere = rows.some(
+      (r) => r.sheetRow === selected.sheetRow && r.tabIndex === selected.tabIndex,
+    )
+    if (!stillHere) setSelected(null)
+  }, [rows, selected])
+
+  // allRows → FILTER → everything else. Applying the filter once here is what
+  // guarantees the chart, the table, the stats and the detail card are all
+  // describing the same set of properties.
+  const allTrackerRows = useMemo(
+    () => (tracker && state.tabs ? allRows(tracker, state.tabs) : []),
+    [tracker, state.tabs],
+  )
+  const rows = useMemo(
+    () => (tracker ? applyFilters(tracker, allTrackerRows, filters) : []),
+    [tracker, allTrackerRows, filters],
+  )
+  const options = useMemo(
+    () => (tracker ? filterOptions(tracker, allTrackerRows) : []),
+    [tracker, allTrackerRows],
+  )
+  const activeCount = useMemo(() => activeFilterCount(tracker, filters), [tracker, filters])
+
   const points = useMemo(() => (tracker ? scatterPoints(tracker, rows) : []), [tracker, rows])
   const stats = useMemo(() => (tracker ? summaryStats(tracker, rows, points) : []), [tracker, rows, points])
-  const groups = useMemo(() => (tracker && state.tabs ? sections(tracker, state.tabs) : []), [tracker, state.tabs])
+  const groups = useMemo(() => {
+    if (!tracker || !state.tabs) return []
+    const raw = sections(tracker, state.tabs)
+    if (!tracker.filters?.length) return raw
+    // Grouped trackers filter within each section, so configuring filters on one
+    // later cannot silently do nothing.
+    return raw
+      .map((g) => ({ ...g, rows: applyFilters(tracker, g.rows, filters) }))
+      .filter((g) => g.rows.length)
+  }, [tracker, state.tabs, filters])
 
   // Car's ranked dashboard: model → strategy score, shown as a section badge.
   //
@@ -149,6 +189,23 @@ export default function TrackerView() {
           </div>
         )}
 
+        {state.ok && (
+          <TrackerFilters
+            options={options}
+            state={filters}
+            onChange={(next) => { haptic.light(); setFilters(next) }}
+            activeCount={activeCount}
+            shown={rows.length}
+            total={allTrackerRows.length}
+          />
+        )}
+
+        {state.ok && activeCount > 0 && rows.length === 0 && (
+          <p className="py-6 text-center text-xs text-[#79747E]">
+            No records match these filters.
+          </p>
+        )}
+
         {tracker.view === 'scatter' && state.ok && (
           <div className="rounded-2xl bg-white border border-[#CAC4D0] p-3 mb-3">
             <TrackerScatter
@@ -158,7 +215,9 @@ export default function TrackerView() {
               onSelect={(row) => { haptic.light(); setSelected(row) }}
             />
             <p className="text-[10px] text-[#79747E] mt-1">
-              Tap a point or a row below to see the full record.
+              {tableOpen
+                ? 'Tap a point or a row below to see the full record.'
+                : 'Tap a point to see the full record.'}
             </p>
           </div>
         )}
@@ -197,14 +256,33 @@ export default function TrackerView() {
           ))
         ) : state.ok ? (
           <div className="mt-3">
-            <TrackerTable
-              headers={headers}
-              rows={rows}
-              columns={tracker.columns}
-              highlight={tracker.highlight}
-              selected={selected}
-              onSelect={(row) => { haptic.light(); setSelected(row) }}
-            />
+            {/* Conditional render rather than a max-height clamp: the clamped
+                drawers elsewhere in this app clipped their own content, and a
+                184-row table has no height worth guessing. */}
+            {tracker.tableCollapsed && (
+              <button
+                onClick={() => { haptic.light(); setTableOpen((o) => !o) }}
+                className="w-full flex items-center justify-between gap-3 px-3 py-2.5 mb-1 rounded-2xl bg-white border border-[#CAC4D0] text-left"
+              >
+                <span className="text-xs font-semibold text-[#1C1B1F]">
+                  {tracker.tableLabel ?? 'All records'}
+                  <span className="ml-1.5 text-[10px] font-normal text-[#79747E]">{rows.length}</span>
+                </span>
+                <span className="text-[10px] text-[#6750A4] flex-shrink-0">
+                  {tableOpen ? 'Hide ▲' : 'Show ▼'}
+                </span>
+              </button>
+            )}
+            {tableOpen && (
+              <TrackerTable
+                headers={headers}
+                rows={rows}
+                columns={tracker.columns}
+                highlight={tracker.highlight}
+                selected={selected}
+                onSelect={(row) => { haptic.light(); setSelected(row) }}
+              />
+            )}
           </div>
         ) : null}
       </div>
