@@ -106,6 +106,74 @@ describe('TrackerView', () => {
     })
   })
 
+  // Positions of every plotted point, keyed by its label, so a point can be
+  // followed across a filter change.
+  const plotted = (container) =>
+    Object.fromEntries(
+      [...container.querySelectorAll('circle')].map((c) => [
+        c.querySelector('title')?.textContent ?? '',
+        `${c.getAttribute('cx')},${c.getAttribute('cy')}`,
+      ]),
+    )
+
+  it('does NOT rescale the axes when filtering — surviving points stay put', async () => {
+    const { container } = renderTracker()
+    await screen.findByText('House search')
+    await waitFor(() => expect(container.querySelectorAll('circle').length).toBeGreaterThan(0))
+    const before = plotted(container)
+
+    fireEvent.click(screen.getByRole('button', { name: /^Filters/ }))
+    fireEvent.click(await screen.findByRole('button', { name: /^Langley/ }))
+
+    await waitFor(() =>
+      expect(container.querySelectorAll('circle').length).toBeLessThan(Object.keys(before).length),
+    )
+
+    const after = plotted(container)
+    expect(Object.keys(after).length).toBeGreaterThan(0)
+    for (const [label, pos] of Object.entries(after)) {
+      // Same coordinates as before the filter: the frame is fixed to the whole
+      // dataset, so filtering removes points without moving the survivors.
+      expect(pos).toBe(before[label])
+    }
+  })
+
+  it('empties the chart via a price bound without losing the axes', async () => {
+    const { container } = renderTracker()
+    fireEvent.click(await screen.findByRole('button', { name: /^Filters/ }))
+
+    // Take the highest offered bound from the DOM rather than inventing a
+    // number — a value that is not one of the generated options would leave the
+    // select unchanged and the test would pass without filtering anything.
+    const [minPrice] = screen.getAllByRole('combobox')
+    const highest = [...minPrice.options].map((o) => o.value).filter(Boolean).pop()
+    fireEvent.change(minPrice, { target: { value: highest } })
+
+    await waitFor(() =>
+      expect(container.querySelectorAll('circle').length).toBeLessThan(
+        Object.keys(plotted(container)).length + 1,
+      ),
+    )
+    // Whatever survives, the frame is still drawn — the chart never collapses
+    // to a bare message mid-adjustment.
+    const svg = container.querySelector('svg')
+    expect(svg).toBeInTheDocument()
+    // Axis label still drawn inside the chart (the same string also appears as
+    // a filter label, hence scoping to the svg).
+    expect(within(svg).getByText('Asking price')).toBeInTheDocument()
+  })
+
+  it('renders the chart above the filters', async () => {
+    const { container } = renderTracker()
+    await screen.findByText('House search')
+    await waitFor(() => expect(container.querySelector('svg')).toBeInTheDocument())
+
+    const svg = container.querySelector('svg')
+    const filters = screen.getByRole('button', { name: /^Filters/ })
+    // DOCUMENT_POSITION_FOLLOWING === the filters come after the chart.
+    expect(svg.compareDocumentPosition(filters) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
   it('surfaces a disabled Sheets API with an Enable link and NO reconnect prompt', async () => {
     mockFetchTracker.mockResolvedValue({
       ok: false,

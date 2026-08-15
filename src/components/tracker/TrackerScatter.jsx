@@ -26,8 +26,18 @@ function short(n) {
   return String(Math.round(n))
 }
 
-export default function TrackerScatter({ points, config, selected, onSelect }) {
-  if (!points.length) {
+export default function TrackerScatter({ points, domainPoints, config, selected, onSelect }) {
+  // THE AXES ARE SCALED TO THE WHOLE DATASET, NOT TO WHAT IS CURRENTLY SHOWN.
+  //
+  // Rescaling on every filter change makes the chart jump: the same property
+  // moves to a different place on screen depending on what else is in view, and
+  // a filtered subset always fills the frame, so a narrow band looks identical
+  // to the whole market. Fixing the domain means filtering removes points
+  // without moving the survivors, and you can see where a subset actually sits
+  // within the full picture — which is the comparison this tracker is for.
+  const domain = domainPoints?.length ? domainPoints : points
+
+  if (!domain.length) {
     return (
       <div className="py-10 text-center text-xs text-[#79747E]">
         Nothing to plot — no rows have both {config.xLabel ?? config.x} and {config.yLabel ?? config.y}.
@@ -35,8 +45,8 @@ export default function TrackerScatter({ points, config, selected, onSelect }) {
     )
   }
 
-  const xs = points.map((p) => p.x)
-  const ys = points.map((p) => p.y)
+  const xs = domain.map((p) => p.x)
+  const ys = domain.map((p) => p.y)
   // Pad the range by 5% so points never sit on the axis line.
   const pad = (lo, hi) => { const d = (hi - lo) || Math.abs(hi) || 1; return [lo - d * 0.05, hi + d * 0.05] }
   const [x0, x1] = pad(Math.min(...xs), Math.max(...xs))
@@ -47,7 +57,7 @@ export default function TrackerScatter({ points, config, selected, onSelect }) {
 
   return (
     <svg viewBox={`0 0 ${VB_W} ${VB_H}`} width="100%" role="img"
-      aria-label={`${config.yLabel ?? config.y} against ${config.xLabel ?? config.x}, ${points.length} points`}
+      aria-label={`${config.yLabel ?? config.y} against ${config.xLabel ?? config.x}, ${points.length} of ${domain.length} points shown`}
       className="block">
       {niceTicks(y0, y1).map((v, i) => (
         <g key={`y${i}`}>
@@ -74,6 +84,16 @@ export default function TrackerScatter({ points, config, selected, onSelect }) {
           </circle>
         )
       })}
+
+      {/* Filters can exclude everything. The axes stay drawn rather than the
+          chart collapsing to a message, so the frame does not disappear from
+          under you mid-adjustment. */}
+      {!points.length && (
+        <text x={PAD.left + PLOT_W / 2} y={PAD.top + PLOT_H / 2} textAnchor="middle"
+          fontSize="9" fill="#79747E">
+          No records match these filters
+        </text>
+      )}
 
       <text x={PAD.left + PLOT_W / 2} y={VB_H - 2} textAnchor="middle" fontSize="8" fill="#49454F">
         {config.xLabel ?? config.x}

@@ -73,6 +73,14 @@ export default function TrackerView() {
   }, [rows, selected])
 
   const points = useMemo(() => (tracker ? scatterPoints(tracker, rows) : []), [tracker, rows])
+
+  // The plottable set BEFORE filtering, used only to fix the axis scale so the
+  // chart does not rescale under the filters. Derived from allTrackerRows, not
+  // from rows, and deliberately not memoised on `filters`.
+  const domainPoints = useMemo(
+    () => (tracker ? scatterPoints(tracker, allTrackerRows) : []),
+    [tracker, allTrackerRows],
+  )
   const stats = useMemo(() => (tracker ? summaryStats(tracker, rows, points) : []), [tracker, rows, points])
   const groups = useMemo(() => {
     if (!tracker || !state.tabs) return []
@@ -194,36 +202,27 @@ export default function TrackerView() {
           </div>
         )}
 
-        {state.ok && (
-          <TrackerFilters
-            options={options}
-            state={filters}
-            onChange={(next) => { haptic.light(); setFilters(next) }}
-            activeCount={activeCount}
-            shown={rows.length}
-            total={allTrackerRows.length}
-          />
-        )}
-
-        {state.ok && activeCount > 0 && rows.length === 0 && (
-          <p className="py-6 text-center text-xs text-[#79747E]">
-            No records match these filters.
-          </p>
-        )}
-
+        {/* The chart is PINNED and sits ABOVE the filters.
+            Filtering is only useful if you can watch the chart respond to it;
+            with the panel below a scrolling chart, opening the filters pushed
+            the graph off screen and every chip tap was a change you could not
+            see. */}
         {tracker.view === 'scatter' && state.ok && (
-          <div className="rounded-2xl bg-white border border-[#CAC4D0] p-3 mb-3">
-            <TrackerScatter
-              points={points}
-              config={tracker.scatter}
-              selected={selected}
-              onSelect={(row) => { haptic.light(); setSelected(row) }}
-            />
-            <p className="text-[10px] text-[#79747E] mt-1">
-              {tableOpen
-                ? 'Tap a point or a row below to see the full record.'
-                : 'Tap a point to see the full record.'}
-            </p>
+          <div className="sticky top-0 z-20 -mx-3 px-3 pt-1 pb-2 bg-[#FFFBFE] border-b border-[#F3EDF7]">
+            <div className="rounded-2xl bg-white border border-[#CAC4D0] p-3">
+              <TrackerScatter
+                points={points}
+                domainPoints={domainPoints}
+                config={tracker.scatter}
+                selected={selected}
+                onSelect={(row) => { haptic.light(); setSelected(row) }}
+              />
+              <p className="text-[10px] text-[#79747E] mt-1">
+                {points.length === domainPoints.length
+                  ? 'Tap a point to see the full record.'
+                  : `Showing ${points.length} of ${domainPoints.length} plotted properties.`}
+              </p>
+            </div>
           </div>
         )}
 
@@ -234,6 +233,25 @@ export default function TrackerView() {
             config={tracker.detail}
             onClose={() => setSelected(null)}
           />
+        )}
+
+        {state.ok && (
+          <div className="mt-3">
+            <TrackerFilters
+              options={options}
+              state={filters}
+              onChange={(next) => { haptic.light(); setFilters(next) }}
+              activeCount={activeCount}
+              shown={rows.length}
+              total={allTrackerRows.length}
+            />
+          </div>
+        )}
+
+        {state.ok && activeCount > 0 && rows.length === 0 && tracker.view !== 'scatter' && (
+          <p className="py-6 text-center text-xs text-[#79747E]">
+            No records match these filters.
+          </p>
         )}
 
         {tracker.compare && state.ok && (
