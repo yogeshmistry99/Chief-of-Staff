@@ -1,38 +1,77 @@
-const CACHE_NAME = 'life-os-v10';
+// Push-only service worker.
+//
+// READ THIS BEFORE ADDING ANYTHING: there is deliberately NO `fetch` listener
+// and no caching in this file.
+//
+// A previous version of this worker cached responses, and its stale caches
+// stopped deployed updates from reaching the app — which is why src/main.jsx
+// unregistered every service worker on load. Re-enabling a worker to deliver
+// the journal reminder only reverses that decision safely because a worker with
+// no `fetch` listener is structurally incapable of serving a stale response.
+// Adding a `fetch` handler here would bring the original bug back.
 
-self.addEventListener('install', (event) => {
-  self.skipWaiting();
-});
+const NOTIFICATION_TAG = 'journal-reminder'
+
+self.addEventListener('install', () => {
+  self.skipWaiting()
+})
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
-    )
-  );
-  self.clients.claim();
-});
+  event.waitUntil((async () => {
+    // Delete EVERY cache, not just outdated ones — the old life-os-v* caches
+    // are what broke updates, and nothing here creates caches any more.
+    const keys = await caches.keys()
+    await Promise.all(keys.map((k) => caches.delete(k)))
+    await self.clients.claim()
+  })())
+})
 
-self.addEventListener('fetch', (event) => {
-  if (event.request.method !== 'GET') return;
-  const url = new URL(event.request.url);
-
-  // API calls — always network only
-  if (url.pathname.startsWith('/api/')) {
-    event.respondWith(fetch(event.request));
-    return;
+self.addEventListener('push', (event) => {
+  // The payload is JSON, but a push can arrive without one (or malformed). A
+  // reminder that fails to render is a missed journal entry, so fall back to a
+  // usable default rather than throwing.
+  let payload = {}
+  try {
+    payload = event.data ? event.data.json() : {}
+  } catch {
+    payload = {}
   }
 
-  // Everything else — network-first, cache as fallback for offline only
-  event.respondWith(
-    fetch(event.request)
-      .then((response) => {
-        if (response.ok) {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+  const title = payload.title || 'Journal'
+  const options = {
+    body: payload.body || 'Ready to log today?',
+    icon: payload.icon || '/icons/icon-192.png',
+    badge: payload.badge || '/icons/badge-72.png',
+    // A single tag so a second reminder replaces the first rather than stacking
+    // — a column of identical nudges is the kind of friction this is meant to
+    // remove.
+    tag: payload.tag || NOTIFICATION_TAG,
+    renotify: false,
+    requireInteraction: false,
+    data: { url: payload.url || '/journal' },
+  }
+
+  event.waitUntil(self.registration.showNotification(title, options))
+})
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close()
+  const target = event.notification.data?.url || '/journal'
+
+  event.waitUntil((async () => {
+    const clientList = await self.clients.matchAll({
+      type: 'window',
+      includeUncontrolled: true,
+    })
+    // Focus an open window rather than launching a second copy of the app.
+    for (const client of clientList) {
+      if ('focus' in client) {
+        if ('navigate' in client) {
+          try { await client.navigate(target) } catch { /* focus alone is enough */ }
         }
-        return response;
-      })
-      .catch(() => caches.match(event.request))
-  );
-});
+        return client.focus()
+      }
+    }
+    if (self.clients.openWindow) return self.clients.openWindow(target)
+  })())
+})

@@ -8,6 +8,7 @@ import {
   localDate, shiftDate, seedFromPrevious, isBackdated, driveDocUrl,
 } from '../lib/journal'
 import JournalTrends from '../components/JournalTrends'
+import ReminderToggle from '../components/ReminderToggle'
 
 // Daily head-injury symptom journal.
 //
@@ -499,6 +500,8 @@ export default function Journal() {
         >
           {todayEntry ? "Edit today's entry" : 'Log today'}
         </button>
+
+        {view === 'history' && <ReminderToggle />}
 
         {loading ? (
           <p className="text-sm text-[#79747E] py-4">Loading…</p>

@@ -3,8 +3,8 @@
 Single source of truth for system state. **Read this at the start of every session.
 Update it at the end of any session that changes anything.**
 
-Last updated: 2026-08-15 (daily head-injury journal shipped — capture, Drive filing and the filed
-document; plus the earlier task-capture restoration — see the newest changelog entries)
+Last updated: 2026-08-15 (head-injury journal complete — capture, Drive filing, the filed
+document, trends charts and the evening reminder push — see the newest changelog entries)
 
 ---
 
@@ -117,15 +117,36 @@ document; plus the earlier task-capture restoration — see the newest changelog
    `allow all` to PUBLIC and the app URL has no password gate, same posture as `tasks`/`app_data`.
    That was already a standing P1; medical history raises the stakes materially. **Worth resolving
    before this table holds months of entries, not after.** Not a regression — flagged, not fixed.
-7. **The journal's 9pm reminder push (phase 2) is not built.** (Charts — 1c — shipped 2026-08-15.)
-   Push is not just "add a handler": `src/main.jsx` actively **unregisters every service worker on load**
-   (deliberately — stale caches were blocking updates), so phase 2 reverses an existing decision
-   and must re-test the update path. Cron fires on UTC with ~1h jitter, so a 21:00 BST reminder
-   drifts to 20:00 GMT in winter unless adjusted seasonally.
+7. ~~**The journal's 9pm reminder push (phase 2) is not built.**~~ — BUILT 2026-08-15. All four
+   journal phases are now shipped. **Inert until the VAPID env vars are set in Vercel** (see the
+   changelog entry); the toggle hides itself until then rather than offering something that can't work.
+8. **Cron slots are now 2/2** (weekly backup + journal reminder) — the Vercel Hobby maximum. A third
+   scheduled job needs an existing one to absorb it, the same way `api/cron.js` absorbed both.
 
 ---
 
 ## Recent significant changes (newest first)
+
+- **2026-08-15 — Journal phase 2: the evening reminder push.** The journal's last piece — it had no
+  way to ask to be written, and the symptoms it tracks are the ones that make remembering unreliable.
+  **The service worker is back on, and that reversal is only safe because of how it was done.**
+  `public/sw.js` was a *caching* worker whose stale caches stopped deployed updates landing, which is
+  why `src/main.jsx` unregistered every worker. The new one has **no `fetch` listener and no caching
+  at all** — structurally incapable of serving a stale response — and purges every leftover cache on
+  activate. **Never add a `fetch` handler to it**; a test asserts its absence.
+  **Function count held at 12** by merging `api/cron-weekly-backup.js` into `api/cron.js?job=…`, which
+  now serves both schedules. The backup body moved verbatim; its schedule and behaviour are unchanged.
+  **No endpoint for subscriptions** — the browser writes them straight to Supabase, as tasks and
+  journal entries already do. That is what paid for the cron function.
+  **It does not nag:** the job reads `journal_entries` for today's *London* date first and sends
+  nothing if the day is already logged. If that lookup fails it sends anyway — a redundant nudge
+  costs a moment, a skipped one can cost the entry.
+  **Dead endpoints are pruned on 404/410 only.** Every other failure records the error and keeps the
+  row, so someone else's outage can't unsubscribe the only device.
+  **Requires user setup:** `VAPID_PUBLIC_KEY`, `VITE_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`,
+  `VAPID_SUBJECT` in Vercel. Inert until then, like the Drive API in 1b.
+  Notification icons had to be generated as PNG (`icon-192.png`, `badge-72.png`) — Chrome does not
+  render SVG for a notification icon, and `public/icons/` held only SVG.
 
 - **2026-08-15 — Journal phase 1c: trends charts.** A History/Trends toggle on the Journal tab;
   week / month / 6-month / year windows; any symptom plus an "Overall severity" line, layered up to
@@ -614,6 +635,14 @@ document; plus the earlier task-capture restoration — see the newest changelog
 - **`authored_at` is not `entry_date` and must stay separate.** It is what makes a backdated entry
   detectable, and the filed document says so. Contemporaneity is an evidential property — a diary
   presented as same-day when it was written a week later is worse than the delay itself.
+- **NEVER add a `fetch` handler or any caching to `public/sw.js`.** The service worker is push-only
+  and that is the entire reason it was safe to re-enable after caching broke deployed updates. A
+  worker with no `fetch` listener cannot serve stale content; one with a `fetch` listener can, and
+  the app silently stops updating. A test asserts the handler's absence — if it fails, do not
+  "fix" the test.
+- **`api/*.js` is the constraint, not a preference.** 12/12 on Vercel Hobby. New server work goes
+  into `api/_lib/` or folds into an existing function via a query param (`api/cron.js?job=…`,
+  `api/google.js?action=…`). Crons are also at 2/2.
 - **In the journal charts, a gap must stay a gap.** `null` means no entry and `0` means recorded as
   none — never conflate them, and never interpolate a line across a missing day. `segments()` in
   `src/lib/journalChart.js` enforces the break; a "smoother" chart that joins across gaps is
