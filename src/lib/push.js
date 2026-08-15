@@ -100,6 +100,36 @@ export async function enableReminders() {
   return true
 }
 
+// Send a real push to THIS device, right now.
+//
+// Deliberately goes through the server and the same send code as the nightly
+// reminder rather than calling registration.showNotification() locally. A local
+// notification would prove only that the browser can draw one — it would come
+// up green with the VAPID keys missing, the subscription row absent, or the
+// send path broken, which are the failures actually worth catching.
+//
+// Resolves with the outcome rather than throwing: the caller shows either
+// result, and the message is the diagnosis.
+export async function sendTestNotification() {
+  if (!pushSupported()) return { ok: false, error: 'This browser cannot show notifications.' }
+  try {
+    const reg = await navigator.serviceWorker.getRegistration()
+    const sub = await reg?.pushManager?.getSubscription()
+    if (!sub) return { ok: false, error: 'This device is not subscribed. Turn the switch on first.' }
+
+    const res = await fetch('/api/cron?job=test-notification', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ endpoint: sub.endpoint }),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok && !data.error) return { ok: false, error: `Test failed (${res.status})` }
+    return data
+  } catch (e) {
+    return { ok: false, error: `Could not reach the server: ${e.message}` }
+  }
+}
+
 // Turn reminders off. The browser subscription is dropped AND the row deleted —
 // leaving the row would keep the nightly send trying against a dead endpoint.
 export async function disableReminders() {

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { haptic } from '../lib/haptic'
 import {
-  reminderStatus, enableReminders, disableReminders, pushSupported, isConfigured,
+  reminderStatus, enableReminders, disableReminders, sendTestNotification,
+  pushSupported, isConfigured,
 } from '../lib/push'
 
 // The evening reminder switch.
@@ -18,6 +19,8 @@ export default function ReminderToggle() {
   const [status, setStatus] = useState(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
+  const [testing, setTesting] = useState(false)
+  const [test, setTest] = useState(null)   // outcome of the last test send
 
   const refresh = useCallback(async () => {
     setStatus(await reminderStatus())
@@ -37,6 +40,7 @@ export default function ReminderToggle() {
     if (busy) return
     setBusy(true)
     setError(null)
+    setTest(null)
     try {
       if (enabled) {
         await disableReminders()
@@ -55,6 +59,20 @@ export default function ReminderToggle() {
     } finally {
       setBusy(false)
     }
+  }
+
+  async function runTest() {
+    if (testing) return
+    setTesting(true)
+    setTest(null)
+    const result = await sendTestNotification()
+    if (result.ok) haptic.success()
+    else haptic.error()
+    setTest(result)
+    // A test can discover the subscription is dead and remove it, so the switch
+    // must re-read rather than keep claiming to be on.
+    if (result.removed) await refresh()
+    setTesting(false)
   }
 
   return (
@@ -90,6 +108,30 @@ export default function ReminderToggle() {
 
       {error && (
         <p className="mt-2 text-[11px] text-[#8C1D18] leading-relaxed break-words">{error}</p>
+      )}
+
+      {enabled && (
+        <div className="mt-2 pt-2 border-t border-[#F3EDF7]">
+          <button
+            onClick={runTest}
+            disabled={testing}
+            className="text-[11px] text-[#6750A4] underline disabled:opacity-40"
+          >
+            {testing ? 'Sending…' : 'Send a test notification'}
+          </button>
+
+          {test && (
+            <p
+              className={`mt-1.5 text-[11px] leading-relaxed break-words ${
+                test.ok ? 'text-[#1B5E20]' : 'text-[#8C1D18]'
+              }`}
+            >
+              {test.ok
+                ? 'Sent. It should appear in a moment — if nothing arrives, notifications are being suppressed by the phone rather than the app.'
+                : test.error}
+            </p>
+          )}
+        </div>
       )}
     </div>
   )

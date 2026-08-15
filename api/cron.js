@@ -1,7 +1,9 @@
 import { createClient } from '@supabase/supabase-js'
 import { snapshotTasks } from './_lib/tasksRepo.js'
 import { getEntryByDate } from './_lib/journalRepo.js'
-import { listSubscriptions, toSubscription, recordSendResult } from './_lib/pushRepo.js'
+import {
+  listSubscriptions, getSubscription, toSubscription, recordSendResult,
+} from './_lib/pushRepo.js'
 import { londonDate, reminderBody } from './_lib/reminder.js'
 
 // Both scheduled jobs, in one function.
@@ -39,17 +41,102 @@ function supabase() {
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*')
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
   if (req.method === 'OPTIONS') return res.status(200).end()
 
-  if (!authorized(req)) return res.status(401).json({ error: 'Unauthorized' })
+  const job = req.query.job ?? 'weekly-backup'
 
   const sb = supabase()
   if (!sb) return res.status(500).json({ error: 'Supabase env vars missing' })
 
-  const job = req.query.job ?? 'weekly-backup'
+  // The test send is called FROM THE BROWSER, so it cannot present CRON_SECRET
+  // or MCP_API_KEY — shipping either to the client would leak a credential that
+  // can run the real jobs. It is guarded instead by requiring the caller to name
+  // an endpoint that is already stored in push_subscriptions: those are long
+  // unguessable push-service URLs, and the worst a caller who somehow had one
+  // could do is send that single device one fixed test notification. It cannot
+  // reach the backup or reminder jobs, and it adds no read or write access
+  // beyond what the app's existing allow-all RLS already exposes.
+  if (job === 'test-notification') return testNotification(req, res, sb)
+
+  if (!authorized(req)) return res.status(401).json({ error: 'Unauthorized' })
+
   if (job === 'journal-reminder') return journalReminder(req, res, sb)
   if (job === 'weekly-backup') return weeklyBackup(req, res, sb)
   return res.status(400).json({ error: `Unknown job: ${job}` })
+}
+
+// ─── Test send ────────────────────────────────────────────────────────────────
+//
+// Exists so the whole path can be proved end to end without waiting for 20:00
+// UTC. It deliberately uses the SAME send code as the nightly reminder — a test
+// that took a shortcut could pass while the real thing was broken, which is
+// worse than having no test button at all.
+//
+// Failure messages are specific on purpose: the point of pressing this is to
+// find out WHICH part is wrong, so "no reply from Google's push service" and
+// "VAPID keys are not set" must not both come back as "failed".
+async function testNotification(req, res, sb) {
+  if (req.method !== 'POST') return res.status(405).json({ ok: false, error: 'POST only' })
+
+  const endpoint = req.body?.endpoint
+  if (!endpoint) return res.status(400).json({ ok: false, error: 'No subscription endpoint supplied.' })
+
+  let row
+  try {
+    row = await getSubscription(sb, endpoint)
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: `Could not read the subscription: ${e.message}` })
+  }
+  if (!row) {
+    return res.status(404).json({
+      ok: false,
+      error: 'This device has a push subscription, but no matching row is stored — reminders would not arrive. Turn the switch off and on again.',
+    })
+  }
+
+  const { VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT } = process.env
+  if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {
+    return res.status(200).json({
+      ok: false,
+      error: 'The VAPID keys are not set in Vercel yet, so nothing can be sent. Add VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY and VAPID_SUBJECT, then redeploy.',
+    })
+  }
+
+  const webpush = (await import('web-push')).default
+  webpush.setVapidDetails(
+    VAPID_SUBJECT || 'mailto:yogeshmistry99@gmail.com',
+    VAPID_PUBLIC_KEY,
+    VAPID_PRIVATE_KEY,
+  )
+
+  const payload = JSON.stringify({
+    title: 'Journal',
+    body: 'Test notification — reminders are working.',
+    url: '/journal',
+    // Its own tag, so a test never replaces or is replaced by a real reminder.
+    tag: 'journal-test',
+  })
+
+  try {
+    await webpush.sendNotification(toSubscription(row), payload, { TTL: 60 })
+    await recordSendResult(sb, endpoint, { ok: true })
+    return res.status(200).json({ ok: true })
+  } catch (err) {
+    const statusCode = err?.statusCode
+    console.warn('[cron] test push failed', statusCode, err?.message)
+    // A dead endpoint is removed here exactly as the nightly job would remove
+    // it, so the switch stops claiming to be on when it cannot deliver.
+    const outcome = await recordSendResult(sb, endpoint, { ok: false, error: err?.message, statusCode })
+    return res.status(200).json({
+      ok: false,
+      removed: outcome === 'removed',
+      error: outcome === 'removed'
+        ? 'This subscription has expired and has been removed. Turn the switch off and on again to re-subscribe.'
+        : `The push service rejected it${statusCode ? ` (${statusCode})` : ''}: ${err?.message ?? 'unknown error'}`,
+    })
+  }
 }
 
 // ─── Journal evening reminder ─────────────────────────────────────────────────
