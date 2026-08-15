@@ -8,6 +8,7 @@ import BucketDetail from './pages/BucketDetail'
 import DiscussionThread from './pages/DiscussionThread'
 import Settings from './pages/Settings'
 import Calendar from './pages/Calendar'
+import Journal from './pages/Journal'
 import CalendarEvent from './pages/CalendarEvent'
 import WeeklyReview from './pages/WeeklyReview'
 import ChiefPage from './pages/ChiefPage'
@@ -17,6 +18,7 @@ import SyncProvider from './components/SyncProvider'
 const TABS = [
   { path: '/',          Component: Home },
   { path: '/calendar',  Component: Calendar },
+  { path: '/journal',   Component: Journal },
   { path: '/buckets',   Component: Buckets },
   { path: '/settings',  Component: Settings },
 ]

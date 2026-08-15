@@ -1,0 +1,406 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { haptic } from '../lib/haptic'
+import {
+  SYMPTOM_GROUPS, SCALE, PROMPTS, scoreLabel, isInverted,
+} from '../../api/_lib/journalSymptoms.js'
+import {
+  readEntries, readEntry, writeEntry, onJournalChanged,
+  localDate, shiftDate, seedFromPrevious, isBackdated,
+} from '../lib/journal'
+
+// Daily head-injury symptom journal.
+//
+// The design constraint is the injury being tracked: cognitive fatigue and
+// reduced executive function mean anything effortful won't get used on the days
+// the data matters most. So:
+//
+//   • TAP TARGETS, NOT SLIDERS. A slider needs a precise drag, which is the
+//     wrong control for a tired evening on a phone. Five buttons, one tap each.
+//   • 0–4 with None/Mild/Moderate/Severe/Very severe — the Rivermead
+//     Post-Concussion Symptoms Questionnaire scale, so the record reads as a
+//     recognised instrument to a clinician rather than an invented one.
+//   • Quick mode is the default: 17 taps and done. Notes, prompts and the open
+//     box are there when wanted and invisible when not.
+//   • Missed days are shown neutrally. No streaks, no red marks.
+
+const TODAY_LABEL = (d) => {
+  const today = localDate()
+  if (d === today) return 'Today'
+  if (d === shiftDate(today, -1)) return 'Yesterday'
+  const [y, m, day] = d.split('-').map(Number)
+  return new Date(y, m - 1, day).toLocaleDateString('en-GB', {
+    weekday: 'short', day: 'numeric', month: 'short',
+  })
+}
+
+// ─── One symptom row ──────────────────────────────────────────────────────────
+
+function SymptomRow({ symptom, value, onScore, onNote }) {
+  const [noteOpen, setNoteOpen] = useState(!!value?.note)
+  const score = value?.score
+  const carried = value?.carried === true
+
+  return (
+    <div className="py-2.5 border-b border-[#F3EDF7] last:border-0">
+      <div className="flex items-baseline justify-between gap-2 mb-1.5">
+        <span className="text-sm text-[#1C1B1F] leading-snug">{symptom.label}</span>
+        <span className={`text-[11px] flex-shrink-0 ${carried ? 'text-[#CAC4D0]' : 'text-[#79747E]'}`}>
+          {score == null ? '—' : scoreLabel(symptom.key, score)}
+        </span>
+      </div>
+
+      <div className="flex gap-1.5" role="radiogroup" aria-label={symptom.label}>
+        {SCALE.map((s) => {
+          const active = score === s.score
+          return (
+            <button
+              key={s.score}
+              type="button"
+              role="radio"
+              aria-checked={active}
+              aria-label={`${symptom.label}: ${scoreLabel(symptom.key, s.score)}`}
+              onClick={() => { haptic.light(); onScore(s.score) }}
+              className={`flex-1 h-11 rounded-xl text-xs font-medium transition-colors ${
+                active
+                  ? carried
+                    // Carried-over values read as filled but unconfirmed, so a
+                    // glance shows what's actually been reviewed today.
+                    ? 'bg-[#E8DEF8] text-[#4A4458] ring-1 ring-[#CAC4D0]'
+                    : 'bg-[#6750A4] text-white'
+                  : 'bg-[#F3EDF7] text-[#79747E]'
+              }`}
+            >
+              {s.score}
+            </button>
+          )
+        })}
+      </div>
+
+      {noteOpen ? (
+        <input
+          type="text"
+          value={value?.note ?? ''}
+          onChange={(e) => onNote(e.target.value)}
+          placeholder="Anything specific about this today?"
+          className="mt-2 w-full text-sm px-3 py-2 rounded-xl border border-[#CAC4D0] bg-white text-[#1C1B1F] placeholder:text-[#CAC4D0]"
+        />
+      ) : (
+        <button
+          type="button"
+          onClick={() => { haptic.light(); setNoteOpen(true) }}
+          className="mt-1.5 text-[11px] text-[#6750A4]"
+        >
+          + add a note
+        </button>
+      )}
+    </div>
+  )
+}
+
+// ─── The entry form ───────────────────────────────────────────────────────────
+
+function EntryForm({ entryDate, existing, previous, onSaved, onCancel }) {
+  const [symptoms, setSymptoms] = useState(
+    () => existing?.symptoms ?? seedFromPrevious(previous)
+  )
+  const [prompts, setPrompts] = useState(() => existing?.prompts ?? {})
+  const [freeText, setFreeText] = useState(() => existing?.free_text ?? '')
+  const [showDetail, setShowDetail] = useState(() => existing?.mode === 'full')
+  const [openGroup, setOpenGroup] = useState(SYMPTOM_GROUPS[0].key)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState(null)
+
+  const total = SYMPTOM_GROUPS.reduce((n, g) => n + g.symptoms.length, 0)
+  const answered = Object.values(symptoms).filter((v) => v?.score != null).length
+  const reviewed = Object.values(symptoms).filter((v) => v?.score != null && !v.carried).length
+
+  function setScore(key, score) {
+    // Touching a control clears `carried` — this is the moment a pre-filled
+    // value becomes one the user actually stands behind.
+    setSymptoms((prev) => ({ ...prev, [key]: { ...prev[key], score, carried: false } }))
+  }
+  function setNote(key, note) {
+    setSymptoms((prev) => ({ ...prev, [key]: { ...prev[key], note, carried: false } }))
+  }
+
+  async function handleSave() {
+    if (saving) return
+    setSaving(true)
+    setError(null)
+    try {
+      // Nothing is confirmed until the database hands the row back. writeEntry
+      // throws if it doesn't.
+      const saved = await writeEntry({
+        entry_date: entryDate,
+        symptoms,
+        prompts,
+        free_text: freeText,
+        mode: showDetail ? 'full' : 'quick',
+      })
+      haptic.success()
+      onSaved(saved)
+    } catch (e) {
+      haptic.error()
+      setError(e.message || 'Could not save. Your entry is still here — try again.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const backdated = entryDate !== localDate()
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="flex-1 overflow-y-auto px-4 pb-4">
+        <div className="flex items-center justify-between py-3">
+          <div>
+            <h2 className="text-lg font-semibold text-[#1C1B1F]">{TODAY_LABEL(entryDate)}</h2>
+            <p className="text-xs text-[#79747E]">
+              {answered} of {total} recorded
+              {answered > reviewed && ` · ${answered - reviewed} carried over`}
+            </p>
+          </div>
+          <button onClick={onCancel} className="text-sm text-[#6750A4]">Close</button>
+        </div>
+
+        {backdated && (
+          <div className="mb-3 px-3 py-2 rounded-xl bg-[#FFF8E1] text-[#5D4037] text-xs leading-relaxed">
+            You're writing this for {TODAY_LABEL(entryDate).toLowerCase()}. The record will note
+            that it was written later — that keeps it honest as evidence.
+          </div>
+        )}
+
+        {SYMPTOM_GROUPS.map((group) => {
+          const open = openGroup === group.key
+          const done = group.symptoms.filter((s) => symptoms[s.key]?.score != null).length
+          return (
+            <div key={group.key} className="mb-2 rounded-2xl bg-white border border-[#CAC4D0] overflow-hidden">
+              <button
+                type="button"
+                onClick={() => { haptic.light(); setOpenGroup(open ? null : group.key) }}
+                className="w-full flex items-center justify-between px-4 py-3"
+              >
+                <span className="text-sm font-medium text-[#1C1B1F]">{group.title}</span>
+                <span className="text-xs text-[#79747E]">
+                  {done}/{group.symptoms.length}
+                  <span className={`inline-block ml-2 transition-transform ${open ? 'rotate-180' : ''}`}>▾</span>
+                </span>
+              </button>
+              {open && (
+                <div className="px-4 pb-2">
+                  {group.symptoms.map((s) => (
+                    <SymptomRow
+                      key={s.key}
+                      symptom={s}
+                      value={symptoms[s.key]}
+                      onScore={(v) => setScore(s.key, v)}
+                      onNote={(v) => setNote(s.key, v)}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          )
+        })}
+
+        {!showDetail ? (
+          <button
+            type="button"
+            onClick={() => { haptic.light(); setShowDetail(true) }}
+            className="w-full py-3 text-sm text-[#6750A4]"
+          >
+            + add reflections and notes
+          </button>
+        ) : (
+          <div className="mt-2 space-y-3">
+            {PROMPTS.map((p) => (
+              <div key={p.key}>
+                <label className="block text-xs text-[#49454F] mb-1">{p.question}</label>
+                <textarea
+                  rows={2}
+                  value={prompts[p.key] ?? ''}
+                  onChange={(e) => setPrompts((prev) => ({ ...prev, [p.key]: e.target.value }))}
+                  className="w-full text-sm px-3 py-2 rounded-xl border border-[#CAC4D0] bg-white text-[#1C1B1F]"
+                />
+              </div>
+            ))}
+            <div>
+              <label className="block text-xs text-[#49454F] mb-1">Anything else</label>
+              <textarea
+                rows={4}
+                value={freeText}
+                onChange={(e) => setFreeText(e.target.value)}
+                className="w-full text-sm px-3 py-2 rounded-xl border border-[#CAC4D0] bg-white text-[#1C1B1F]"
+              />
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="flex-shrink-0 px-4 py-3 border-t border-[#F3EDF7] bg-white">
+        {error && (
+          <div className="mb-2 px-3 py-2 rounded-xl bg-[#FCEEEE] text-[#8C1D18] text-xs leading-relaxed">
+            <strong>Not saved.</strong> {error}
+          </div>
+        )}
+        <button
+          onClick={handleSave}
+          disabled={saving || answered === 0}
+          className="w-full py-3 rounded-full bg-[#6750A4] text-white text-sm font-semibold disabled:opacity-40"
+        >
+          {saving ? 'Saving…' : existing ? 'Save changes' : 'Save entry'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ─── History list ─────────────────────────────────────────────────────────────
+
+function HistoryRow({ entry, date, onOpen }) {
+  const logged = !!entry
+  const avg = logged
+    ? (() => {
+        const vals = Object.entries(entry.symptoms ?? {})
+          .filter(([k, v]) => v?.score != null && !isInverted(k))
+          .map(([, v]) => v.score)
+        return vals.length ? (vals.reduce((a, b) => a + b, 0) / vals.length) : null
+      })()
+    : null
+
+  return (
+    <button
+      onClick={() => { haptic.light(); onOpen(date) }}
+      className="w-full flex items-center gap-3 py-3 border-b border-[#F3EDF7] text-left"
+    >
+      <span
+        className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${logged ? 'bg-[#6750A4]' : 'bg-[#E7E0EC]'}`}
+        aria-hidden
+      />
+      <span className="flex-1 min-w-0">
+        <span className="block text-sm text-[#1C1B1F]">{TODAY_LABEL(date)}</span>
+        <span className="block text-xs text-[#79747E]">
+          {logged
+            ? <>Logged{avg != null && ` · average ${avg.toFixed(1)}`}{isBackdated(entry) && ' · written later'}</>
+            : 'Not logged'}
+        </span>
+      </span>
+      {logged && entry.drive_status === 'failed' && (
+        <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#FCEEEE] text-[#8C1D18] flex-shrink-0">
+          Not filed
+        </span>
+      )}
+    </button>
+  )
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
+export default function Journal() {
+  const [entries, setEntries] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [editing, setEditing] = useState(null)   // { date, existing, previous }
+  const [days, setDays] = useState(30)
+
+  const refresh = useCallback(async () => {
+    try {
+      const rows = await readEntries({ limit: 400 })
+      setEntries(rows)
+      setError(null)
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    refresh()
+    const off = onJournalChanged(refresh)
+    const onFocus = () => { if (document.visibilityState === 'visible') refresh() }
+    window.addEventListener('visibilitychange', onFocus)
+    return () => { off(); window.removeEventListener('visibilitychange', onFocus) }
+  }, [refresh])
+
+  const byDate = useMemo(
+    () => Object.fromEntries(entries.map((e) => [e.entry_date, e])),
+    [entries]
+  )
+
+  const dates = useMemo(() => {
+    const out = []
+    let d = localDate()
+    for (let i = 0; i < days; i++) { out.push(d); d = shiftDate(d, -1) }
+    return out
+  }, [days])
+
+  const today = localDate()
+  const todayEntry = byDate[today]
+
+  async function openDate(date) {
+    // The previous entry seeds the form. Read fresh rather than trusting the
+    // list, so an edit made on another device is what gets carried forward.
+    let previous = null
+    for (let i = 1; i <= 14 && !previous; i++) {
+      previous = byDate[shiftDate(date, -i)] ?? null
+    }
+    let existing = byDate[date] ?? null
+    try { existing = (await readEntry(date)) ?? existing } catch { /* fall back to the list copy */ }
+    setEditing({ date, existing, previous })
+  }
+
+  if (editing) {
+    return (
+      <EntryForm
+        entryDate={editing.date}
+        existing={editing.existing}
+        previous={editing.previous}
+        onSaved={() => { setEditing(null); refresh() }}
+        onCancel={() => setEditing(null)}
+      />
+    )
+  }
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="bg-[#F3EDF7] px-4 pt-4 pb-3 flex-shrink-0">
+        <h1 className="text-lg font-semibold text-[#1C1B1F]">Journal</h1>
+        <p className="text-xs text-[#79747E]">Daily symptom record</p>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-4">
+        {error && (
+          <div className="my-3 px-3 py-2 rounded-xl bg-[#FCEEEE] text-[#8C1D18] text-xs">
+            Couldn't load your entries: {error}
+          </div>
+        )}
+
+        <button
+          onClick={() => openDate(today)}
+          className="w-full my-3 py-3.5 rounded-2xl bg-[#6750A4] text-white text-sm font-semibold"
+        >
+          {todayEntry ? "Edit today's entry" : 'Log today'}
+        </button>
+
+        {loading ? (
+          <p className="text-sm text-[#79747E] py-4">Loading…</p>
+        ) : (
+          <>
+            {dates.map((d) => (
+              <HistoryRow key={d} date={d} entry={byDate[d]} onOpen={openDate} />
+            ))}
+            {days < 365 && (
+              <button
+                onClick={() => setDays((n) => (n < 90 ? 90 : n < 180 ? 180 : 365))}
+                className="w-full py-4 text-sm text-[#6750A4]"
+              >
+                Show more
+              </button>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
