@@ -127,6 +127,30 @@ document, trends charts and the evening reminder push — see the newest changel
 
 ## Recent significant changes (newest first)
 
+- **2026-08-15 — Trackers were blocked by a disabled Sheets API, and the app blamed the wrong thing.**
+  The trackers shipped and immediately failed live with *"Google refused the request — reconnect
+  Google in Settings to grant Sheets access."* **The grant was never the problem.** The stored token
+  was verified in `app_data` to carry `spreadsheets.readonly`, and a direct call to the Sheets API
+  with that exact token returned the real cause: **403 `SERVICE_DISABLED` — the Google Sheets API
+  had never been enabled on Cloud project 1096995773348.** Same blocker, same project, same shape as
+  the Drive API in journal phase 1b.
+  **The defect was mine, not the setup.** `sheetsFetchGrid`/`sheetsFetchTitles` mapped *any* 401/403
+  to `needsReconsent`, so a disabled API — which no reconnect can ever fix — was reported as a
+  permissions problem. The user reconnected twice, each time correctly, and nothing changed.
+  **Fix:** new `googleApiError()` in `api/_lib/google.js` is now the single error builder for Drive
+  and Sheets alike, and it separates the two 403s on Google's own `details[].reason ===
+  'SERVICE_DISABLED'` (paired with `status === 'PERMISSION_DENIED'`). A disabled API sets
+  `serviceDisabled` and `needsReconsent: false`, keeps Google's message, and returns the activation
+  URL — which names the project, so there is no guessing which one. The tracker card renders that as
+  an **Enable the Sheets API** button and suppresses the reconnect link; a genuine missing scope is
+  unchanged and still offers the reconnect.
+  The URL is passed through `safeGoogleUrl()` (https + a Google console host, else null) because it
+  ends up in an `href`. It is also left inside the message string, so text-only callers like the
+  journal don't lose the one thing that fixes the problem.
+  Fixture-tested against the **verbatim** 403 body Google returned, 13 assertions.
+  **Lesson worth keeping: diagnose from the API, not from the error text.** One authenticated call
+  with the stored token named the cause in seconds, after two reconnect cycles had told us nothing.
+
 - **2026-08-15 — Google Sheets trackers: one reusable component, four configured instances.**
   Four self-updating sheets (house search, medical, car values, pub-to-home) now render inside the
   app. Adding a fifth should mean adding a config object to `src/lib/trackers.js` and nothing else.
@@ -676,6 +700,15 @@ document, trends charts and the evening reminder push — see the newest changel
 - **`values.get` silently drops hyperlinks.** Any Sheets read that needs a link must use
   `spreadsheets.get` with `includeGridData=true`; the display text comes back either way, so the
   loss is invisible until someone notices a dead "View document". See `api/_lib/google.js`.
+- **A Google 403 has two completely different causes, and only one is fixed by reconnecting.**
+  A missing scope and a *disabled API* both answer 403. Telling the user to reconnect for a disabled
+  API sends them round a loop that cannot terminate — it happened with Drive, then again with Sheets.
+  Always split them on `error.details[].reason === 'SERVICE_DISABLED'` via `googleApiError()`, and
+  when a Google call fails unexpectedly, **make the call yourself with the stored token** rather than
+  reasoning about the app's error message: Google's own body names the project and the fix.
+- **Enabling a Google API is user-side Cloud Console work, and it is invisible from here.** Scope
+  granted ≠ API enabled. Both Drive (journal 1b) and Sheets (trackers) shipped correct and inert
+  until the API was switched on for Cloud project 1096995773348.
 - **`drive.file` cannot read files the app did not create.** It is per-file, not per-Drive. Reading
   an existing user-made file needs a different scope (`spreadsheets.readonly` here) — and the
   failure mode is a 404 that looks exactly like a wrong file id.

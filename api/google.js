@@ -105,9 +105,15 @@ async function sheet(req, res) {
     })
   } catch (err) {
     console.warn('[google] sheet read failed:', err.status, err.message)
+    // Only offer a reconnect when a reconnect is actually the fix. A disabled
+    // Sheets API also answers 403, and telling the user to reconnect for that
+    // sends them round a loop that can never work — so Google's own message,
+    // which names the project and carries the activation URL, is passed through.
     return res.status(200).json({
       ok: false,
       needsReconsent: !!err.needsReconsent,
+      serviceDisabled: !!err.serviceDisabled,
+      activationUrl: err.activationUrl ?? null,
       error: err.needsReconsent
         ? 'Google refused the request — reconnect Google in Settings to grant Sheets access.'
         : err.message,

@@ -98,7 +98,28 @@ export default function TrackerView() {
 
         {state.ok === false && (
           <div className="my-3 px-3 py-2.5 rounded-xl bg-[#FCEEEE] text-[#8C1D18] text-xs leading-relaxed break-words">
-            <strong>Couldn't load this tracker.</strong> {state.error}
+            <strong>Couldn't load this tracker.</strong>{' '}
+            {/* A disabled API and a missing scope both arrive as 403, and only
+                one of them is fixed by reconnecting. Showing the wrong remedy
+                costs real time, so each states its own. */}
+            {state.serviceDisabled
+              ? 'The Google Sheets API is switched off for your Google Cloud project, so Google is refusing to read any spreadsheet. Reconnecting will not help — the API has to be turned on.'
+              : state.error}
+            {state.serviceDisabled && state.activationUrl && (
+              <div className="mt-2">
+                <a
+                  href={state.activationUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-block font-semibold px-3 py-1.5 rounded-full bg-[#8C1D18] text-white"
+                >
+                  Enable the Sheets API ↗
+                </a>
+                <p className="mt-1.5 text-[10px]">
+                  Press Enable on that page, give it a minute or two, then tap Update.
+                </p>
+              </div>
+            )}
             {state.needsReconsent && (
               <div className="mt-1.5">
                 <a href="/api/google?return=/" className="underline font-semibold">Reconnect Google</a>

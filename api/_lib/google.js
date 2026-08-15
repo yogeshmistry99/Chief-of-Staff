@@ -104,6 +104,62 @@ export async function getAccessToken(sb, stored) {
   return data.access_token
 }
 
+// ─── Errors ───────────────────────────────────────────────────────────────────
+
+// An https Google Cloud Console URL, or null. Anything else is discarded rather
+// than passed to the client, so a malformed or unexpected value can never reach
+// an anchor's href.
+export function safeGoogleUrl(raw) {
+  try {
+    const u = new URL(String(raw))
+    const ok = u.protocol === 'https:'
+      && (u.hostname === 'console.developers.google.com' || u.hostname === 'console.cloud.google.com')
+    return ok ? u.toString() : null
+  } catch {
+    return null
+  }
+}
+
+// Build the error for a failed Google API call.
+//
+// THE POINT OF THIS IS TELLING TWO 403s APART, and getting it wrong costs real
+// time. A 403 usually means the stored grant is missing a scope, which a
+// reconnect fixes. But Google also returns 403 when the API itself has never
+// been enabled on the Cloud project — and no amount of reconnecting will ever
+// fix that. Reporting the second as the first sends the user round a loop that
+// cannot terminate; that happened here, twice, on 2026-08-15 with the Sheets
+// API, and again earlier with Drive.
+//
+// SERVICE_DISABLED is the discriminator, and Google hands it over explicitly in
+// `error.details[].reason` along with an activation URL. Keep that URL: it is
+// the whole fix, and it names the project so there is no guessing which one.
+export function googleApiError(res, data, fallback) {
+  const err = data?.error
+  const detail = (err?.details ?? []).find((d) => d?.reason === 'SERVICE_DISABLED')
+  const serviceDisabled = err?.status === 'PERMISSION_DENIED' && !!detail
+
+  if (serviceDisabled) {
+    const name = detail.metadata?.serviceTitle ?? 'This Google API'
+    // The URL is rendered as a link, so it is validated rather than trusted.
+    // It arrives from Google's own authenticated API, but a bare string going
+    // into an anchor deserves a host check regardless of where it came from.
+    const url = safeGoogleUrl(detail.metadata?.activationUrl)
+    return Object.assign(
+      // The URL stays in the message as well as being returned structurally:
+      // callers that only render error text (the journal) would otherwise lose
+      // the one thing that fixes the problem.
+      new Error(`${name} is not enabled on your Google Cloud project. Enable it here, then retry: ${url ?? '(see Google Cloud Console)'}`),
+      { status: res.status, serviceDisabled: true, activationUrl: url, needsReconsent: false },
+    )
+  }
+
+  return Object.assign(new Error(err?.message ?? data?.raw ?? fallback ?? `Google returned ${res.status}`), {
+    status: res.status,
+    serviceDisabled: false,
+    needsReconsent: res.status === 401 || res.status === 403,
+  })
+}
+
 // ─── Drive ────────────────────────────────────────────────────────────────────
 
 const DRIVE = 'https://www.googleapis.com/drive/v3'
@@ -147,14 +203,9 @@ async function driveRequest(url, { token, method, metadata, html }) {
   const text = await res.text()
   let data
   try { data = text ? JSON.parse(text) : {} } catch { data = { raw: text } }
-  if (!res.ok) {
-    const msg = data?.error?.message ?? data.raw ?? `Drive returned ${res.status}`
-    throw Object.assign(new Error(msg), {
-      status: res.status,
-      // 403 insufficient scope means the stored grant predates the Drive scope.
-      needsReconsent: res.status === 401 || res.status === 403,
-    })
-  }
+  // 403 here is usually a grant predating the Drive scope — but not always; see
+  // googleApiError, which separates that from the Drive API being switched off.
+  if (!res.ok) throw googleApiError(res, data, `Drive returned ${res.status}`)
   return data
 }
 
@@ -235,16 +286,11 @@ export async function sheetsFetchGrid(token, spreadsheetId, ranges = []) {
   let data
   try { data = text ? JSON.parse(text) : {} } catch { data = { raw: text } }
 
-  if (!res.ok) {
-    const msg = data?.error?.message ?? data.raw ?? `Sheets returned ${res.status}`
-    throw Object.assign(new Error(msg), {
-      status: res.status,
-      // 403 is normally a missing scope; 404 on a real id usually means the same
-      // thing, because a grant that cannot see the file is indistinguishable
-      // from the file not existing.
-      needsReconsent: res.status === 401 || res.status === 403,
-    })
-  }
+  // 403 is normally a missing scope, and 404 on a real id usually means the same
+  // thing (a grant that cannot see a file is indistinguishable from the file not
+  // existing) — but a 403 can also be the Sheets API being disabled outright,
+  // which a reconnect cannot fix. googleApiError tells them apart.
+  if (!res.ok) throw googleApiError(res, data, `Sheets returned ${res.status}`)
   return data
 }
 
@@ -261,13 +307,7 @@ export async function sheetsFetchTitles(token, spreadsheetId) {
   const text = await res.text()
   let data
   try { data = text ? JSON.parse(text) : {} } catch { data = { raw: text } }
-  if (!res.ok) {
-    const msg = data?.error?.message ?? data.raw ?? `Sheets returned ${res.status}`
-    throw Object.assign(new Error(msg), {
-      status: res.status,
-      needsReconsent: res.status === 401 || res.status === 403,
-    })
-  }
+  if (!res.ok) throw googleApiError(res, data, `Sheets returned ${res.status}`)
   return {
     title: data?.properties?.title ?? null,
     titles: (data?.sheets ?? []).map((s) => s?.properties?.title).filter(Boolean),
