@@ -128,6 +128,24 @@ evening reminder push — see the newest changelog entries)
 
 ## Recent significant changes (newest first)
 
+- **2026-08-15 — White screen on load (my regression), and the render-test layer that was missing.**
+  The filters commit took the **whole app** to the error boundary with *"Cannot access 'p' before
+  initialization"*. Cause: the selection-clearing `useEffect` sat **above** `const rows`, and a
+  hook's **dependency array is evaluated during render**, not deferred with the callback — so
+  `[rows, selected]` hit the temporal dead zone. Minification renamed `rows` to `p`, which is why
+  the message named nothing useful. Fixed by moving the effect below the `rows` useMemo.
+  **`vite build` cannot see this, and neither can a pure-function test** — which is the gap that let
+  it ship, and the third tracker fault in a row to pass both. `vitest` + Testing Library + jsdom
+  were **already installed and configured** with exactly one test in the repo; there was no `npm
+  test` script. Added one, plus `src/pages/TrackerView.test.jsx`: 8 render tests over a **real
+  fixture slice of the live Property Register** (real headers, rows and hyperlinks), covering the
+  collapse toggle, filtering driving the table rather than just the count, clear-all, and the
+  disabled-API vs missing-scope error branches showing the right remedy.
+  **The guard is proven, not assumed:** reintroducing the exact fault fails all 8 with
+  `ReferenceError: Cannot access 'rows' before initialization`; removing it passes all 8.
+  **Any new tracker or chat surface should get a render test** — this project's recurring failure is
+  code that builds clean and breaks in a browser nobody here can reach.
+
 - **2026-08-15 — Tracker filtering, and the House table collapsed by default.** 184 rows buried the
   chart that is the point of the House tracker, so its table now opens on demand
   (`tableCollapsed` in config). **Conditional render, not a max-height clamp** — the clamped drawers
@@ -729,6 +747,13 @@ evening reminder push — see the newest changelog entries)
   write that was never attempted (200, clean logs, no row). `runTool` in `api/claude.js` logs both.
 - **In-app Head chats cannot set task categories** — their task tools don't expose the field. Use the MCP (via Claude.ai) to set categories.
 - **`*.vercel.app` and direct Supabase HTTP are egress-blocked from the sandbox.** To trigger an `/api/*` endpoint, open the URL in a browser; to read Supabase, use the Supabase MCP tools. Don't conclude "capability unavailable" — it works from the app/browser and via MCP, just not via raw HTTP from here.
+- **A hook's dependency array is evaluated DURING render.** Referencing a `const` declared further
+  down the component throws "Cannot access 'x' before initialization" and takes the whole app to the
+  error boundary — and minification renames the variable, so the message names nothing useful. Keep
+  every `useEffect`/`useMemo` below the values it depends on.
+- **Run `npm test` — there IS a render-test layer now.** `vitest` + Testing Library + jsdom were
+  installed and configured all along with one lone test and no script. Build-only verification has
+  now missed three separate faults that a render test catches in seconds. Any new screen gets one.
 - **`node_modules` can be reclaimed mid-session** (disk allowance). If `vite: not found`, run `npm install` before building.
 - **The journal has NO local cache and NO offline queue — that is deliberate, not an omission.**
   A cached entry that looks saved but isn't, or a queued write replayed later over a newer edit,

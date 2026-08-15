@@ -1,0 +1,1452 @@
+{
+ "title": "Property Register",
+ "headers": [
+  "ID",
+  "Area group",
+  "Address / listing location",
+  "Postcode",
+  "Asking price",
+  "Floor area (sq ft)",
+  "£/sq ft",
+  "Floor-area basis",
+  "Property type",
+  "Listing status",
+  "Parking evidence",
+  "Decision status",
+  "Decision notes",
+  "Clean chart?",
+  "Source URL",
+  "Verified",
+  "Notes",
+  "Quality grade",
+  "Secondary source",
+  "Validation / special flag",
+  "Bathrooms",
+  "Tenure",
+  "EPC",
+  "Council tax",
+  "Listing / change date",
+  "Agent",
+  "Garden / plot",
+  "Parking type"
+ ],
+ "groups": [],
+ "rows": [
+  {
+   "sheetRow": 5,
+   "group": null,
+   "cells": [
+    {
+     "text": "P001",
+     "url": null
+    },
+    {
+     "text": "Langley",
+     "url": null
+    },
+    {
+     "text": "Cherry Avenue, Langley",
+     "url": null
+    },
+    {
+     "text": "SL3",
+     "url": null
+    },
+    {
+     "text": "£575,000",
+     "url": null
+    },
+    {
+     "text": "1,060",
+     "url": null
+    },
+    {
+     "text": "£542",
+     "url": null
+    },
+    {
+     "text": "Exact total stated",
+     "url": null
+    },
+    {
+     "text": "Semi-Detached",
+     "url": null
+    },
+    {
+     "text": "Available",
+     "url": null
+    },
+    {
+     "text": "Driveway + detached garage",
+     "url": null
+    },
+    {
+     "text": "Unreviewed",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "Yes",
+     "url": null
+    },
+    {
+     "text": "https://www.rightmove.co.uk/properties/89883771",
+     "url": "https://www.rightmove.co.uk/properties/89883771"
+    },
+    {
+     "text": "2026-08-13",
+     "url": null
+    },
+    {
+     "text": "Reduced 14/07/2026",
+     "url": null
+    },
+    {
+     "text": "B",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "Exact published area; live listing checked",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    }
+   ]
+  },
+  {
+   "sheetRow": 6,
+   "group": null,
+   "cells": [
+    {
+     "text": "P002",
+     "url": null
+    },
+    {
+     "text": "Langley",
+     "url": null
+    },
+    {
+     "text": "Hillary Road, Langley",
+     "url": null
+    },
+    {
+     "text": "SL3",
+     "url": null
+    },
+    {
+     "text": "£674,950",
+     "url": null
+    },
+    {
+     "text": "1,411",
+     "url": null
+    },
+    {
+     "text": "£478",
+     "url": null
+    },
+    {
+     "text": "Exact total stated",
+     "url": null
+    },
+    {
+     "text": "Semi-Detached",
+     "url": null
+    },
+    {
+     "text": "Under Offer",
+     "url": null
+    },
+    {
+     "text": "Driveway",
+     "url": null
+    },
+    {
+     "text": "Unreviewed",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "Yes",
+     "url": null
+    },
+    {
+     "text": "https://www.rightmove.co.uk/properties/89841585",
+     "url": "https://www.rightmove.co.uk/properties/89841585"
+    },
+    {
+     "text": "2026-08-13",
+     "url": null
+    },
+    {
+     "text": "Under offer at verification",
+     "url": null
+    },
+    {
+     "text": "B",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "Under offer; area retained",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    }
+   ]
+  },
+  {
+   "sheetRow": 7,
+   "group": null,
+   "cells": [
+    {
+     "text": "P003",
+     "url": null
+    },
+    {
+     "text": "Langley",
+     "url": null
+    },
+    {
+     "text": "Parlaunt Road, Langley",
+     "url": null
+    },
+    {
+     "text": "SL3",
+     "url": null
+    },
+    {
+     "text": "£425,000",
+     "url": null
+    },
+    {
+     "text": "1,100",
+     "url": null
+    },
+    {
+     "text": "£386",
+     "url": null
+    },
+    {
+     "text": "Lower bound: 'over 1,100 sq ft'",
+     "url": null
+    },
+    {
+     "text": "Terraced",
+     "url": null
+    },
+    {
+     "text": "Available",
+     "url": null
+    },
+    {
+     "text": "Rear parking for two cars",
+     "url": null
+    },
+    {
+     "text": "Unreviewed",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "No",
+     "url": null
+    },
+    {
+     "text": "https://www.rightmove.co.uk/properties/91576620",
+     "url": "https://www.rightmove.co.uk/properties/91576620"
+    },
+    {
+     "text": "2026-08-13",
+     "url": null
+    },
+    {
+     "text": "Lower-bound floor area; excluded from clean chart",
+     "url": null
+    },
+    {
+     "text": "C",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "Lower-bound 'over' area; excluded from clean plot",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    }
+   ]
+  },
+  {
+   "sheetRow": 8,
+   "group": null,
+   "cells": [
+    {
+     "text": "P004",
+     "url": null
+    },
+    {
+     "text": "Upton",
+     "url": null
+    },
+    {
+     "text": "Quaves Road, Upton Court / Langley",
+     "url": null
+    },
+    {
+     "text": "SL3",
+     "url": null
+    },
+    {
+     "text": "£900,000",
+     "url": null
+    },
+    {
+     "text": "1,614",
+     "url": null
+    },
+    {
+     "text": "£558",
+     "url": null
+    },
+    {
+     "text": "Stated in key features",
+     "url": null
+    },
+    {
+     "text": "Detached",
+     "url": null
+    },
+    {
+     "text": "Available",
+     "url": null
+    },
+    {
+     "text": "Integral garage + driveway for 2",
+     "url": null
+    },
+    {
+     "text": "Unreviewed",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "No",
+     "url": null
+    },
+    {
+     "text": "https://www.rightmove.co.uk/properties/89432553",
+     "url": "https://www.rightmove.co.uk/properties/89432553"
+    },
+    {
+     "text": "2026-08-13",
+     "url": null
+    },
+    {
+     "text": "Rightmove size field says Ask agent; 1,614 sq ft stated in key features",
+     "url": null
+    },
+    {
+     "text": "C",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "Area only in marketing/key features; structured field Ask agent",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    }
+   ]
+  },
+  {
+   "sheetRow": 9,
+   "group": null,
+   "cells": [
+    {
+     "text": "P005",
+     "url": null
+    },
+    {
+     "text": "Slough (Other)",
+     "url": null
+    },
+    {
+     "text": "Goodman Park, Slough",
+     "url": null
+    },
+    {
+     "text": "SL2",
+     "url": null
+    },
+    {
+     "text": "£475,000",
+     "url": null
+    },
+    {
+     "text": "1,076",
+     "url": null
+    },
+    {
+     "text": "£441",
+     "url": null
+    },
+    {
+     "text": "Exact total stated",
+     "url": null
+    },
+    {
+     "text": "End Terrace",
+     "url": null
+    },
+    {
+     "text": "Available",
+     "url": null
+    },
+    {
+     "text": "Large driveway + allocated parking",
+     "url": null
+    },
+    {
+     "text": "Unreviewed",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "Yes",
+     "url": null
+    },
+    {
+     "text": "https://www.rightmove.co.uk/properties/90413325",
+     "url": "https://www.rightmove.co.uk/properties/90413325"
+    },
+    {
+     "text": "2026-08-13",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "B",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    }
+   ]
+  },
+  {
+   "sheetRow": 10,
+   "group": null,
+   "cells": [
+    {
+     "text": "P006",
+     "url": null
+    },
+    {
+     "text": "Slough (Other)",
+     "url": null
+    },
+    {
+     "text": "Keel Drive, Slough",
+     "url": null
+    },
+    {
+     "text": "SL1",
+     "url": null
+    },
+    {
+     "text": "£500,000",
+     "url": null
+    },
+    {
+     "text": "910",
+     "url": null
+    },
+    {
+     "text": "£549",
+     "url": null
+    },
+    {
+     "text": "Exact total stated",
+     "url": null
+    },
+    {
+     "text": "Terraced",
+     "url": null
+    },
+    {
+     "text": "Available",
+     "url": null
+    },
+    {
+     "text": "Ample off-street parking + EV charger",
+     "url": null
+    },
+    {
+     "text": "Unreviewed",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "Yes",
+     "url": null
+    },
+    {
+     "text": "https://www.rightmove.co.uk/properties/173592650",
+     "url": "https://www.rightmove.co.uk/properties/173592650"
+    },
+    {
+     "text": "2026-08-13",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "B",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    }
+   ]
+  },
+  {
+   "sheetRow": 11,
+   "group": null,
+   "cells": [
+    {
+     "text": "P007",
+     "url": null
+    },
+    {
+     "text": "Datchet",
+     "url": null
+    },
+    {
+     "text": "Link Road, Datchet",
+     "url": null
+    },
+    {
+     "text": "SL3",
+     "url": null
+    },
+    {
+     "text": "£525,000",
+     "url": null
+    },
+    {
+     "text": "1,054",
+     "url": null
+    },
+    {
+     "text": "£498",
+     "url": null
+    },
+    {
+     "text": "Approx. total stated in description",
+     "url": null
+    },
+    {
+     "text": "Semi-Detached",
+     "url": null
+    },
+    {
+     "text": "Available",
+     "url": null
+    },
+    {
+     "text": "Private / ample driveway",
+     "url": null
+    },
+    {
+     "text": "Unreviewed",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "No",
+     "url": null
+    },
+    {
+     "text": "https://www.rightmove.co.uk/properties/89489223",
+     "url": "https://www.rightmove.co.uk/properties/89489223"
+    },
+    {
+     "text": "2026-08-13",
+     "url": null
+    },
+    {
+     "text": "Rightmove size field says Ask agent; description states approx. 1,054 sq ft",
+     "url": null
+    },
+    {
+     "text": "C",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "Approximate description area; excluded from clean plot",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    }
+   ]
+  },
+  {
+   "sheetRow": 12,
+   "group": null,
+   "cells": [
+    {
+     "text": "P008",
+     "url": null
+    },
+    {
+     "text": "Datchet",
+     "url": null
+    },
+    {
+     "text": "Astracot / Horton Road, Datchet Village",
+     "url": null
+    },
+    {
+     "text": "SL3",
+     "url": null
+    },
+    {
+     "text": "£855,000",
+     "url": null
+    },
+    {
+     "text": "1,878",
+     "url": null
+    },
+    {
+     "text": "£455",
+     "url": null
+    },
+    {
+     "text": "Exact total stated",
+     "url": null
+    },
+    {
+     "text": "Character Property",
+     "url": null
+    },
+    {
+     "text": "Available",
+     "url": null
+    },
+    {
+     "text": "Gated/gravel driveway + rear parking",
+     "url": null
+    },
+    {
+     "text": "Unreviewed",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "Yes",
+     "url": null
+    },
+    {
+     "text": "https://www.rightmove.co.uk/properties/89766543",
+     "url": "https://www.rightmove.co.uk/properties/89766543"
+    },
+    {
+     "text": "2026-08-13",
+     "url": null
+    },
+    {
+     "text": "Grade II listed",
+     "url": null
+    },
+    {
+     "text": "B",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "Exact published area",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    }
+   ]
+  },
+  {
+   "sheetRow": 13,
+   "group": null,
+   "cells": [
+    {
+     "text": "P009",
+     "url": null
+    },
+    {
+     "text": "Iver",
+     "url": null
+    },
+    {
+     "text": "Swallow Street, Iver Heath",
+     "url": null
+    },
+    {
+     "text": "SL0",
+     "url": null
+    },
+    {
+     "text": "£595,000",
+     "url": null
+    },
+    {
+     "text": "1,176",
+     "url": null
+    },
+    {
+     "text": "£506",
+     "url": null
+    },
+    {
+     "text": "Approx. stated; includes outbuilding/study",
+     "url": null
+    },
+    {
+     "text": "Semi-Detached",
+     "url": null
+    },
+    {
+     "text": "Available",
+     "url": null
+    },
+    {
+     "text": "Driveway parking",
+     "url": null
+    },
+    {
+     "text": "Unreviewed",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "No",
+     "url": null
+    },
+    {
+     "text": "https://www.rightmove.co.uk/properties/89830500",
+     "url": "https://www.rightmove.co.uk/properties/89830500"
+    },
+    {
+     "text": "2026-08-13",
+     "url": null
+    },
+    {
+     "text": "Area includes substantial outbuilding / detached garden study",
+     "url": null
+    },
+    {
+     "text": "C",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "Area includes outbuilding/study; excluded from clean plot",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    }
+   ]
+  },
+  {
+   "sheetRow": 14,
+   "group": null,
+   "cells": [
+    {
+     "text": "P010",
+     "url": null
+    },
+    {
+     "text": "Iver",
+     "url": null
+    },
+    {
+     "text": "The Parkway, Iver",
+     "url": null
+    },
+    {
+     "text": "SL0",
+     "url": null
+    },
+    {
+     "text": "£650,000",
+     "url": null
+    },
+    {
+     "text": "1,338",
+     "url": null
+    },
+    {
+     "text": "£486",
+     "url": null
+    },
+    {
+     "text": "Approx. stated; includes garage",
+     "url": null
+    },
+    {
+     "text": "Semi-Detached",
+     "url": null
+    },
+    {
+     "text": "Available",
+     "url": null
+    },
+    {
+     "text": "Garage + ample driveway",
+     "url": null
+    },
+    {
+     "text": "Unreviewed",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "No",
+     "url": null
+    },
+    {
+     "text": "https://www.rightmove.co.uk/properties/171264974",
+     "url": "https://www.rightmove.co.uk/properties/171264974"
+    },
+    {
+     "text": "2026-08-13",
+     "url": null
+    },
+    {
+     "text": "Area includes garage",
+     "url": null
+    },
+    {
+     "text": "C",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "Area includes garage; excluded from clean plot",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    }
+   ]
+  },
+  {
+   "sheetRow": 15,
+   "group": null,
+   "cells": [
+    {
+     "text": "P011",
+     "url": null
+    },
+    {
+     "text": "Iver",
+     "url": null
+    },
+    {
+     "text": "Colborne Close, Iver Heath",
+     "url": null
+    },
+    {
+     "text": "SL0",
+     "url": null
+    },
+    {
+     "text": "£620,000",
+     "url": null
+    },
+    {
+     "text": "1,142",
+     "url": null
+    },
+    {
+     "text": "£543",
+     "url": null
+    },
+    {
+     "text": "Internal area stated",
+     "url": null
+    },
+    {
+     "text": "Semi-Detached",
+     "url": null
+    },
+    {
+     "text": "Available",
+     "url": null
+    },
+    {
+     "text": "Two allocated spaces / driveway",
+     "url": null
+    },
+    {
+     "text": "Unreviewed",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "Yes",
+     "url": null
+    },
+    {
+     "text": "https://www.rightmove.co.uk/properties/89595450",
+     "url": "https://www.rightmove.co.uk/properties/89595450"
+    },
+    {
+     "text": "2026-08-13",
+     "url": null
+    },
+    {
+     "text": "Built 2016",
+     "url": null
+    },
+    {
+     "text": "B",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "Internal area stated",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    }
+   ]
+  },
+  {
+   "sheetRow": 16,
+   "group": null,
+   "cells": [
+    {
+     "text": "P012",
+     "url": null
+    },
+    {
+     "text": "Burnham",
+     "url": null
+    },
+    {
+     "text": "Stanhope Road, Burnham",
+     "url": null
+    },
+    {
+     "text": "SL1",
+     "url": null
+    },
+    {
+     "text": "£399,995",
+     "url": null
+    },
+    {
+     "text": "825",
+     "url": null
+    },
+    {
+     "text": "£485",
+     "url": null
+    },
+    {
+     "text": "Exact total stated",
+     "url": null
+    },
+    {
+     "text": "Terraced",
+     "url": null
+    },
+    {
+     "text": "Sold STC",
+     "url": null
+    },
+    {
+     "text": "Driveway for 2 cars",
+     "url": null
+    },
+    {
+     "text": "Unreviewed",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "Yes",
+     "url": null
+    },
+    {
+     "text": "https://www.rightmove.co.uk/properties/87517704",
+     "url": "https://www.rightmove.co.uk/properties/87517704"
+    },
+    {
+     "text": "2026-08-13",
+     "url": null
+    },
+    {
+     "text": "Sold STC at verification",
+     "url": null
+    },
+    {
+     "text": "B",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "Sold STC",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    },
+    {
+     "text": "",
+     "url": null
+    }
+   ]
+  }
+ ]
+}
