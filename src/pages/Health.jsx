@@ -68,8 +68,13 @@ function Card({ title, children }) {
   )
 }
 
-export default function Health() {
+// `active` says whether this is actually on screen. It lives inside the Health
+// bucket now, where being mounted says nothing about being visible — BucketDetail
+// keeps all its tabs mounted and hides the inactive ones. Left undefined, the
+// route decides, which is how the standalone /health path still behaves.
+export default function Health({ active, embedded = false }) {
   const { pathname } = useLocation()
+  const visible = active ?? pathname === '/health'
   const [state, setState] = useState({ loading: true })
   const [open, setOpen] = useState(null)   // which ring's detail is expanded
   const fetched = useRef(false)
@@ -90,10 +95,10 @@ export default function Health() {
   // referencing a `const` declared below it white-screens the app while building
   // perfectly clean. That has happened here before.
   useEffect(() => {
-    if (pathname !== '/health' || fetched.current) return
+    if (!visible || fetched.current) return
     fetched.current = true
     load()
-  }, [pathname, load])
+  }, [visible, load])
 
   const metrics = state.metrics ?? {}
   const sleep = metrics.sleep
@@ -110,19 +115,30 @@ export default function Health() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="bg-[#F3EDF7] px-4 pt-4 pb-3 flex-shrink-0">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h1 className="text-lg font-semibold text-[#1C1B1F] leading-tight">Health</h1>
-            <p className="text-xs text-[#79747E]">
-              {state.date ? new Date(`${state.date}T00:00:00`).toLocaleDateString('en-GB', {
-                weekday: 'long', day: 'numeric', month: 'long',
-              }) : 'Today'}
-            </p>
+      <div className={embedded ? 'px-1 pb-2 flex-shrink-0' : 'bg-[#F3EDF7] px-4 pt-4 pb-3 flex-shrink-0'}>
+        {/* Inside the Health bucket the page title would repeat the bucket's own
+            header, so only the date and the Update control carry over. */}
+        {!embedded && (
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h1 className="text-lg font-semibold text-[#1C1B1F] leading-tight">Health</h1>
+              <p className="text-xs text-[#79747E]">
+                {state.date ? new Date(`${state.date}T00:00:00`).toLocaleDateString('en-GB', {
+                  weekday: 'long', day: 'numeric', month: 'long',
+                }) : 'Today'}
+              </p>
+            </div>
           </div>
-        </div>
+        )}
 
-        <div className="flex items-center gap-3 mt-2">
+        <div className={`flex items-center gap-3 ${embedded ? '' : 'mt-2'}`}>
+          {embedded && state.date && (
+            <span className="text-xs text-[#79747E] mr-auto">
+              {new Date(`${state.date}T00:00:00`).toLocaleDateString('en-GB', {
+                weekday: 'long', day: 'numeric', month: 'long',
+              })}
+            </span>
+          )}
           <button
             onClick={() => { haptic.light(); load() }}
             disabled={state.loading}

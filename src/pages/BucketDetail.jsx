@@ -11,6 +11,7 @@ import { sendMessageStream, sendMessage, SYSTEM_PROMPTS, REFRESH_PROMPTS, histor
 import { loadHeadConfig } from '../lib/headConfig'
 import { getNotifications, getNotificationsForTask, saveNotifications, clearNotificationsForSource, dismissNotification, acceptNotification } from '../lib/notifications'
 import NotificationCard, { notifDotClass } from '../components/NotificationCard'
+import Health from './Health'
 import { haptic } from '../lib/haptic'
 import Markdown from '../components/Markdown'
 import ChatInput from '../components/ChatInput'
@@ -1069,6 +1070,9 @@ export default function BucketDetail() {
             <div className="flex gap-0">
               {[
                 { id: 'tasks', label: 'Tasks' },
+                // Today's wearable data, in the bucket it belongs to rather than
+                // as its own place in the bottom nav. Health only.
+                ...(bucket === 'Health' ? [{ id: 'health', label: 'Today' }] : []),
                 { id: 'head', label: 'Head' },
                 { id: 'discussions', label: 'Discuss' },
               ].map(({ id, label }) => (
@@ -1089,8 +1093,17 @@ export default function BucketDetail() {
         })()}
       </div>
 
-      {/* Tab content — all three stay mounted; only active one is visible */}
+      {/* Tab content — all stay mounted; only the active one is visible */}
       <div className="flex-1 overflow-hidden relative">
+        {/* Health only. Mounted alongside the others, so it is handed `active`
+            rather than inferring visibility — being mounted here says nothing
+            about being on screen, and without this it would call Google every
+            time the Health bucket was opened for any reason. */}
+        {bucket === 'Health' && (
+          <div className={`absolute inset-0 overflow-y-auto px-3 pt-3 ${tab === 'health' ? '' : 'invisible pointer-events-none'}`}>
+            <Health active={tab === 'health'} embedded />
+          </div>
+        )}
         <div className={`absolute inset-0 overflow-y-auto ${tab === 'tasks' ? '' : 'invisible pointer-events-none'}`}>
           {loadError
             ? <p className="px-4 pt-6 text-sm text-red-500">Could not load tasks — {loadError}</p>

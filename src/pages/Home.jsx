@@ -7,7 +7,6 @@ import { getNotificationsForTask, dismissNotification, acceptNotification } from
 import NotificationCard, { notifDotClass } from '../components/NotificationCard'
 import { prioritise, scoreTask } from '../lib/priority'
 import { haptic } from '../lib/haptic'
-import TrackerCards from '../components/tracker/TrackerCards'
 import { safeSetItem, capRecent } from '../lib/safeStorage'
 import ScoringPanel from '../components/ScoringPanel'
 import { useMeasuredHeight } from '../lib/useMeasuredHeight'
@@ -988,10 +987,9 @@ export default function Home() {
         </div>
         )}
 
-        {/* Trackers — live Google Sheets, each card opens its own full view.
-            Renders in every block state: it is a separate destination rather
-            than part of the priorities/today/overdue filter. */}
-        <TrackerCards />
+        {/* The trackers used to sit here. They now live behind their own card on
+            the Buckets screen — they are reference material rather than
+            something competing with today's priorities for this space. */}
 
         {/* Upcoming events — scoped to the Events block only. It used to render
             unconditionally, so it leaked into Priorities / Today / Overdue too. */}

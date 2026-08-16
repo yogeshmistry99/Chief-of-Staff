@@ -9,12 +9,12 @@ import { TRACKERS } from '../../lib/trackers'
 // on Google. Each tracker fetches when its own card is opened, which is also
 // what "fetch on page/card open" asks for.
 
-export default function TrackerCards() {
+export default function TrackerCards({ showHeading = true }) {
   const navigate = useNavigate()
 
   return (
     <div className="mb-4">
-      <h2 className="text-sm font-semibold text-[#1C1B1F] mb-2">Trackers</h2>
+      {showHeading && <h2 className="text-sm font-semibold text-[#1C1B1F] mb-2">Trackers</h2>}
       <div className="grid grid-cols-2 gap-2">
         {TRACKERS.map((t) => (
           <button

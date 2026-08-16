@@ -9,7 +9,7 @@ import DiscussionThread from './pages/DiscussionThread'
 import Settings from './pages/Settings'
 import Calendar from './pages/Calendar'
 import Journal from './pages/Journal'
-import Health from './pages/Health'
+import Trackers from './pages/Trackers'
 import CalendarEvent from './pages/CalendarEvent'
 import WeeklyReview from './pages/WeeklyReview'
 import TrackerView from './pages/TrackerView'
@@ -19,12 +19,14 @@ import SyncProvider from './components/SyncProvider'
 
 // NOTE: every one of these mounts at once — the strip renders all tabs side by
 // side so a swipe is instant. A tab that fetches on mount therefore fetches on
-// every app load, which is why Health waits until it is actually visible before
-// calling Google (see the `seen` ref in pages/Health.jsx).
+// every app load.
+//
+// Health is deliberately NOT here. It lives inside the Health bucket as its
+// "Today" tab, which is where wearable data belongs; the bottom bar is back to
+// five. /health still resolves, because it is the Google OAuth return path.
 const TABS = [
   { path: '/',          Component: Home },
   { path: '/calendar',  Component: Calendar },
-  { path: '/health',    Component: Health },
   { path: '/journal',   Component: Journal },
   { path: '/buckets',   Component: Buckets },
   { path: '/settings',  Component: Settings },
@@ -41,6 +43,8 @@ function isSubRoute(pathname) {
          pathname === '/weekly-review' ||
          pathname === '/chief' ||
          pathname.startsWith('/chief/') ||
+         pathname === '/health' ||
+         pathname === '/trackers' ||
          pathname.startsWith('/trackers/')
 }
 
@@ -162,6 +166,11 @@ function AppInner() {
             <Route path="/buckets/:bucket/discussions/:id"      element={<DiscussionThread />} />
             <Route path="/calendar/event/:id"                   element={<CalendarEvent />} />
             <Route path="/weekly-review"                        element={<WeeklyReview />} />
+            {/* /health is the Google OAuth return path and is linked from the
+                reconnect card, so it must keep resolving. It now lands on the
+                Health bucket's Today tab, which is where the screen lives. */}
+            <Route path="/health" element={<Navigate to="/buckets/Health" replace state={{ tab: 'health' }} />} />
+            <Route path="/trackers"                             element={<Trackers />} />
             <Route path="/trackers/:key"                        element={<TrackerView />} />
             <Route path="/chief"                                element={<ChiefPage />} />
             <Route path="/chief/config"                         element={<HeadConfig />} />

@@ -77,6 +77,39 @@ describe('it does not call Google unless the tab is being looked at', () => {
     expect(mockFetchHealth).not.toHaveBeenCalled()
   })
 
+  it('does NOT fetch when embedded in a bucket tab that is not selected', async () => {
+    // It now lives inside the Health bucket, where BucketDetail keeps every tab
+    // mounted and hides the inactive ones. Being mounted there says nothing
+    // about being on screen — without the explicit `active` prop it would call
+    // Google every time the Health bucket was opened for any reason at all.
+    render(
+      <MemoryRouter initialEntries={['/buckets/Health']}>
+        <Health active={false} embedded />
+      </MemoryRouter>,
+    )
+    await new Promise((r) => setTimeout(r, 30))
+    expect(mockFetchHealth).not.toHaveBeenCalled()
+  })
+
+  it('fetches when its bucket tab becomes the active one', async () => {
+    render(
+      <MemoryRouter initialEntries={['/buckets/Health']}>
+        <Health active embedded />
+      </MemoryRouter>,
+    )
+    await waitFor(() => expect(mockFetchHealth).toHaveBeenCalledTimes(1))
+  })
+
+  it('drops its own title when embedded, so the bucket header is not repeated', async () => {
+    render(
+      <MemoryRouter initialEntries={['/buckets/Health']}>
+        <Health active embedded />
+      </MemoryRouter>,
+    )
+    await waitFor(() => expect(mockFetchHealth).toHaveBeenCalled())
+    expect(screen.queryByRole('heading', { name: 'Health' })).not.toBeInTheDocument()
+  })
+
   it('fetches once, not on every re-render', async () => {
     const { rerender } = renderHealth('/health')
     await waitFor(() => expect(mockFetchHealth).toHaveBeenCalledTimes(1))

@@ -129,6 +129,28 @@ purged, `api/*.js` at **11/12**, chat prompt caching 90% cheaper, refresh path t
 
 ## Recent significant changes (newest first)
 
+- **2026-08-16 — Health moved into the Health bucket; trackers got their own card. Bottom nav back
+  to five.**
+  Health is now the **"Today" tab inside the Health bucket** (`/buckets/Health`), alongside Tasks /
+  Head / Discuss, rather than a sixth item in the bottom bar. Wearable data is Health-bucket
+  material, and six icons on a phone bar was tight.
+  `/health` still resolves — it is the **Google OAuth return path** and is linked from the reconnect
+  card — and now redirects to the bucket with the Today tab selected.
+  **The fetch guard had to move with it.** `BucketDetail` keeps every tab mounted and hides the
+  inactive ones, so being mounted there says nothing about being visible. `Health` takes an explicit
+  `active` prop; without it, opening the Health bucket for any reason would call Google. Tests cover
+  both directions.
+
+  **Trackers** left the Home screen for their own card on the Buckets screen, opening a `/trackers`
+  index. They are reference material, not something that should compete with today's priorities for
+  space on Home.
+  **Deliberately NOT an eighth task bucket:** not in `PROJECTS`, `ALL_BUCKETS` or `BUCKET_META`,
+  which drive `project_name` on every task, the Chief of Staff's weighted list and the priority
+  framework — a bucket holding no tasks would appear in all of them as a permanently empty area of
+  life. It carries a sheet count rather than a task count for the same reason. It sits beside the
+  seven rather than inside one because the trackers span them: house search is Home, medical is
+  Health, car is Finance.
+
 - **2026-08-16 — Evening reminder is now ON by default, and repairs itself.**
   The switch kept reverting to off, and it was not a preference being lost. Notification
   **permission** persists per origin, but the push **subscription** does not — clearing site data,

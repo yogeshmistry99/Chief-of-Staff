@@ -5,6 +5,8 @@ import { scoreTask, BUCKET_WEIGHTS } from '../lib/priority'
 import { useTasks } from '../lib/useTasks'
 import { getNotifications } from '../lib/notifications'
 import { BUCKET_META } from '../lib/bucketConfig'
+import { TRACKERS } from '../lib/trackers'
+import { haptic } from '../lib/haptic'
 
 export default function Buckets() {
   const navigate = useNavigate()
@@ -124,6 +126,27 @@ export default function Buckets() {
               )}
             </button>
           ))}
+
+          {/* Trackers sit alongside the seven buckets, not inside one — the
+              house search is Home, the medical log is Health, the car is
+              Finance, so filing them under any single bucket would hide the
+              rest.
+
+              Rendered here but deliberately NOT part of PROJECTS, ALL_BUCKETS or
+              BUCKET_META. Those drive project_name on every task, the Chief of
+              Staff's weighted list and the priority framework; an eighth bucket
+              holding no tasks would show up in all of them as a permanently
+              empty area of life. It has no task count for the same reason. */}
+          <button
+            onClick={() => { haptic.light(); navigate('/trackers') }}
+            className="relative bg-[#E0F0FF] text-[#001D36] rounded-2xl p-4 text-left active:scale-95 transition-transform shadow-sm"
+          >
+            <span className="text-3xl mb-3 block">📊</span>
+            <p className="font-semibold text-base">Trackers</p>
+            <p className="text-xs opacity-60 mt-0.5">
+              {TRACKERS.length} live sheet{TRACKERS.length !== 1 ? 's' : ''}
+            </p>
+          </button>
         </div>
       )}
     </div>
