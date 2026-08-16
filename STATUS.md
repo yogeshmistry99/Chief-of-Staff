@@ -200,9 +200,22 @@ tasks in a reprioritisation prompt. Also: journal medicines checklist and save/p
   - `api/sync-all-buckets.js` — retired 2026-07-26, returned 410 before doing anything, but still
     occupied a serverless slot. **`api/*.js` is now 11/12.**
   - `src/pages/Chat.jsx` — unreachable from any route or entry point.
-  - `server.js` + the `express` dependency + the `npm start` script — a pre-Vercel local server
-    whose only endpoint proxied the retired Todoist API. Vercel never ran it (`buildCommand` +
-    `outputDirectory` + `api/`), so this is production-inert.
+  - `server.js` + the `express` dependency + the `npm start` script — a pre-Vercel server serving
+    only `/api/todoist` (retired) and `/api/ai` (called from nowhere). Vercel never ran it
+    (`buildCommand` + `outputDirectory` + `api/`).
+
+  **This broke a Render deploy, and it is worth understanding why it was still the right call.**
+  A **Render** web service was also watching this repo — undocumented, no `render.yaml`, no
+  `Procfile`, no mention anywhere in the codebase; configured entirely in the Render dashboard.
+  It ran `npm start` → `node server.js`, so deleting those failed its build on 16 Aug.
+  Restoring them would not have helped: `server.js` serves **2 routes** (`/api/todoist`, `/api/ai`)
+  while the app calls **8** (`/api/claude`, `/api/calendar`, `/api/journal`, `/api/google`,
+  `/api/cron`, `/api/create-task`, `/api/status`, `/api/todoist`). Anyone opening the Render URL got
+  the UI with every backend call 404ing — no chat, calendar, journal or trackers — and had done
+  since the backend moved to Vercel serverless functions. The deletion did not break a working
+  deployment; it stopped a broken one from building.
+  **User confirmed 16 Aug 2026 that Render is a leftover and is not used. The service is to be
+  deleted in the Render dashboard.** Vercel is the only deploy target.
 
   After the sweep the only unreached modules left are `vite.config.js` and `src/test-setup.js`,
   both of which are vitest entry points. **Not touched, deliberately:** `api/todoist.js` and the
@@ -1046,6 +1059,12 @@ tasks in a reprioritisation prompt. Also: journal medicines checklist and save/p
 - **Not every model in this app is the one you'd assume.** The chat and the **Head refresh** run on
   Haiku; only the **CoS refresh** and the **Home priorities button** are Sonnet. Check the call site
   before costing anything — `sendMessage` defaults to Haiku when no model is passed.
+- **"Unused" must be checked against every deploy target, not just Vercel.** Deleting `server.js`
+  and `npm start` was verified unreferenced *within the repo* and still failed a **Render** build,
+  because Render's config lives in its own dashboard and nothing in the codebase mentions it. A
+  root-level `server.js` / `Procfile` / `npm start` in a repo that deploys on Vercel is a signal
+  that some *other* platform consumes it — ask why it exists before removing it. (Render was
+  confirmed a leftover and retired on 16 Aug 2026; Vercel is now the only target.)
 - **`tools` is opt-OUT on `/api/claude`, never opt-in.** Pass `{ tools: false }` from calls that
   parse JSON and cannot act on a tool. It must stay this way round: a chat surface that forgot to
   ask for tools would silently lose the ability to save anything, which is the 27–29 July failure
