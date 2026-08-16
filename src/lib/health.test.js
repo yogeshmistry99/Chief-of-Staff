@@ -335,21 +335,64 @@ describe('OAuth request shape — the named traps', () => {
     expect(authSrc()).toMatch(/prompt:\s*'consent'/)
   })
 
-  it('requests the COMPLETE scope set — a partial request fails on this client', () => {
-    // The health scopes were added to an existing OAuth client, so every auth
-    // request must list all of them together.
+  it('requests a COMPLETE set — all three health scopes, or all of the main set', () => {
+    // A partial request fails on this client. Both sets are complete; what
+    // changed after the live failure is that they are requested SEPARATELY
+    // rather than as one union — see the two-grants suite below.
     const lib = libSrc()
     for (const s of ['googlehealth.sleep.readonly',
                      'googlehealth.activity_and_fitness.readonly',
                      'googlehealth.health_metrics_and_measurements.readonly']) {
       expect(lib).toContain(s)
     }
-    expect(authSrc()).toMatch(/scope:\s*SCOPES\.join/)
+    expect(authSrc()).toMatch(/\(isHealth \? HEALTH_SCOPES : SCOPES\)\.join/)
   })
 
   it('asks for read-only health scopes only — never a writeonly one', () => {
     // Read-only makes "this app never writes health data" a property of the
     // grant rather than a rule the code has to remember.
     expect(libSrc()).not.toMatch(/googlehealth\.[a-z_]+\.writeonly/)
+  })
+})
+
+describe('the two grants must never be combined', () => {
+  const libSrc = () => readFileSync(`${process.cwd()}/api/_lib/google.js`, 'utf8')
+  const apiSrc = () => readFileSync(`${process.cwd()}/api/google.js`, 'utf8')
+
+  it('keeps health scopes OUT of the main SCOPES list', async () => {
+    // Confirmed live 2026-08-16: a token carrying calendar/drive/sheets AND
+    // health scopes is rejected by the Health data plane with "Request contains
+    // disallowed OAuth scope(s)", even with all three health scopes granted.
+    const { SCOPES, HEALTH_SCOPES } = await import('../../api/_lib/google.js')
+    for (const s of SCOPES) expect(s).not.toContain('googlehealth')
+    expect(HEALTH_SCOPES).toHaveLength(3)
+    for (const s of HEALTH_SCOPES) expect(s).toContain('googlehealth')
+  })
+
+  it('requests one set or the other, never their union', () => {
+    expect(apiSrc()).toMatch(/isHealth\s*\?\s*HEALTH_SCOPES\s*:\s*SCOPES/)
+    expect(apiSrc()).not.toMatch(/\[\s*\.\.\.SCOPES\s*,\s*\.\.\.HEALTH_SCOPES/)
+  })
+
+  it('stores the health grant in its own row', async () => {
+    const { AUTH_KEY, HEALTH_AUTH_KEY } = await import('../../api/_lib/google.js')
+    expect(HEALTH_AUTH_KEY).toBe('google_health_auth')
+    expect(HEALTH_AUTH_KEY).not.toBe(AUTH_KEY)
+  })
+
+  it('detects a health grant polluted with other scopes', async () => {
+    const { healthGrantIsClean, HEALTH_SCOPES } = await import('../../api/_lib/google.js')
+    expect(healthGrantIsClean({ scope: HEALTH_SCOPES.join(' ') })).toBe(true)
+    // exactly the token that failed live
+    expect(healthGrantIsClean({
+      scope: [...HEALTH_SCOPES, 'https://www.googleapis.com/auth/calendar'].join(' '),
+    })).toBe(false)
+    expect(healthGrantIsClean({ scope: '' })).toBe(false)
+    expect(healthGrantIsClean(null)).toBe(false)
+  })
+
+  it('still never sends include_granted_scopes — it would re-mix the scopes', () => {
+    const code = apiSrc().split('\n').filter((l) => !l.trim().startsWith('//')).join('\n')
+    expect(code).not.toContain('include_granted_scopes')
   })
 })

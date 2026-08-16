@@ -31,6 +31,12 @@ const ABSENT_COPY = {
 
 function absentCopy(metric) {
   if (!metric?.absent) return null
+  // For a genuine error the DETAIL is the whole point — Google's own message is
+  // what identifies the cause. Showing a generic "Could not be read." instead
+  // hid "Request contains disallowed OAuth scope(s)" behind three identical
+  // rings and made a one-line diagnosis into a server-log hunt. The reason
+  // always wins over the generic sentence where one exists.
+  if (metric.absent === 'error') return metric.detail ?? ABSENT_COPY.error
   return ABSENT_COPY[metric.absent] ?? metric.detail ?? 'Not available.'
 }
 
@@ -161,9 +167,21 @@ export default function Health() {
                 </p>
               </div>
             )}
-            {state.needsReconsent && (
-              <div className="mt-1.5">
-                <a href="/api/google?return=/health" className="underline font-semibold">Reconnect Google</a>
+            {/* Google Health has its OWN consent, separate from the Calendar and
+                Drive one, because it refuses a token carrying any other scope.
+                So this deliberately does not point at the main reconnect link —
+                using that would grant everything except what is needed here. */}
+            {(state.needsHealthAuth || state.needsReconsent) && (
+              <div className="mt-2">
+                <a
+                  href="/api/google?action=health-auth&return=/health"
+                  className="inline-block font-semibold px-3 py-1.5 rounded-full bg-[#8C1D18] text-white"
+                >
+                  Connect Google Health
+                </a>
+                <p className="mt-1.5 text-[10px]">
+                  This is a separate permission from Calendar and Drive — connecting it does not affect them.
+                </p>
               </div>
             )}
           </div>

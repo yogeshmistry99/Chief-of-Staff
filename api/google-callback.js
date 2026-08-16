@@ -23,12 +23,20 @@ export default async function handler(req, res) {
 
   // Decode the return path from state — must be a relative path to prevent open redirect
   let returnTo = '/settings'
+  // Which grant this callback belongs to. Google Health will not accept a token
+  // that also carries Calendar/Drive/Sheets scopes, so its consent is requested
+  // separately and its tokens are stored in their own row. Anything other than
+  // an explicit 'health' means the main grant, so older links keep working.
+  let grant = 'main'
   try {
     const decoded = JSON.parse(Buffer.from(state, 'base64url').toString())
     if (typeof decoded.returnTo === 'string' && decoded.returnTo.startsWith('/')) {
       returnTo = decoded.returnTo
     }
+    if (decoded.grant === 'health') grant = 'health'
   } catch {}
+
+  const storeKey = grant === 'health' ? 'google_health_auth' : 'google_calendar_auth'
 
   const { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET } = process.env
   if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
@@ -56,11 +64,16 @@ export default async function handler(req, res) {
       return res.redirect(302, `${appUrl}/settings?calendar_error=${encodeURIComponent(detail)}`)
     }
 
-    // Fetch the connected account email
-    const userRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
-      headers: { Authorization: `Bearer ${tokens.access_token}` },
-    })
-    const userInfo = userRes.ok ? await userRes.json() : {}
+    // Fetch the connected account email. Skipped for the health grant: it holds
+    // no userinfo scope by design, so the call would fail — and asking for one
+    // would make the token mixed, which is the very thing Google Health rejects.
+    let userInfo = {}
+    if (grant !== 'health') {
+      const userRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+        headers: { Authorization: `Bearer ${tokens.access_token}` },
+      })
+      userInfo = userRes.ok ? await userRes.json() : {}
+    }
 
     // Persist to Supabase
     const sb = getSupabase()
@@ -68,7 +81,7 @@ export default async function handler(req, res) {
       return res.redirect(302, `${appUrl}/settings?calendar_error=supabase_not_configured`)
     }
     await sb.from('app_data').upsert({
-      key: 'google_calendar_auth',
+      key: storeKey,
       value: {
         refresh_token: tokens.refresh_token,
         access_token: tokens.access_token,

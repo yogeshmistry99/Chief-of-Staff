@@ -1,7 +1,8 @@
 import {
   getSupabase, getStoredAuth, getAccessToken, hasDriveScope, hasSheetsScope,
-  hasHealthScope, healthFetch,
-  sheetsFetchGrid, sheetsFetchTitles, resolveTabs, SCOPES, AUTH_KEY,
+  hasHealthScope, healthGrantIsClean, healthFetch,
+  sheetsFetchGrid, sheetsFetchTitles, resolveTabs,
+  SCOPES, HEALTH_SCOPES, AUTH_KEY, HEALTH_AUTH_KEY,
 } from './_lib/google.js'
 import { parseSheet } from './_lib/sheetTable.js'
 import {
@@ -26,6 +27,7 @@ export default async function handler(req, res) {
   if (action === 'status') return status(req, res)
   if (action === 'sheet') return sheet(req, res)
   if (action === 'health') return health(req, res)
+  if (action === 'health-auth') return startAuth(req, res, { grant: 'health' })
   if (action === 'disconnect') return disconnect(req, res)
   return startAuth(req, res)
 }
@@ -58,22 +60,35 @@ async function health(req, res) {
   const sb = getSupabase()
   if (!sb) return res.status(500).json({ error: 'Supabase not configured' })
 
-  const stored = await getStoredAuth(sb)
+  // The HEALTH grant, which is a different row from the calendar/drive/sheets
+  // one. Connecting Google in Settings does not connect this.
+  const stored = await getStoredAuth(sb, HEALTH_AUTH_KEY)
   if (!stored?.refresh_token) {
-    return res.status(200).json({ ok: false, needsReconsent: true, error: 'Google is not connected. Connect it in Settings.' })
+    return res.status(200).json({
+      ok: false, needsHealthAuth: true,
+      error: 'Google Health is not connected yet. It needs its own permission, separate from Calendar and Drive.',
+    })
   }
   // Said up front rather than letting the Health API answer 403, which is
   // ambiguous between "no scope" and "API not enabled".
   if (!hasHealthScope(stored)) {
     return res.status(200).json({
-      ok: false,
-      needsReconsent: true,
-      error: 'Google is connected but has no Health permission yet. Reconnect Google in Settings to read your health data.',
+      ok: false, needsHealthAuth: true,
+      error: 'The Google Health connection is missing one or more permissions. Connect it again to read your health data.',
+    })
+  }
+  // A health token carrying ANY other scope is refused outright by the Health
+  // data plane ("Request contains disallowed OAuth scope(s)"), which otherwise
+  // surfaces as eight identical unexplained failures.
+  if (!healthGrantIsClean(stored)) {
+    return res.status(200).json({
+      ok: false, needsHealthAuth: true,
+      error: 'The Google Health connection also carries Calendar or Drive permissions, which Google Health refuses. Connect Google Health again to replace it.',
     })
   }
 
   try {
-    const token = await getAccessToken(sb, stored)
+    const token = await getAccessToken(sb, stored, HEALTH_AUTH_KEY)
     const tomorrow = addDays(date, 1)
     // Baseline window for the ring arcs. Sleep is capped at 25 rows per page by
     // the API, so a 30-day sleep window yields up to 25 nights — ample for a
@@ -254,7 +269,17 @@ export function rangeTabTitle(range) {
     : name
 }
 
-function startAuth(req, res) {
+// TWO SEPARATE GRANTS, and they must never be combined.
+//
+// `grant: 'health'` requests ONLY the three health scopes and the callback
+// stores the result under its own key. That is not tidiness: a token carrying
+// calendar/drive/sheets alongside health scopes is rejected by the Health data
+// plane with "Request contains disallowed OAuth scope(s)" — reproduced live on
+// 2026-08-16 with all three health scopes correctly granted.
+//
+// Consequence worth knowing: connecting one grant does not connect the other,
+// and each needs its own consent. Nothing shares a refresh token.
+function startAuth(req, res, { grant = 'main' } = {}) {
   const { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET } = process.env
   if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
     return res.status(500).json({ error: 'GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be set in Vercel environment variables.' })
@@ -263,14 +288,18 @@ function startAuth(req, res) {
   const appUrl = process.env.APP_URL ?? (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:5173')
   const redirectUri = `${appUrl}/api/google-callback`
 
-  const returnTo = req.query.return ?? '/settings'
-  const state = Buffer.from(JSON.stringify({ returnTo })).toString('base64url')
+  const isHealth = grant === 'health'
+  const returnTo = req.query.return ?? (isHealth ? '/health' : '/settings')
+  // The callback reads `grant` to decide which row to write. Unrecognised or
+  // absent means the main grant, so an old link keeps working.
+  const state = Buffer.from(JSON.stringify({ returnTo, grant })).toString('base64url')
 
   const params = new URLSearchParams({
     client_id: GOOGLE_CLIENT_ID,
     redirect_uri: redirectUri,
     response_type: 'code',
-    scope: SCOPES.join(' '),
+    // Never the union of the two sets — see above.
+    scope: (isHealth ? HEALTH_SCOPES : SCOPES).join(' '),
     access_type: 'offline',
     prompt: 'consent',   // always request a refresh token
     state,

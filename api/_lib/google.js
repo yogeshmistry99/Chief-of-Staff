@@ -25,24 +25,33 @@ export const SCOPES = [
   // code has to keep remembering. Do not "upgrade" this to the read/write
   // spreadsheets scope to add a feature — that silently removes the guarantee.
   'https://www.googleapis.com/auth/spreadsheets.readonly',
-  // Google Health API v4, for the Health tab. All three are READ-ONLY, and as
-  // with Sheets that makes "this app never writes health data" a property of
-  // the grant rather than a rule the code has to keep remembering.
-  //
-  // All three are needed together: sleep covers the night, health_metrics
-  // covers HRV / resting heart rate / SpO2 / respiratory rate / skin
-  // temperature, and activity_and_fitness covers steps and active zone minutes.
-  //
-  // Because these were added to an EXISTING OAuth client, the auth request must
-  // list the complete set and the user must re-consent — a partial request
-  // fails. Note also that `include_granted_scopes` is deliberately NOT sent
-  // anywhere in this file or api/google.js; do not add it.
+]
+
+// The Google Health scopes live in a SEPARATE GRANT, under their own key, and
+// this is not a stylistic choice — it is forced by the API.
+//
+// Confirmed live on 2026-08-16: with all three health scopes correctly granted
+// alongside calendar/drive/sheets on one token, every Health call returns
+//     "Request contains disallowed OAuth scope(s)."
+// The Health data plane refuses a token carrying any non-health scope. So the
+// health grant must be requested ALONE and stored ALONE; there is no ordering or
+// parameter that makes a combined token work, and `include_granted_scopes` would
+// make it worse by folding the other scopes back in.
+//
+// All three are requested together because a partial grant leaves some metrics
+// silently empty — indistinguishable from a band that was not worn. All three
+// are READ-ONLY, which makes "this app never writes health data" a property of
+// the grant rather than a rule the code must remember.
+export const HEALTH_SCOPES = [
   'https://www.googleapis.com/auth/googlehealth.sleep.readonly',
   'https://www.googleapis.com/auth/googlehealth.activity_and_fitness.readonly',
   'https://www.googleapis.com/auth/googlehealth.health_metrics_and_measurements.readonly',
 ]
 
 export const AUTH_KEY = 'google_calendar_auth'
+
+// Separate row, separate refresh token, separate consent.
+export const HEALTH_AUTH_KEY = 'google_health_auth'
 
 export function getSupabase() {
   const url = process.env.VITE_SUPABASE_URL
@@ -51,16 +60,18 @@ export function getSupabase() {
   return createClient(url, key)
 }
 
-export async function getStoredAuth(sb) {
+// `key` selects which grant. Defaults to the main one so every existing caller
+// is unaffected; the Health tab passes HEALTH_AUTH_KEY.
+export async function getStoredAuth(sb, key = AUTH_KEY) {
   if (!sb) return null
-  const { data } = await sb.from('app_data').select('value').eq('key', AUTH_KEY).single()
+  const { data } = await sb.from('app_data').select('value').eq('key', key).single()
   return data?.value ?? null
 }
 
-export async function saveStoredAuth(sb, updates, existing) {
+export async function saveStoredAuth(sb, updates, existing, key = AUTH_KEY) {
   if (!sb) return
   await sb.from('app_data').upsert({
-    key: AUTH_KEY,
+    key,
     value: { ...existing, ...updates },
     updated_at: new Date().toISOString(),
   })
@@ -83,23 +94,29 @@ export function hasSheetsScope(stored) {
   return hasScope(stored, 'https://www.googleapis.com/auth/spreadsheets.readonly')
 }
 
-// All three health scopes, not any — a partial grant would leave some metrics
+// All three health scopes, not any — a partial grant leaves some metrics
 // silently empty, which is indistinguishable from a band that wasn't worn.
-// Better to say "reconnect" once than to show a half-populated day as if it
-// were complete.
-const HEALTH_SCOPES = [
-  'https://www.googleapis.com/auth/googlehealth.sleep.readonly',
-  'https://www.googleapis.com/auth/googlehealth.activity_and_fitness.readonly',
-  'https://www.googleapis.com/auth/googlehealth.health_metrics_and_measurements.readonly',
-]
-
+//
+// `stored` here is the SEPARATE health grant (HEALTH_AUTH_KEY), never the main
+// one. A health scope sitting on the main token is useless: the Health API
+// rejects that token outright.
 export function hasHealthScope(stored) {
   return HEALTH_SCOPES.every((s) => hasScope(stored, s))
 }
 
+// A health grant must carry ONLY health scopes. If anything else crept in, the
+// Health API will reject every call with "Request contains disallowed OAuth
+// scope(s)" — so this is worth detecting up front and saying plainly, rather
+// than surfacing eight identical unexplained failures.
+export function healthGrantIsClean(stored) {
+  const granted = String(stored?.scope ?? '').split(/\s+/).filter(Boolean)
+  if (!granted.length) return false
+  return granted.every((s) => HEALTH_SCOPES.includes(s))
+}
+
 // Exchange the refresh token for a fresh access token, persisting it so the
 // next request skips the round trip.
-export async function getAccessToken(sb, stored) {
+export async function getAccessToken(sb, stored, key = AUTH_KEY) {
   const { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET } = process.env
 
   if (stored.access_token && stored.expiry_date && stored.expiry_date - 60_000 > Date.now()) {
@@ -128,7 +145,7 @@ export async function getAccessToken(sb, stored) {
     // Google returns the granted scopes on refresh; keep them current so
     // hasDriveScope() reflects reality rather than what we asked for once.
     ...(data.scope ? { scope: data.scope } : {}),
-  }, stored)
+  }, stored, key)
 
   return data.access_token
 }

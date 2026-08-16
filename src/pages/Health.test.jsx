@@ -153,14 +153,31 @@ describe('absence is rendered as a reason, never as a number', () => {
     expect(screen.queryByText('Deep')).not.toBeInTheDocument()
   })
 
-  it('offers a reconnect link when the grant has no Health permission', async () => {
+  it('sends the user to the SEPARATE health consent, not the main one', async () => {
+    // Google Health refuses a token carrying Calendar/Drive/Sheets scopes, so
+    // the ordinary "Reconnect Google" link grants everything EXCEPT what this
+    // tab needs. Pointing at it would loop the user through a consent screen
+    // that cannot fix the problem — which is what happened live on 2026-08-16.
     mockFetchHealth.mockResolvedValue({
-      ok: false, needsReconsent: true,
-      error: 'Google is connected but has no Health permission yet.',
+      ok: false, needsHealthAuth: true,
+      error: 'Google Health is not connected yet.',
     })
     renderHealth()
-    const link = await screen.findByText('Reconnect Google')
-    expect(link).toHaveAttribute('href', expect.stringContaining('/api/google'))
+    const link = await screen.findByText('Connect Google Health')
+    expect(link).toHaveAttribute('href', expect.stringContaining('action=health-auth'))
+  })
+
+  it('surfaces Google\'s own message when a metric errors', async () => {
+    // A generic "Could not be read." hid "Request contains disallowed OAuth
+    // scope(s)" behind three identical rings and turned a one-line diagnosis
+    // into a log hunt. The detail is the whole point of an error.
+    const g = good()
+    mockFetchHealth.mockResolvedValue({
+      ...g,
+      metrics: { ...g.metrics, hrv: { value: null, absent: 'error', detail: 'Request contains disallowed OAuth scope(s).' } },
+    })
+    renderHealth()
+    expect(await screen.findByText(/disallowed OAuth scope/i)).toBeInTheDocument()
   })
 
   it('does NOT offer reconnect when the API is disabled — it would not help', async () => {
