@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { haptic } from '../lib/haptic'
 import {
   reminderStatus, enableReminders, disableReminders, sendTestNotification,
-  pushSupported, isConfigured,
+  pushSupported, isConfigured, shouldAutoEnable,
 } from '../lib/push'
 
 // The evening reminder switch.
@@ -26,7 +26,36 @@ export default function ReminderToggle() {
     setStatus(await reminderStatus())
   }, [])
 
-  useEffect(() => { refresh() }, [refresh])
+  // ON BY DEFAULT — restore the subscription silently when permission is
+  // already granted.
+  //
+  // Permission persists per origin but the push subscription does not: clearing
+  // site data, reinstalling the home-screen app, or the server pruning a dead
+  // endpoint each leave permission intact and the subscription gone. The switch
+  // then read "off" and stayed off until spotted, which had happened three times
+  // by 16 Aug 2026. This makes it self-healing.
+  //
+  // No prompt is possible here and none is attempted: requestPermission()
+  // returns 'granted' immediately when it already is, and shouldAutoEnable()
+  // requires exactly that. A refusal via the switch is remembered and respected.
+  //
+  // Failure is deliberately silent — this is unattended repair, not a user
+  // action, and a red error for something they never asked for would be noise.
+  // The switch simply stays off and the manual path still reports properly.
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      const s = await reminderStatus()
+      if (cancelled) return
+      setStatus(s)
+      if (!shouldAutoEnable(s)) return
+      try {
+        await enableReminders()
+        if (!cancelled) setStatus(await reminderStatus())
+      } catch { /* leave the switch off; tapping it will surface the reason */ }
+    })()
+    return () => { cancelled = true }
+  }, [])
 
   // This control ALWAYS renders, even when it cannot work.
   //
@@ -98,7 +127,11 @@ export default function ReminderToggle() {
                 ? 'Blocked in your browser settings for this site.'
                 : enabled
                   ? 'A nudge each evening, only if the day isn’t logged yet.'
-                  : 'Get a nudge each evening to log the day.'}
+                  // The only state that still needs a tap: permission has never
+                  // been granted, and the browser will not let the page ask
+                  // without one. Say what the tap is for rather than presenting
+                  // it as an optional extra.
+                  : 'On by default — tap to allow notifications and it stays on.'}
           </p>
         </div>
         <button

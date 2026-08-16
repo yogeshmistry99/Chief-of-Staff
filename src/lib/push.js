@@ -45,6 +45,49 @@ export function isConfigured() {
   return !!VAPID_PUBLIC_KEY
 }
 
+// ─── On by default ────────────────────────────────────────────────────────────
+//
+// The reminder is meant to be ON. It exists because the symptoms being tracked —
+// cognitive fatigue, reduced executive function — are exactly the ones that make
+// remembering to journal unreliable, so a reminder that has to be remembered
+// about defeats itself.
+//
+// The thing that kept turning it off was not a preference. Notification
+// PERMISSION persists per origin, but the push SUBSCRIPTION does not: clearing
+// site data, reinstalling the home-screen app, or the server pruning a dead
+// endpoint all leave permission granted and the subscription gone. The toggle
+// then read "off" and stayed off until noticed and tapped again — which had
+// already happened three times by 16 Aug 2026.
+//
+// So: whenever permission is already granted, the subscription is restored
+// silently. That needs no prompt (requestPermission() returns 'granted'
+// immediately) and overrides nothing — the permission was the consent.
+//
+// TURNING IT OFF STILL STICKS. Auto-restore is skipped after an explicit
+// switch-off, or it would flip itself back on and be impossible to refuse.
+// localStorage is the right scope: a push subscription is per-browser anyway.
+const OPT_OUT_KEY = 'journal_reminder_optout'
+
+export function reminderOptedOut() {
+  try { return localStorage.getItem(OPT_OUT_KEY) === '1' } catch { return false }
+}
+
+function setOptOut(v) {
+  try {
+    if (v) localStorage.setItem(OPT_OUT_KEY, '1')
+    else localStorage.removeItem(OPT_OUT_KEY)
+  } catch { /* private mode: default-on simply doesn't persist a refusal */ }
+}
+
+// Should the reminder be restored without asking? Only with permission already
+// granted and no explicit refusal — never prompts, never overrides a choice.
+export function shouldAutoEnable(status) {
+  return !!status?.supported
+    && status.permission === 'granted'
+    && !status.enabled
+    && !reminderOptedOut()
+}
+
 // Whether THIS browser is subscribed and the row is actually in the database.
 //
 // Both halves are checked on purpose. A browser can hold a PushManager
@@ -97,6 +140,8 @@ export async function enableReminders() {
 
   // Throws if the database did not hand the row back.
   await saveSubscription(client(), sub.toJSON(), navigator.userAgent)
+  // Turning it on clears any previous refusal, so auto-restore resumes.
+  setOptOut(false)
   return true
 }
 
@@ -133,6 +178,9 @@ export async function sendTestNotification() {
 // Turn reminders off. The browser subscription is dropped AND the row deleted —
 // leaving the row would keep the nightly send trying against a dead endpoint.
 export async function disableReminders() {
+  // Recorded BEFORE the unsubscribe: if anything below throws, the refusal must
+  // still stand, or the next tab open would silently switch it back on.
+  setOptOut(true)
   const reg = await navigator.serviceWorker.getRegistration()
   const sub = await reg?.pushManager?.getSubscription()
   if (sub) {

@@ -129,6 +129,28 @@ purged, `api/*.js` at **11/12**, chat prompt caching 90% cheaper, refresh path t
 
 ## Recent significant changes (newest first)
 
+- **2026-08-16 — Evening reminder is now ON by default, and repairs itself.**
+  The switch kept reverting to off, and it was not a preference being lost. Notification
+  **permission** persists per origin, but the push **subscription** does not — clearing site data,
+  reinstalling the home-screen app, or the server pruning a dead endpoint each leave permission
+  granted and the subscription gone. `push_subscriptions` held **three rows** by 16 Aug, which is
+  three times it silently switched off and had to be spotted and re-tapped.
+
+  Now: whenever permission is already granted and the subscription is missing, it is **restored
+  silently on load**. No prompt is involved or possible — `requestPermission()` returns `granted`
+  immediately when it already is, and `shouldAutoEnable()` requires exactly that state.
+
+  **Turning it off still sticks.** An explicit switch-off writes `journal_reminder_optout` to
+  localStorage and auto-restore skips it, or the switch would flip back on at the next tab open and
+  be impossible to refuse. Turning it on clears the flag. localStorage is the right scope — a push
+  subscription is per-browser anyway. The opt-out is written **before** the unsubscribe, so a
+  failure mid-way still leaves the refusal standing.
+
+  The one state that still needs a tap is a permission that has never been asked for: browsers
+  require a gesture, and an unsolicited prompt that gets dismissed is sticky and would permanently
+  cost the feature. That row now reads *"On by default — tap to allow notifications and it stays
+  on."* Auto-restore failures are silent by design: it is unattended repair, not a user action.
+
 - **2026-08-16 — Health tab: today's Fitbit data from the Google Health API. Six tabs now.**
   Display-only: no write-back, no interpretation, and **nothing from it enters any Claude prompt**
   (a test asserts both that no health term appears in any system prompt and that `src/lib/claude.js`
