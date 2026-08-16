@@ -438,8 +438,19 @@ export default async function handler(req, res) {
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not configured' })
 
-  const { messages, system, tasks: initialTasks, model: requestedModel } = req.body ?? {}
+  const { messages, system, tasks: initialTasks, model: requestedModel, tools: wantTools } = req.body ?? {}
   if (!messages?.length) return res.status(400).json({ error: 'messages required' })
+
+  // The tool definitions are ~1,450 tokens on EVERY request. The chat surfaces
+  // need them; the ranking and refresh calls do not — those ask for a JSON
+  // object and parse it, and cannot call a tool no matter what the model does.
+  // Sending them there was pure cost at Sonnet rates.
+  //
+  // Opt-out rather than opt-in, deliberately: a new chat surface that forgets
+  // to ask for tools would silently lose the ability to save anything, which is
+  // the failure this codebase has already spent three days on. A refresh call
+  // that forgets to opt out merely costs a little.
+  const useTools = wantTools !== false
   // Mutable local copy of tasks — tools mutate this array
   const tasks = Array.isArray(initialTasks) ? initialTasks.map((t) => ({ ...t })) : []
 
@@ -475,7 +486,7 @@ export default async function handler(req, res) {
             stream: true,
             ...(system ? { system } : {}),
             messages: currentMessages,
-            tools: TOOLS,
+            ...(useTools ? { tools: TOOLS } : {}),
           }),
         })
 
@@ -591,7 +602,13 @@ export default async function handler(req, res) {
       // The model claimed a change but called no tool. Don't just report it —
       // force the tool call so the task actually lands. Only then fall back to
       // the correction.
-      if (!writeSucceeded && claimsWrite(assistantText)) {
+      //
+      // Skipped entirely when this request has no tools. A ranking or refresh
+      // reply is not a claim about the store even when it reads like one — its
+      // summary field can legitimately say "I updated three priorities", which
+      // FIRST_PERSON matches. With no tools to force, tool_choice:'any' would
+      // be an API error; with tools, it would coerce a write nobody asked for.
+      if (useTools && !writeSucceeded && claimsWrite(assistantText)) {
         console.warn('[claude] reply claimed a write but no write tool succeeded:', assistantText.slice(0, 300))
         const retry = await forceWriteRetry({
           apiKey,
@@ -653,7 +670,7 @@ export default async function handler(req, res) {
           max_tokens: 4096,
           ...(system ? { system } : {}),
           messages: currentMessages,
-          tools: TOOLS,
+          ...(useTools ? { tools: TOOLS } : {}),
         }),
       })
 
@@ -686,9 +703,8 @@ export default async function handler(req, res) {
       ]
     }
 
-    // Same recovery as the streaming branch: force the tool call, then fall
-    // back to the correction only if the write still didn't land.
-    if (!writeSucceeded && claimsWrite(finalText)) {
+    // Same recovery as the streaming branch, and the same no-tools skip.
+    if (useTools && !writeSucceeded && claimsWrite(finalText)) {
       console.warn('[claude] reply claimed a write but no write tool succeeded:', finalText.slice(0, 300))
       const retry = await forceWriteRetry({
         apiKey,

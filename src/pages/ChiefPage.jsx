@@ -56,7 +56,9 @@ export default function ChiefPage() {
         [{ role: 'user', content: 'Run the priority refresh now.' }],
         system,
         null,
-        { model: 'claude-sonnet-4-6' }
+        // Asks for a JSON object and parses it — no tool can be called from
+        // here, so the tool definitions are omitted.
+        { model: 'claude-sonnet-4-6', tools: false }
       )
       const result = extractJSON(content)
 

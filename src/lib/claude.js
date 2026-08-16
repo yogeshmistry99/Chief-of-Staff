@@ -124,11 +124,18 @@ export async function sendMessageStream(messages, system, onChunk, tasks = null,
   return full
 }
 
+// options.tools === false omits the tool definitions (~1,450 tokens) from the
+// request. Use it for calls that ask for a JSON object and parse the reply —
+// they cannot act on a tool, so sending the schema is pure cost.
 export async function sendMessage(messages, system, tasks = null, options = {}) {
   const res = await fetch('/api/claude', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messages, system, tasks, model: options.model }),
+    body: JSON.stringify({
+      messages, system, tasks,
+      model: options.model,
+      ...(options.tools === false ? { tools: false } : {}),
+    }),
   })
   const data = await res.json()
   if (!res.ok) {
@@ -405,16 +412,24 @@ ${formatCalendarForPrompt(calendarEvents)}`
     [{ role: 'user', content: userContent }],
     system.length ? system : null,
     null,
-    { model: 'claude-sonnet-4-6' }
+    { model: 'claude-sonnet-4-6', tools: false }
   )
   const match = content.match(/\{[\s\S]*\}/)
   const parsed = JSON.parse(match ? match[0] : content.trim())
   return Array.isArray(parsed.rankedTaskIds) ? parsed.rankedTaskIds : []
 }
 
+// Callers pass the whole store (readTasksFromSupabase includes completed rows
+// by default), but a refresh reprioritises OPEN work — a completed task is not
+// a candidate for anything it returns. Filtering here rather than at each call
+// site so a new refresh surface cannot reintroduce it.
+//
+// formatTasksForCoS has always done this; the refresh path never did, and was
+// shipping 165 completed tasks alongside the 227 active ones every run.
 function refreshTaskList(tasks) {
-  if (!tasks?.length) return 'No tasks loaded.'
-  return tasks.map((t) => {
+  const open = (tasks ?? []).filter((t) => !t.is_completed)
+  if (!open.length) return 'No tasks loaded.'
+  return open.map((t) => {
     const p = ['', 'P4', 'P3', 'P2', 'P1'][t.priority] ?? 'P4'
     const due = t.due?.date ? ` | due ${t.due.date.slice(0, 10)}` : ''
     const bucket = t._projectName ? ` | ${t._projectName}` : ''

@@ -994,7 +994,9 @@ export default function BucketDetail() {
       const { content } = await sendMessage(
         [{ role: 'user', content: 'Run the priority refresh now.' }],
         system,
-        null
+        null,
+        // JSON in, JSON out — no tool is reachable from here.
+        { tools: false }
       )
       const result = extractJSON(content)
 
