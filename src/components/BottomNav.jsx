@@ -26,6 +26,17 @@ const tabs = [
     ),
   },
   {
+    to: '/health',
+    label: 'Health',
+    // Material Symbols "monitor_heart", matching the 24px / viewBox="0 -960 960 960"
+    // / fill=currentColor convention every other icon in this bar uses.
+    icon: () => (
+      <svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 -960 960 960" width="24" fill="currentColor">
+        <path d="M160-160q-33 0-56.5-23.5T80-240v-480q0-33 23.5-56.5T160-800h640q33 0 56.5 23.5T880-720v480q0 33-23.5 56.5T800-160H160Zm0-80h640v-480H160v480Zm120-80h80l50-100 78 156 72-236 42 100h108v-60H646l-70-166-70 226-64-128-72 148H160v60h120Zm200-240Z" />
+      </svg>
+    ),
+  },
+  {
     to: '/journal',
     label: 'Journal',
     icon: () => (

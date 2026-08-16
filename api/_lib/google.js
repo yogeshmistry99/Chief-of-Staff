@@ -25,6 +25,21 @@ export const SCOPES = [
   // code has to keep remembering. Do not "upgrade" this to the read/write
   // spreadsheets scope to add a feature — that silently removes the guarantee.
   'https://www.googleapis.com/auth/spreadsheets.readonly',
+  // Google Health API v4, for the Health tab. All three are READ-ONLY, and as
+  // with Sheets that makes "this app never writes health data" a property of
+  // the grant rather than a rule the code has to keep remembering.
+  //
+  // All three are needed together: sleep covers the night, health_metrics
+  // covers HRV / resting heart rate / SpO2 / respiratory rate / skin
+  // temperature, and activity_and_fitness covers steps and active zone minutes.
+  //
+  // Because these were added to an EXISTING OAuth client, the auth request must
+  // list the complete set and the user must re-consent — a partial request
+  // fails. Note also that `include_granted_scopes` is deliberately NOT sent
+  // anywhere in this file or api/google.js; do not add it.
+  'https://www.googleapis.com/auth/googlehealth.sleep.readonly',
+  'https://www.googleapis.com/auth/googlehealth.activity_and_fitness.readonly',
+  'https://www.googleapis.com/auth/googlehealth.health_metrics_and_measurements.readonly',
 ]
 
 export const AUTH_KEY = 'google_calendar_auth'
@@ -66,6 +81,20 @@ export function hasDriveScope(stored) {
 
 export function hasSheetsScope(stored) {
   return hasScope(stored, 'https://www.googleapis.com/auth/spreadsheets.readonly')
+}
+
+// All three health scopes, not any — a partial grant would leave some metrics
+// silently empty, which is indistinguishable from a band that wasn't worn.
+// Better to say "reconnect" once than to show a half-populated day as if it
+// were complete.
+const HEALTH_SCOPES = [
+  'https://www.googleapis.com/auth/googlehealth.sleep.readonly',
+  'https://www.googleapis.com/auth/googlehealth.activity_and_fitness.readonly',
+  'https://www.googleapis.com/auth/googlehealth.health_metrics_and_measurements.readonly',
+]
+
+export function hasHealthScope(stored) {
+  return HEALTH_SCOPES.every((s) => hasScope(stored, s))
 }
 
 // Exchange the refresh token for a fresh access token, persisting it so the
@@ -337,4 +366,28 @@ export function matchTitle(wanted, titles) {
 export function resolveTabs(titles, wanted) {
   const resolved = wanted.map((w) => ({ wanted: w, actual: matchTitle(w, titles) }))
   return { available: titles, resolved, missing: resolved.filter((r) => !r.actual).map((r) => r.wanted) }
+}
+
+// ─── Google Health API v4 ─────────────────────────────────────────────────────
+
+const HEALTH = 'https://health.googleapis.com/v4'
+
+// One dataPoints.list call. The path and query come from api/_lib/health.js,
+// which owns every decision about WHICH filter field and page size a data type
+// takes — this function only performs the request.
+//
+// Errors go through googleApiError so a 403 caused by the API not being enabled
+// on the Cloud project is told apart from a 403 caused by a missing scope. Those
+// need opposite remedies and reporting the wrong one sends the user round a loop
+// that cannot terminate; that has already happened twice here, with Drive and
+// with Sheets.
+export async function healthFetch(token, { path, query }) {
+  const res = await fetch(`${HEALTH}/${path}?${query}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  const text = await res.text()
+  let data
+  try { data = JSON.parse(text) } catch { data = { raw: text.slice(0, 500) } }
+  if (!res.ok) throw googleApiError(res, data, 'Google Health request failed')
+  return data
 }

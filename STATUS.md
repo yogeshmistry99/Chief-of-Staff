@@ -3,9 +3,9 @@
 Single source of truth for system state. **Read this at the start of every session.
 Update it at the end of any session that changes anything.**
 
-Last updated: 2026-08-16 (build audit: dead code purged, `api/*.js` down to **11/12** with a slot free; prompt caching
-turned on for the chat — 90% off per message; refresh path trimmed 45% — no tool schema on JSON-only calls, no completed
-tasks in a reprioritisation prompt. Also: journal medicines checklist and save/publish; Google Sheets trackers live)
+Last updated: 2026-08-16 (**Health tab live** — today's Fitbit data from the Google Health API, three rings bound to
+measured values because the API has no Readiness/Cardio Load/score at all; six tabs now. Plus the build audit: dead code
+purged, `api/*.js` at **11/12**, chat prompt caching 90% cheaper, refresh path trimmed 45%)
 
 ---
 
@@ -128,6 +128,62 @@ tasks in a reprioritisation prompt. Also: journal medicines checklist and save/p
 ---
 
 ## Recent significant changes (newest first)
+
+- **2026-08-16 — Health tab: today's Fitbit data from the Google Health API. Six tabs now.**
+  Display-only: no write-back, no interpretation, and **nothing from it enters any Claude prompt**
+  (a test asserts both that no health term appears in any system prompt and that `src/lib/claude.js`
+  imports nothing health-related). 198 tests pass, `api/*.js` still **11/12**.
+
+  **THE FINDING THAT RESHAPED THE BRIEF — do not re-derive this.** The brief specified Whoop's
+  three scores: Readiness, Sleep Performance, Cardio Load. Pulled the **public discovery document**
+  (`https://health.googleapis.com/$discovery/rest?version=v4` — no auth needed, 283KB, authoritative)
+  and searched it: **`readiness` 0 occurrences, `cardioLoad` 0, `strain` 0, and not one property
+  named `*score*` in any schema.** They are scores the Fitbit *app* computes; the API exposes only
+  the underlying physiology. Synthesising them was rejected — that is interpretation, which this
+  feature explicitly does not do. Rings were rebound to measured quantities instead:
+  **Sleep** (minutes asleep) · **HRV** (overnight average ms) · **Cardio** (active zone minutes).
+
+  **What a ring means, since the API supplies no denominator:** the dominant number is the measured
+  value; the arc shows where it sits within the wearer's own trailing 30 days, and the screen says
+  so in words. Not a score, not advice. No baseline → bare track, never an arc at an invented
+  fraction.
+
+  **Three API rules that fail SILENTLY (wrong filter → empty list, not an error):**
+  1. **Sleep filters on `sleep.interval.civil_end_time` — END time.** Start time is unsupported for
+     sleep and would be wrong anyway, since a night begins the previous calendar day.
+  2. **`sleep` and `exercise` cap at 25 rows — that is the DEFAULT *and* the MAXIMUM.** Everything
+     else defaults to 1440, max 10000.
+  3. **Each kind takes its own field:** interval → `.interval.civil_start_time`; sample →
+     `.sample_time.civil_time`; daily summary → `.date`; sleep → `.interval.civil_end_time`.
+
+  **Civil (local) time everywhere**, never UTC — the API offers a civil variant of every filter and
+  it is the correct one for a day view. Also: **the API's `Date` is an OBJECT `{year,month,day}`,
+  not an ISO string** — comparing it to a string silently never matches (`civilDateKey()` converts
+  it in one place). Interval points carry `interval.civilStartTime`, so per-day baselines are read
+  from the subject's own local date rather than inferred from a UTC stamp.
+
+  **Architecture.** `api/google.js?action=health` — a sixth action on the existing Google function,
+  so **zero new serverless slots** and the free slot stays free. `?metrics=` names what the caller
+  wants, so the planned **sleep-to-journal work calls the same endpoint with `metrics=sleep`** and
+  gets the identical shape; all parsing lives in `api/_lib/health.js` (pure, no I/O, outside the
+  function count) so a server-side caller can import it and skip HTTP entirely.
+
+  **Scopes.** Three read-only health scopes added to the shared `SCOPES`; `hasHealthScope()` requires
+  **all three** (a partial grant would leave metrics silently empty, which looks identical to a band
+  not worn). `include_granted_scopes` is still absent and **a test now fails if it is ever added**.
+  Read-only is enforced by a test too — no `.writeonly` scope may appear.
+  **A Google re-consent is required before this works at all**; the stored grant has no health
+  scopes yet.
+
+  **Open risk, untested.** The brief warns that a mixed-scope token (Calendar+Drive+Sheets+Health)
+  is rejected by the Health data plane with an undocumented internal error. **This could not be
+  tested** — no health-scoped token exists yet. If it proves true, the fallback is a second grant
+  under its own `app_data` key (`google_health_auth`) with its own `?action=health-auth`: one extra
+  action, one extra key, still no new function.
+
+  **Six tabs now**, and `TabStrip` mounts every tab at once — so Health fetches only when the route
+  is actually `/health`, never on mount. A render test asserts it does **not** call Google when
+  mounted on another route.
 
 - **2026-08-16 — Refresh path trimmed: 45,458 → 24,960 tokens per sweep (39% less cost).**
   No output change. Two independent wastes, both measured by running the real prompt builders
@@ -1059,6 +1115,18 @@ tasks in a reprioritisation prompt. Also: journal medicines checklist and save/p
 - **Not every model in this app is the one you'd assume.** The chat and the **Head refresh** run on
   Haiku; only the **CoS refresh** and the **Home priorities button** are Sonnet. Check the call site
   before costing anything — `sendMessage` defaults to Haiku when no model is passed.
+- **Google Health API: a wrong time filter returns an EMPTY LIST, not an error** — indistinguishable
+  from "the band wasn't worn". Sleep filters on **`civil_end_time`**; daily summaries on `.date`;
+  interval types on `.interval.civil_start_time`. Sleep/exercise cap at **25 rows, default and max**.
+  Use **civil** (local) variants everywhere. The API's `Date` is an **object** `{year,month,day}`,
+  so comparing it to an ISO string silently never matches.
+- **Readiness, Cardio Load and Sleep Performance do not exist in the Google Health API.** Confirmed
+  against the public discovery document — zero occurrences, and no `score` property anywhere. Do not
+  go looking again, and do not compute them: that is interpretation, which the Health tab excludes
+  by design.
+- **A public discovery document beats guessing an API.** `https://health.googleapis.com/$discovery/rest?version=v4`
+  needs no auth and gave exact schemas, filter grammar and page-size rules before a single line was
+  written. Check for one before designing against any Google API.
 - **"Unused" must be checked against every deploy target, not just Vercel.** Deleting `server.js`
   and `npm start` was verified unreferenced *within the repo* and still failed a **Render** build,
   because Render's config lives in its own dashboard and nothing in the codebase mentions it. A

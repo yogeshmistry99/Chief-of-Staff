@@ -9,6 +9,7 @@ import DiscussionThread from './pages/DiscussionThread'
 import Settings from './pages/Settings'
 import Calendar from './pages/Calendar'
 import Journal from './pages/Journal'
+import Health from './pages/Health'
 import CalendarEvent from './pages/CalendarEvent'
 import WeeklyReview from './pages/WeeklyReview'
 import TrackerView from './pages/TrackerView'
@@ -16,9 +17,14 @@ import ChiefPage from './pages/ChiefPage'
 import HeadConfig from './pages/HeadConfig'
 import SyncProvider from './components/SyncProvider'
 
+// NOTE: every one of these mounts at once — the strip renders all tabs side by
+// side so a swipe is instant. A tab that fetches on mount therefore fetches on
+// every app load, which is why Health waits until it is actually visible before
+// calling Google (see the `seen` ref in pages/Health.jsx).
 const TABS = [
   { path: '/',          Component: Home },
   { path: '/calendar',  Component: Calendar },
+  { path: '/health',    Component: Health },
   { path: '/journal',   Component: Journal },
   { path: '/buckets',   Component: Buckets },
   { path: '/settings',  Component: Settings },

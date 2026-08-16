@@ -1,8 +1,13 @@
 import {
   getSupabase, getStoredAuth, getAccessToken, hasDriveScope, hasSheetsScope,
+  hasHealthScope, healthFetch,
   sheetsFetchGrid, sheetsFetchTitles, resolveTabs, SCOPES, AUTH_KEY,
 } from './_lib/google.js'
 import { parseSheet } from './_lib/sheetTable.js'
+import {
+  METRIC_KEYS, RING_METRICS, listRequest, shapeMetric, baselineValues,
+  trailingRange, rangePosition, civilToday, addDays, isValidDate, absence, ABSENT,
+} from './_lib/health.js'
 
 // Google OAuth: start, disconnect, and status.
 //
@@ -20,8 +25,123 @@ export default async function handler(req, res) {
 
   if (action === 'status') return status(req, res)
   if (action === 'sheet') return sheet(req, res)
+  if (action === 'health') return health(req, res)
   if (action === 'disconnect') return disconnect(req, res)
   return startAuth(req, res)
+}
+
+// ─── Google Health read for the Health tab ────────────────────────────────────
+//
+// A sixth action rather than an api/health.js, for the same reason `sheet` lives
+// here: every api/*.js file is a serverless function and the Hobby plan caps the
+// project at 12. This keeps the count where it is.
+//
+// SHAPED FOR REUSE. `?metrics=` names what the caller wants, so the planned
+// sleep-to-journal work can call `?action=health&metrics=sleep` and receive the
+// identical normalised shape rather than a second endpoint being built. All the
+// parsing lives in api/_lib/health.js, so a server-side caller can skip HTTP and
+// import it directly.
+//
+// Strictly read-only: the granted scopes are the three .readonly ones, so no
+// path here could write health data even if it tried.
+async function health(req, res) {
+  res.setHeader('Access-Control-Allow-Origin', '*')
+  if (req.method !== 'GET') return res.status(405).json({ error: 'GET only' })
+
+  const asked = String(req.query.metrics ?? '').split(',').map((s) => s.trim()).filter(Boolean)
+  const wanted = asked.length ? asked.filter((k) => METRIC_KEYS.includes(k)) : METRIC_KEYS
+  if (!wanted.length) return res.status(400).json({ error: 'No known metrics requested' })
+
+  const tz = typeof req.query.tz === 'string' && req.query.tz ? req.query.tz : 'Europe/London'
+  const date = isValidDate(req.query.date) ? req.query.date : civilToday(tz)
+
+  const sb = getSupabase()
+  if (!sb) return res.status(500).json({ error: 'Supabase not configured' })
+
+  const stored = await getStoredAuth(sb)
+  if (!stored?.refresh_token) {
+    return res.status(200).json({ ok: false, needsReconsent: true, error: 'Google is not connected. Connect it in Settings.' })
+  }
+  // Said up front rather than letting the Health API answer 403, which is
+  // ambiguous between "no scope" and "API not enabled".
+  if (!hasHealthScope(stored)) {
+    return res.status(200).json({
+      ok: false,
+      needsReconsent: true,
+      error: 'Google is connected but has no Health permission yet. Reconnect Google in Settings to read your health data.',
+    })
+  }
+
+  try {
+    const token = await getAccessToken(sb, stored)
+    const tomorrow = addDays(date, 1)
+    // Baseline window for the ring arcs. Sleep is capped at 25 rows per page by
+    // the API, so a 30-day sleep window yields up to 25 nights — ample for a
+    // min/max, and paginating for a display baseline would not earn its cost.
+    const from30 = addDays(date, -29)
+
+    // One call for today per metric, plus a second for the baseline window on
+    // the three that carry a ring. Today and the baseline are queried
+    // SEPARATELY rather than split out of one 30-day payload: that way each
+    // point's day is decided by the API's own civil filter, and nothing here
+    // has to infer a local date from a UTC timestamp.
+    const rings = new Set(RING_METRICS)
+    const results = await Promise.all(wanted.map(async (key) => {
+      try {
+        const payload = await healthFetch(token, listRequest(key, date, tomorrow))
+        if (!rings.has(key)) return [key, { payload }]
+        // Baseline is the 29 days BEFORE today, so today is never compared
+        // against itself.
+        let baseline = []
+        try {
+          const prior = await healthFetch(token, listRequest(key, from30, date))
+          baseline = baselineValues(key, prior)
+        } catch { /* no baseline is a missing arc, not a failed metric */ }
+        return [key, { payload, baseline }]
+      } catch (e) {
+        return [key, { error: e }]
+      }
+    }))
+
+    const metrics = {}
+    const missing = []
+    let needsReconsent = false
+    let serviceDisabled = null
+
+    for (const [key, out] of results) {
+      if (out.error) {
+        const e = out.error
+        if (e.needsReconsent) needsReconsent = true
+        if (e.serviceDisabled) serviceDisabled = { message: e.message, activationUrl: e.activationUrl ?? null }
+        metrics[key] = absence(e.serviceDisabled ? ABSENT.API_DISABLED : ABSENT.ERROR, e.message)
+        missing.push({ metric: key, reason: metrics[key].absent })
+        continue
+      }
+      const shaped = shapeMetric(key, out.payload)
+      // The arc position is computed server-side so the browser is handed a
+      // number it can draw, not a rule it has to re-derive. `range` travels too
+      // so the UI can caption what the arc is relative to.
+      const range = out.baseline ? trailingRange(out.baseline) : null
+      metrics[key] = { ...shaped, range, position: rangePosition(shaped.value, range) }
+      if (shaped.absent) missing.push({ metric: key, reason: shaped.absent })
+    }
+
+    return res.status(200).json({
+      ok: true, date, timeZone: tz, fetchedAt: new Date().toISOString(),
+      metrics, missing, needsReconsent, serviceDisabled,
+    })
+  } catch (e) {
+    if (e.isRevoked) {
+      return res.status(200).json({ ok: false, needsReconsent: true, error: 'Google access expired. Reconnect Google in Settings.' })
+    }
+    return res.status(200).json({
+      ok: false,
+      error: e.message ?? 'Could not read health data',
+      needsReconsent: !!e.needsReconsent,
+      serviceDisabled: !!e.serviceDisabled,
+      activationUrl: e.activationUrl ?? null,
+    })
+  }
 }
 
 // ─── Sheets read for the trackers ─────────────────────────────────────────────

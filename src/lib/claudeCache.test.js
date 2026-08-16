@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import fs from 'fs'
 import { SYSTEM_PROMPTS, REFRESH_PROMPTS } from './claude.js'
 
 // The cache breakpoint is worth ~6.5k tokens per chat message and is invisible
@@ -46,5 +47,37 @@ describe('prompt caching', () => {
     for (const blocks of [REFRESH_PROMPTS.cos(tasks, cfg), REFRESH_PROMPTS.head('Finance', tasks, cfg)]) {
       expect(blocks.at(-1).cache_control).toBeUndefined()
     }
+  })
+})
+
+describe('health data stays out of every prompt', () => {
+  // Explicit build constraint: the Health tab is display-only in this round and
+  // the Health head is separate work. The prompt payload must be UNCHANGED, and
+  // that is easy to break by accident once health data is in the app.
+  const built = [
+    SYSTEM_PROMPTS.cos(tasks, cfg),
+    SYSTEM_PROMPTS.head('Health', tasks, cfg),
+    SYSTEM_PROMPTS.discussion('Health', 'Sleep', tasks, cfg),
+    REFRESH_PROMPTS.cos(tasks, cfg),
+    REFRESH_PROMPTS.head('Health', tasks, cfg),
+  ]
+
+  it('mentions no health metric in any system prompt', () => {
+    const terms = [
+      'hrv', 'heart rate variability', 'resting heart rate', 'spo2',
+      'oxygen saturation', 'respiratory rate', 'active zone minutes',
+      'minutesAsleep', 'googlehealth', 'health.googleapis',
+    ]
+    for (const blocks of built) {
+      const text = blocks.map((b) => b.text).join('\n').toLowerCase()
+      for (const t of terms) expect(text).not.toContain(t)
+    }
+  })
+
+  it('does not let the prompt module reach the health module', () => {
+    // A single import here is all it would take for health data to start
+    // riding along on every chat message.
+    const src = fs.readFileSync(`${process.cwd()}/src/lib/claude.js`, 'utf8')
+    expect(src).not.toMatch(/^\s*import[\s\S]*?from\s+['"].*health/im)
   })
 })
