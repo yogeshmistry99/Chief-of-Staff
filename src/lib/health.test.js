@@ -100,9 +100,34 @@ describe('page size', () => {
     expect(listRequest('steps', '2026-08-16', '2026-08-17').query).not.toContain('pageSize')
   })
 
-  it('addresses users/me and the right data type', () => {
-    expect(listRequest('rhr', '2026-08-16', '2026-08-17').path)
-      .toBe('users/me/dataTypes/daily_resting_heart_rate/dataPoints')
+  it('addresses users/me with the KEBAB path while the filter stays SNAKE', () => {
+    // Confirmed live 2026-08-16: the URL path is kebab-case and the filter
+    // field is snake_case. Using snake in the path gives 400 "Invalid data type
+    // ID"; using kebab in the filter gives 400
+    // INVALID_DATA_POINT_FILTER_DATA_TYPE_RESTRICTION. Every multi-word data
+    // type failed silently until this was pinned down against the real API.
+    const r = listRequest('rhr', '2026-08-16', '2026-08-17')
+    expect(r.path).toBe('users/me/dataTypes/daily-resting-heart-rate/dataPoints')
+    expect(decodeURIComponent(r.query)).toContain('daily_resting_heart_rate.date')
+  })
+
+  it('uses kebab paths for every multi-word metric', () => {
+    for (const key of METRIC_KEYS) {
+      const path = listRequest(key, '2026-08-16', '2026-08-17').path
+      expect(path).not.toMatch(/dataTypes\/[a-z]+_/)   // no underscore in the path
+    }
+    expect(listRequest('cardio', '2026-08-16', '2026-08-17').path)
+      .toBe('users/me/dataTypes/active-zone-minutes/dataPoints')
+    expect(listRequest('hrv', '2026-08-16', '2026-08-17').path)
+      .toBe('users/me/dataTypes/daily-heart-rate-variability/dataPoints')
+  })
+
+  it('keeps snake_case in every filter FIELD', () => {
+    // The field name only — the range literals are dates and legitimately
+    // contain hyphens.
+    for (const key of METRIC_KEYS) {
+      expect(filterField(key)).not.toContain('-')
+    }
   })
 })
 

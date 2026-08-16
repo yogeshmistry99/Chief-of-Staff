@@ -123,6 +123,24 @@ export function addDays(date, n) {
 // AIP-160. Closed-open: >= start AND < end, so a day never double-counts its
 // boundary with the next.
 
+// THE URL PATH AND THE FILTER FIELD USE DIFFERENT CONVENTIONS. This is not a
+// guess — both were confirmed against the live API on 2026-08-16:
+//
+//   path   users/me/dataTypes/daily-resting-heart-rate/dataPoints   KEBAB-case
+//   filter daily_resting_heart_rate.date >= "…"                     SNAKE_case
+//
+// Getting the path wrong gives 400 "Invalid data type ID referenced in the
+// parent data type collection"; getting the filter wrong gives 400
+// "INVALID_DATA_POINT_FILTER_DATA_TYPE_RESTRICTION". The published docs show
+// only snake_case (their filter examples) and single-word path examples like
+// `steps` and `weight`, which never disambiguate the two — so every multi-word
+// data type silently failed.
+//
+// Derived from one canonical name so the two can never drift apart.
+export function dataTypePath(dataType) {
+  return String(dataType).replace(/_/g, '-')
+}
+
 export function filterField(metric) {
   const m = typeof metric === 'string' ? metricByKey(metric) : metric
   if (!m) throw new Error(`health: unknown metric ${metric}`)
@@ -159,7 +177,8 @@ export function listRequest(metricKey, from, to) {
   // Only set pageSize where the cap actually matters. Leaving it unset elsewhere
   // takes the 1440 default, which is ample for a day of interval data.
   if (m.pageSize) params.set('pageSize', String(m.pageSize))
-  return { path: `users/me/dataTypes/${m.dataType}/dataPoints`, query: params.toString() }
+  // Kebab in the path, snake in the filter — see dataTypePath above.
+  return { path: `users/me/dataTypes/${dataTypePath(m.dataType)}/dataPoints`, query: params.toString() }
 }
 
 // ─── Absence ──────────────────────────────────────────────────────────────────
