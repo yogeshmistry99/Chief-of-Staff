@@ -175,11 +175,25 @@ purged, `api/*.js` at **11/12**, chat prompt caching 90% cheaper, refresh path t
   **A Google re-consent is required before this works at all**; the stored grant has no health
   scopes yet.
 
-  **Open risk, untested.** The brief warns that a mixed-scope token (Calendar+Drive+Sheets+Health)
-  is rejected by the Health data plane with an undocumented internal error. **This could not be
-  tested** — no health-scoped token exists yet. If it proves true, the fallback is a second grant
-  under its own `app_data` key (`google_health_auth`) with its own `?action=health-auth`: one extra
-  action, one extra key, still no new function.
+  **The mixed-scope risk was real, and is now fixed.** With all three health scopes correctly
+  granted alongside calendar/drive/sheets, every call returned *"Request contains disallowed OAuth
+  scope(s)."* Health now has its **own grant** in `google_health_auth`, requested alone via
+  `?action=health-auth`; the callback routes on `grant` in the OAuth state. Connecting Google in
+  Settings does not connect Health, and vice versa.
+
+  **Then a second failure, and the more instructive one: kebab vs snake.** With auth fixed, sleep
+  worked and every multi-word metric returned 400 *"Invalid data type ID"*. The **URL path is
+  kebab-case while the filter field is snake_case** — and nothing in the docs distinguishes them,
+  since their filter examples are all snake_case and their only path examples (`steps`, `weight`)
+  are single words. Found by probing all 42 types against the live API with a working token: 31 are
+  valid under kebab-case, 7 under snake — exactly the single-word ones.
+  **Both failures were diagnosed by calling the API directly rather than reasoning about the error
+  text, which is the third time that has been the fastest route in this repo.**
+
+  **A UI defect this exposed:** the tab rendered "Could not be read." three times and swallowed
+  Google's own message, turning a one-line diagnosis into a log hunt. For a genuine error the detail
+  IS the diagnosis and now wins over the generic sentence. The reconnect link also pointed at the
+  main Google consent, which grants everything except what the tab needs.
 
   **Six tabs now**, and `TabStrip` mounts every tab at once — so Health fetches only when the route
   is actually `/health`, never on mount. A render test asserts it does **not** call Google when
@@ -1115,6 +1129,22 @@ purged, `api/*.js` at **11/12**, chat prompt caching 90% cheaper, refresh path t
 - **Not every model in this app is the one you'd assume.** The chat and the **Head refresh** run on
   Haiku; only the **CoS refresh** and the **Home priorities button** are Sonnet. Check the call site
   before costing anything — `sendMessage` defaults to Haiku when no model is passed.
+- **Google Health API: the URL path is KEBAB-case, the filter field is SNAKE_case.** Two conventions
+  in the same request, and the published docs disambiguate neither — their filter examples are all
+  snake_case and both path examples (`steps`, `weight`) are single words. So `sleep` and `steps`
+  worked while **every multi-word data type failed** with 400 *"Invalid data type ID referenced in
+  the parent data type collection"*. Correct pair:
+  `users/me/dataTypes/daily-resting-heart-rate/dataPoints` + `daily_resting_heart_rate.date >= "…"`.
+  Wrong filter instead gives `INVALID_DATA_POINT_FILTER_DATA_TYPE_RESTRICTION`.
+  Probed live: **31 of 42 data types valid under kebab-case**; the other 11 are 403s for scopes this
+  grant deliberately lacks. `dataTypePath()` derives the path from the one canonical snake name so
+  they cannot drift.
+- **Google Health requires its OWN grant — it refuses a token carrying any other scope.** Confirmed
+  live: with all three health scopes correctly granted alongside calendar/drive/sheets, every call
+  returned *"Request contains disallowed OAuth scope(s)."* Health tokens live in `google_health_auth`
+  and are requested alone via `?action=health-auth`; the callback routes on `grant` in the OAuth
+  state. Connecting Google in Settings does **not** connect Health, and vice versa. The userinfo
+  lookup is skipped for the health grant — asking for it would re-mix the token.
 - **Google Health API: a wrong time filter returns an EMPTY LIST, not an error** — indistinguishable
   from "the band wasn't worn". Sleep filters on **`civil_end_time`**; daily summaries on `.date`;
   interval types on `.interval.civil_start_time`. Sleep/exercise cap at **25 rows, default and max**.
