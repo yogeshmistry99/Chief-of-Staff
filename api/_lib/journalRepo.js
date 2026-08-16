@@ -16,7 +16,7 @@
 import { SYMPTOM_KEYS, PROMPT_KEYS, MAX_SCORE } from './journalSymptoms.js'
 
 const COLS = 'id, entry_date, symptoms, prompts, free_text, mode, authored_at, updated_at, '
-  + 'drive_file_id, drive_status, drive_error, drive_filed_at, document_md, revision'
+  + 'drive_file_id, drive_status, drive_error, drive_filed_at, document_md, revision, filed_revision'
 
 function fail(op, error) {
   throw new Error(`journal.${op}: ${error?.message ?? 'unknown error'}`)
@@ -136,6 +136,10 @@ export async function setDriveResult(sb, entryDate, result) {
         drive_file_id: result.fileId,
         drive_filed_at: new Date().toISOString(),
         drive_error: null,
+        // WHICH revision was filed. Not a timestamp: this update bumps
+        // updated_at itself, so comparing updated_at against drive_filed_at
+        // would report a phantom edit on every successful filing.
+        ...(result.revision != null ? { filed_revision: result.revision } : {}),
         ...(result.documentMd ? { document_md: result.documentMd } : {}),
       }
     : {
@@ -147,23 +151,31 @@ export async function setDriveResult(sb, entryDate, result) {
     .from('journal_entries')
     .update(patch)
     .eq('entry_date', entryDate)
-    .select('entry_date, drive_status, drive_file_id, drive_error, drive_filed_at')
+    .select('entry_date, drive_status, drive_file_id, drive_error, drive_filed_at, revision, filed_revision')
 
   if (error) fail('drive', error)
   if (!data?.length) throw new Error(`journal.drive: no entry for ${entryDate} — filing state not recorded`)
   return data[0]
 }
 
-// Entries whose filing never landed, so the UI can offer a retry and a future
-// sweep can pick them up. Ordered oldest first: the longest-unfiled entry is the
-// one most worth recovering.
+// Entries whose FILED DOCUMENT IS NOT CURRENT. Ordered oldest first.
+//
+// That is three different situations and a caller must not treat them alike:
+//   • drive_status 'failed'  — filing broke. A problem; worth chasing.
+//   • never filed            — a DRAFT. Normal during the day; do not nag.
+//   • filed but edited since — the document is stale but a document exists.
+// Filter on `drive_status === 'failed'` for "things that went wrong"; use the
+// whole list only for a sweep that re-files whatever is out of date.
 export async function listUnfiled(sb, { limit = 50 } = {}) {
   const { data, error } = await sb
     .from('journal_entries')
-    .select('entry_date, drive_status, drive_error')
-    .neq('drive_status', 'filed')
+    .select('entry_date, drive_status, drive_error, revision, filed_revision')
     .order('entry_date', { ascending: true })
-    .limit(limit)
+    .limit(limit * 4)
   if (error) fail('listUnfiled', error)
-  return data ?? []
+  // "Unfiled" now includes an entry that WAS filed and has been edited since —
+  // its document is stale, which is the same problem as never having filed.
+  return (data ?? [])
+    .filter((e) => e.drive_status !== 'filed' || (e.revision ?? 1) > (e.filed_revision ?? 0))
+    .slice(0, limit)
 }

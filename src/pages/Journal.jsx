@@ -6,6 +6,7 @@ import {
 import {
   readEntries, readEntry, writeEntry, onJournalChanged, fileToDrive, driveStatus,
   localDate, shiftDate, seedFromPrevious, isBackdated, driveDocUrl,
+  publishState, PUBLISH_LABEL,
 } from '../lib/journal'
 import JournalTrends from '../components/JournalTrends'
 import ReminderToggle from '../components/ReminderToggle'
@@ -125,7 +126,14 @@ function EntryForm({ entryDate, existing, previous, onSaved, onCancel }) {
     setSymptoms((prev) => ({ ...prev, [key]: { ...prev[key], note, carried: false } }))
   }
 
-  async function handleSave() {
+  // Save and publish are two actions, not one.
+  //
+  // The day is written in pieces — something is remembered mid-afternoon and
+  // added — and only submitted once, at the end. Filing on every save would put
+  // a half-written day into the case file and rewrite the document each time.
+  // So `publish` is an explicit second step, and saving alone is a complete,
+  // normal thing to do.
+  async function handleSave({ publish }) {
     if (saving) return
     setSaving(true)
     setError(null)
@@ -139,9 +147,14 @@ function EntryForm({ entryDate, existing, previous, onSaved, onCancel }) {
         free_text: freeText,
         mode: showDetail ? 'full' : 'quick',
       })
-      // The entry is now safely stored. Filing is a separate step whose failure
-      // is reported separately — it can never cost the entry.
       haptic.success()
+
+      if (!publish) {
+        onSaved(saved, null)
+        return
+      }
+      // The entry is already safely stored. Filing is a separate step whose
+      // failure is reported separately — it can never cost the entry.
       const filed = await fileToDrive(entryDate)
       onSaved(saved, filed)
     } catch (e) {
@@ -152,6 +165,7 @@ function EntryForm({ entryDate, existing, previous, onSaved, onCancel }) {
     }
   }
 
+  const state = publishState(existing)
   const backdated = entryDate !== localDate()
 
   return (
@@ -261,13 +275,29 @@ function EntryForm({ entryDate, existing, previous, onSaved, onCancel }) {
             <strong>Not saved.</strong> {error}
           </div>
         )}
-        <button
-          onClick={handleSave}
-          disabled={saving || answered === 0}
-          className="w-full py-3 rounded-full bg-[#6750A4] text-white text-sm font-semibold disabled:opacity-40"
-        >
-          {saving ? 'Saving…' : existing ? 'Save changes' : 'Save entry'}
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => handleSave({ publish: false })}
+            disabled={saving || answered === 0}
+            className="flex-1 py-3 rounded-full border border-[#6750A4] text-[#6750A4] text-sm font-semibold disabled:opacity-40"
+          >
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+          <button
+            onClick={() => handleSave({ publish: true })}
+            disabled={saving || answered === 0}
+            className="flex-1 py-3 rounded-full bg-[#6750A4] text-white text-sm font-semibold disabled:opacity-40"
+          >
+            {state === 'published' || state === 'edited' ? 'Republish' : 'Publish'}
+          </button>
+        </div>
+        <p className="mt-2 text-[10px] text-[#79747E] text-center">
+          {state === 'published'
+            ? 'Published — saving again keeps it a draft until you republish.'
+            : state === 'edited'
+              ? 'Edited since publishing. Republish to update the filed document.'
+              : 'Save as often as you like through the day. Publish files it to Drive.'}
+        </p>
       </div>
     </div>
   )
@@ -300,7 +330,11 @@ function HistoryRow({ entry, date, onOpen }) {
   // anchor nested inside a button is invalid and makes the two tap targets
   // fight each other. Two siblings instead — body opens the editor, icon opens
   // the filed document.
-  const docUrl = logged && entry.drive_status === 'filed' ? driveDocUrl(entry.drive_file_id) : null
+  const state = publishState(entry)
+  // The link stays available once a document exists, including while the entry
+  // has unpublished edits — the filed version is still the filed version, and
+  // being able to see what was submitted is the point.
+  const docUrl = logged && entry.drive_file_id ? driveDocUrl(entry.drive_file_id) : null
 
   return (
     <div className="flex items-center border-b border-[#F3EDF7]">
@@ -322,9 +356,19 @@ function HistoryRow({ entry, date, onOpen }) {
         </span>
       </button>
 
-      {logged && entry.drive_status === 'failed' && (
-        <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#FCEEEE] text-[#8C1D18] flex-shrink-0 ml-2">
-          Not filed
+      {/* A draft is a normal mid-day state, not a fault — it must not be
+          dressed as the red "filing broke" pill, or the one that genuinely
+          needs chasing stops standing out. Published needs no pill at all;
+          the document icon beside it already says so. */}
+      {logged && state && state !== 'published' && (
+        <span
+          className={`text-[10px] px-2 py-0.5 rounded-full flex-shrink-0 ml-2 ${
+            state === 'failed'
+              ? 'bg-[#FCEEEE] text-[#8C1D18]'
+              : 'bg-[#F3EDF7] text-[#49454F]'
+          }`}
+        >
+          {state === 'edited' ? 'Edited' : PUBLISH_LABEL[state]}
         </span>
       )}
 
@@ -353,6 +397,7 @@ export default function Journal() {
   const [editing, setEditing] = useState(null)   // { date, existing, previous }
   const [days, setDays] = useState(30)
   const [filing, setFiling] = useState(null)     // outcome of the last filing
+  const [draftSaved, setDraftSaved] = useState(null) // date saved without filing
   const [drive, setDrive] = useState(null)       // { connected, drive }
   const [view, setView] = useState('history')    // 'history' | 'trends'
 
@@ -411,7 +456,15 @@ export default function Journal() {
         entryDate={editing.date}
         existing={editing.existing}
         previous={editing.previous}
-        onSaved={(_saved, filed) => { setEditing(null); setFiling(filed); refresh() }}
+        onSaved={(saved, filed) => {
+          setEditing(null)
+          setFiling(filed)
+          // A save with no filing is a draft, and still deserves a confirmation
+          // — a write that reports nothing is exactly how this app has lost
+          // user trust before.
+          setDraftSaved(filed ? null : saved?.entry_date ?? null)
+          refresh()
+        }}
         onCancel={() => setEditing(null)}
       />
     )
@@ -444,6 +497,21 @@ export default function Journal() {
         {error && (
           <div className="my-3 px-3 py-2 rounded-xl bg-[#FCEEEE] text-[#8C1D18] text-xs">
             Couldn't load your entries: {error}
+          </div>
+        )}
+
+        {draftSaved && !filing && (
+          <div className="mt-3 px-3 py-2.5 rounded-xl bg-[#F3EDF7] text-[#1C1B1F] text-xs leading-relaxed flex items-start justify-between gap-3">
+            <span className="min-w-0">
+              <strong>Saved as a draft.</strong> Not filed to Drive yet — add to it through
+              the day and publish when you're done.
+            </span>
+            <button
+              onClick={() => setDraftSaved(null)}
+              className="underline text-[#6750A4] flex-shrink-0"
+            >
+              Dismiss
+            </button>
           </div>
         )}
 

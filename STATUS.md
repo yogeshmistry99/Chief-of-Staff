@@ -128,6 +128,25 @@ evening reminder push — see the newest changelog entries)
 
 ## Recent significant changes (newest first)
 
+- **2026-08-16 — Journal: Save and Publish are now separate actions.** Previously every save filed
+  to Drive, which meant a half-written day went into the case file and the document was rewritten on
+  each edit. The day is actually written in pieces — something is remembered mid-afternoon and added
+  — and submitted once at the end, so the form now has **Save** (row only) and **Publish** (files to
+  Drive). Saving is a complete, normal action; a draft is not a failure.
+  **New column `journal_entries.filed_revision`** records which revision was filed, so "published"
+  and "published, then edited since" are distinguishable exactly. **Not a timestamp comparison** —
+  recording a successful filing updates the row and bumps `updated_at`, so `updated_at` vs
+  `drive_filed_at` reports a phantom edit on every single publish. Existing filed rows were
+  backfilled to their current revision so none reads as stale.
+  Four states, from `publishState()` in `src/lib/journal.js`: **draft / published / edited / failed**.
+  The history list gives a draft a neutral grey pill and keeps the red one for a filing that
+  genuinely broke — dressing a draft as a fault would stop the real fault standing out. Published
+  entries get no pill; the document icon already says so. The document link stays available while an
+  entry has unpublished edits, because seeing what was actually submitted is the point.
+  `listUnfiled` now means "filed document is not current", which mixes drafts, failures and stale
+  entries — its comment says so, and says to filter on `drive_status === 'failed'` for problems only.
+  It has no UI caller yet.
+
 - **2026-08-15 — Colour moved onto each filter category, and the palette extended to 18.** The
   separate "Colour" section is gone: every category row now carries its own colour toggle (a small
   colour-wheel button), still exclusive — choosing one drops the previous, because two colour

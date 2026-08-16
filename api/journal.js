@@ -82,7 +82,11 @@ export default async function handler(req, res) {
       return await recordFailure(sb, entryDate, res, 'Drive did not return a file id — the entry was not filed.')
     }
 
-    await setDriveResult(sb, entryDate, { ok: true, fileId: file.id, documentMd: html })
+    // The revision that was filed, so a later edit is detectable as "published,
+    // then changed" rather than silently leaving a stale document looking current.
+    await setDriveResult(sb, entryDate, {
+      ok: true, fileId: file.id, documentMd: html, revision: entry.revision ?? 1,
+    })
     return res.status(200).json({
       ok: true,
       fileId: file.id,
