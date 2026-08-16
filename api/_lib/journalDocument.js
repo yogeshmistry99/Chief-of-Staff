@@ -1,4 +1,5 @@
 import { SYMPTOM_GROUPS, PROMPTS, scoreLabel, isInverted, MAX_SCORE } from './journalSymptoms.js'
+import { MEDICINES, medicineName, normaliseMedicines } from './journalMedicines.js'
 
 // Builds the document filed to Drive.
 //
@@ -152,6 +153,53 @@ function paragraphs(text) {
     .join('')
 }
 
+// Medicines, rendered ONLY from the stored row.
+//
+// Every figure here is printed from the record, exactly as the symptom scores
+// are — the model is never handed a dose or a count. A wrong medication figure
+// in a document disclosed to a solicitor is a factual error in evidence.
+//
+// The section is omitted entirely when nothing was recorded, rather than
+// printing a table of blanks: "not recorded" is not the same as "not taken",
+// and a document must not imply the second when it means the first.
+export function medicinesSection(entry) {
+  const m = normaliseMedicines(entry?.medicines)
+  const rows = MEDICINES
+    .map((med) => {
+      const v = m[med.key]
+      if (!v) return null
+      const answer = med.schedule === 'as_needed'
+        ? (v.doses === 0 ? 'None taken' : `${v.doses} ${v.doses === 1 ? 'dose' : 'doses'}`)
+        : (v.taken ? 'Taken' : 'Not taken')
+      return { name: medicineName(med), note: med.note ?? '', answer }
+    })
+    .filter(Boolean)
+
+  if (!rows.length) return ''
+
+  const html = rows.map((r) => `
+    <tr>
+      <td style="padding:5px 10px;border:1px solid #d0d0d0;">${escapeHtml(r.name)}</td>
+      <td style="padding:5px 10px;border:1px solid #d0d0d0;">${escapeHtml(r.answer)}</td>
+      <td style="padding:5px 10px;border:1px solid #d0d0d0;">${escapeHtml(r.note)}</td>
+    </tr>`).join('')
+
+  return `
+<h2 style="font-family:Arial,Helvetica,sans-serif;font-size:12pt;margin:20px 0 8px 0;">Medication</h2>
+<table style="border-collapse:collapse;font-size:10pt;width:100%;margin:0 0 6px 0;">
+  <tr style="background:#efefef;">
+    <th style="padding:5px 10px;border:1px solid #d0d0d0;text-align:left;">Medicine</th>
+    <th style="padding:5px 10px;border:1px solid #d0d0d0;text-align:left;">Today</th>
+    <th style="padding:5px 10px;border:1px solid #d0d0d0;text-align:left;">Prescribed as</th>
+  </tr>
+  ${html}
+</table>
+<p style="margin:0 0 16px 0;font-size:9pt;color:#555;">
+Only medicines recorded on the day are listed; an omission here means nothing was recorded, not that a dose was missed.
+</p>
+`
+}
+
 export function buildDocumentHtml(entry, narrative) {
   const items = scoredItems(entry)
   const mean = meanSeverity(entry)
@@ -198,6 +246,7 @@ Scored 0&ndash;4, where 0 is none and 4 is very severe.${hasInverted
   : ''}${mean != null ? ` Mean severity ${mean}${hasInverted ? ', excluding sleep quality' : ''}.` : ''}
 </p>
 
+${medicinesSection(entry)}
 <hr style="border:none;border-top:1px solid #ddd;margin:24px 0 8px 0;">
 <p style="font-size:8pt;color:#777;margin:0;">
 ${escapeHtml(entry.entry_date)}${authored ? ` &middot; recorded ${escapeHtml(authored.toLocaleString('en-GB', { timeZone: 'Europe/London' }))}` : ''}${

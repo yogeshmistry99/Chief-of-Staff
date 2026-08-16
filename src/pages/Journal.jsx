@@ -4,6 +4,9 @@ import {
   SYMPTOM_GROUPS, SCALE, PROMPTS, scoreLabel, isInverted,
 } from '../../api/_lib/journalSymptoms.js'
 import {
+  MEDICINES, medicineName, medicineSummary, MAX_DOSES,
+} from '../../api/_lib/journalMedicines.js'
+import {
   readEntries, readEntry, writeEntry, onJournalChanged, fileToDrive, driveStatus,
   localDate, shiftDate, seedFromPrevious, isBackdated, driveDocUrl,
   publishState, PUBLISH_LABEL, PUBLISH_SHORT, PUBLISH_DOT, NO_ENTRY_DOT,
@@ -39,7 +42,6 @@ const TODAY_LABEL = (d) => {
 // ─── One symptom row ──────────────────────────────────────────────────────────
 
 function SymptomRow({ symptom, value, onScore, onNote }) {
-  const [noteOpen, setNoteOpen] = useState(!!value?.note)
   const score = value?.score
   const carried = value?.carried === true
 
@@ -79,22 +81,123 @@ function SymptomRow({ symptom, value, onScore, onNote }) {
         })}
       </div>
 
-      {noteOpen ? (
-        <input
-          type="text"
-          value={value?.note ?? ''}
-          onChange={(e) => onNote(e.target.value)}
-          placeholder="Anything specific about this today?"
-          className="mt-2 w-full text-sm px-3 py-2 rounded-xl border border-[#CAC4D0] bg-white text-[#1C1B1F] placeholder:text-[#CAC4D0]"
-        />
+      <GrowingNote
+        value={value?.note ?? ''}
+        onChange={onNote}
+        placeholder="Anything specific about this today?"
+      />
+    </div>
+  )
+}
+
+// A note box that starts one line tall and grows with what is typed.
+//
+// It replaced an "+ add a note" button. The button cost a tap before a thought
+// could be written down, and on a tired evening that tap is exactly where the
+// detail gets lost — the note is the part a clinician reads, so it should never
+// be behind a door. Always present, one line when empty, no scrollbar.
+function GrowingNote({ value, onChange, placeholder }) {
+  const ref = useRef(null)
+
+  // Height follows content. Reset to 'auto' first or scrollHeight only ever
+  // grows: it reports the current box's scroll extent, so without the reset a
+  // deleted line leaves the box permanently tall.
+  const fit = useCallback(() => {
+    const el = ref.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${el.scrollHeight}px`
+  }, [])
+
+  useEffect(() => { fit() }, [fit, value])
+
+  return (
+    <textarea
+      ref={ref}
+      rows={1}
+      value={value}
+      onChange={(e) => { onChange(e.target.value); fit() }}
+      placeholder={placeholder}
+      className="mt-2 w-full text-sm px-3 py-2 rounded-xl border border-[#CAC4D0] bg-white
+        text-[#1C1B1F] placeholder:text-[#CAC4D0] resize-none overflow-hidden leading-snug"
+    />
+  )
+}
+
+// ─── One medicine ─────────────────────────────────────────────────────────────
+
+function MedicineRow({ med, value, onChange }) {
+  const asNeeded = med.schedule === 'as_needed'
+  const doses = value?.doses ?? null
+  const taken = value?.taken
+
+  const tap = (fn) => () => { haptic.light(); fn() }
+
+  return (
+    <div className="py-2.5 border-b border-[#F3EDF7] last:border-0">
+      <div className="flex items-baseline justify-between gap-2 mb-1.5">
+        <span className="text-sm text-[#1C1B1F] leading-snug">
+          {medicineName(med)}
+        </span>
+        <span className="text-[11px] text-[#79747E] flex-shrink-0 text-right">{med.note}</span>
+      </div>
+
+      {asNeeded ? (
+        // "Taken or missed" is the wrong question for something taken as needed
+        // — how many is the answer that means something, since painkiller use is
+        // itself a measure of the headaches.
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            aria-label={`One fewer ${med.label}`}
+            onClick={tap(() => onChange({ doses: Math.max(0, (doses ?? 0) - 1) }))}
+            disabled={(doses ?? 0) === 0}
+            className="w-12 h-11 rounded-xl bg-[#F3EDF7] text-[#49454F] text-lg font-medium disabled:opacity-40"
+          >
+            −
+          </button>
+          <span className="flex-1 text-center text-sm text-[#1C1B1F]">
+            {doses == null
+              ? <span className="text-[#CAC4D0]">Not recorded</span>
+              : <>{doses} {doses === 1 ? 'dose' : 'doses'} today</>}
+          </span>
+          <button
+            type="button"
+            aria-label={`One more ${med.label}`}
+            onClick={tap(() => onChange({ doses: Math.min(MAX_DOSES, (doses ?? 0) + 1) }))}
+            className="w-12 h-11 rounded-xl bg-[#EADDFF] text-[#6750A4] text-lg font-medium"
+          >
+            +
+          </button>
+          {doses == null && (
+            <button
+              type="button"
+              onClick={tap(() => onChange({ doses: 0 }))}
+              className="h-11 px-3 rounded-xl bg-[#F3EDF7] text-[11px] text-[#49454F]"
+            >
+              None
+            </button>
+          )}
+        </div>
       ) : (
-        <button
-          type="button"
-          onClick={() => { haptic.light(); setNoteOpen(true) }}
-          className="mt-1.5 text-[11px] text-[#6750A4]"
-        >
-          + add a note
-        </button>
+        <div className="flex gap-1.5" role="radiogroup" aria-label={med.label}>
+          {[['Taken', true], ['Missed', false]].map(([label, v]) => (
+            <button
+              key={label}
+              type="button"
+              role="radio"
+              aria-checked={taken === v}
+              onClick={tap(() => onChange({ taken: v }))}
+              className={`flex-1 h-11 rounded-xl text-xs font-medium transition-colors ${
+                taken === v
+                  ? v ? 'bg-[#6750A4] text-white' : 'bg-[#8C1D18] text-white'
+                  : 'bg-[#F3EDF7] text-[#79747E]'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       )}
     </div>
   )
@@ -107,6 +210,11 @@ function EntryForm({ entryDate, existing, previous, onSaved, onCancel }) {
     () => existing?.symptoms ?? seedFromPrevious(previous)
   )
   const [prompts, setPrompts] = useState(() => existing?.prompts ?? {})
+  // Medicines are NOT carried over from yesterday. A symptom score is an
+  // observation that plausibly persists; whether a tablet was swallowed today is
+  // a fact about today, and pre-filling it would fabricate adherence data in a
+  // medical record.
+  const [medicines, setMedicines] = useState(() => existing?.medicines ?? {})
   const [freeText, setFreeText] = useState(() => existing?.free_text ?? '')
   const [showDetail, setShowDetail] = useState(() => existing?.mode === 'full')
   const [openGroup, setOpenGroup] = useState(SYMPTOM_GROUPS[0].key)
@@ -146,6 +254,7 @@ function EntryForm({ entryDate, existing, previous, onSaved, onCancel }) {
         prompts,
         free_text: freeText,
         mode: showDetail ? 'full' : 'quick',
+        medicines,
       })
       haptic.success()
 
@@ -165,6 +274,7 @@ function EntryForm({ entryDate, existing, previous, onSaved, onCancel }) {
     }
   }
 
+  const medSummary = medicineSummary(medicines)
   const state = publishState(existing)
   const backdated = entryDate !== localDate()
 
@@ -234,6 +344,37 @@ function EntryForm({ entryDate, existing, previous, onSaved, onCancel }) {
             </div>
           )
         })}
+
+        {/* Medicines sit with the symptom groups and behave like one, so the
+            form stays a single list of collapsible sections. Adherence and
+            painkiller use belong beside the scores: whether a headache day
+            followed a missed dose is exactly the pattern this record is for. */}
+        <div className="mb-2 rounded-2xl bg-white border border-[#CAC4D0] overflow-hidden">
+          <button
+            type="button"
+            onClick={() => { haptic.light(); setOpenGroup(openGroup === 'medicines' ? null : 'medicines') }}
+            className="w-full flex items-center justify-between px-4 py-3"
+          >
+            <span className="text-sm font-medium text-[#1C1B1F]">Medicines</span>
+            <span className="text-xs text-[#79747E]">
+              {medSummary.recorded}/{medSummary.total}
+              {medSummary.asNeededDoses > 0 && ` · ${medSummary.asNeededDoses} paracetamol`}
+              <span className={`inline-block ml-2 transition-transform ${openGroup === 'medicines' ? 'rotate-180' : ''}`}>▾</span>
+            </span>
+          </button>
+          {openGroup === 'medicines' && (
+            <div className="px-4 pb-2">
+              {MEDICINES.map((m) => (
+                <MedicineRow
+                  key={m.key}
+                  med={m}
+                  value={medicines[m.key]}
+                  onChange={(v) => setMedicines((prev) => ({ ...prev, [m.key]: v }))}
+                />
+              ))}
+            </div>
+          )}
+        </div>
 
         {!showDetail ? (
           <button

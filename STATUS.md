@@ -128,6 +128,30 @@ evening reminder push — see the newest changelog entries)
 
 ## Recent significant changes (newest first)
 
+- **2026-08-16 — Journal: medicines checklist, and notes are no longer behind a button.**
+  New **Medicines** section beside the symptom groups, with the five current medicines. **Every one
+  was read out of the Medical Tracker, not from memory**, and `api/_lib/journalMedicines.js` records
+  the source per item: Sertraline 50 mg (GP, row 17), Candesartan 8 mg (Dr Bhavini Patel, headache
+  prevention, titrated 2→4→8 mg), **Mometasone furoate and Fluticasone propionate — the two ENT
+  prescriptions, from Mr Stephen J Wood's 8 Jun 2026 consultation** — and Paracetamol as needed.
+  **No dose is recorded for either ENT spray anywhere in the file, so none is stated.** Do not invent
+  one; a wrong dose in a medical document is a factual error in evidence.
+  **Paracetamol is a dose counter, not a tick.** "Taken or missed" is the wrong question for
+  something taken as needed — *how many* is the answer that means something, since painkiller use is
+  itself a measure of the headaches. Scheduled medicines are Taken/Missed taps.
+  **Medicines are never carried over from yesterday**, unlike symptom scores: a score is an
+  observation that plausibly persists, whether a tablet was swallowed is a fact about today, and
+  pre-filling it would fabricate adherence data.
+  New `medicines jsonb` column. **Absent key ≠ `taken:false` ≠ `doses:0`** — "none today" is an
+  answer, silence is not, and the filed document omits the whole section rather than printing blanks
+  that would read as "took nothing". Rendered from the row only; the model never sees a dose or a
+  count.
+  **The per-symptom "+ add a note" button is gone**, replaced by an always-visible one-line box that
+  grows as it is typed into. The button cost a tap before a thought could be written down, and on a
+  tired evening that tap is where the detail was being lost — the note is the part a clinician reads.
+  (Auto-grow resets height to `auto` before reading `scrollHeight`, or a deleted line leaves the box
+  permanently tall.)
+
 - **2026-08-16 — Journal: Save and Publish are now separate actions.** Previously every save filed
   to Drive, which meant a half-written day went into the case file and the document was rewritten on
   each edit. The day is actually written in pieces — something is remembered mid-afternoon and added

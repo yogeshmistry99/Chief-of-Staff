@@ -14,9 +14,11 @@
 // share identical semantics.
 
 import { SYMPTOM_KEYS, PROMPT_KEYS, MAX_SCORE } from './journalSymptoms.js'
+import { normaliseMedicines } from './journalMedicines.js'
 
 const COLS = 'id, entry_date, symptoms, prompts, free_text, mode, authored_at, updated_at, '
-  + 'drive_file_id, drive_status, drive_error, drive_filed_at, document_md, revision, filed_revision'
+  + 'drive_file_id, drive_status, drive_error, drive_filed_at, document_md, revision, filed_revision, '
+  + 'medicines'
 
 function fail(op, error) {
   throw new Error(`journal.${op}: ${error?.message ?? 'unknown error'}`)
@@ -100,6 +102,7 @@ export async function saveEntry(sb, entry) {
     prompts: normalisePrompts(entry.prompts),
     free_text: entry.free_text?.trim() || null,
     mode: entry.mode === 'full' ? 'full' : 'quick',
+    medicines: normaliseMedicines(entry.medicines),
   }
 
   const existing = await getEntryByDate(sb, entryDate)
