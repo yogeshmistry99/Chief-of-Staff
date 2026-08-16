@@ -3,9 +3,9 @@
 Single source of truth for system state. **Read this at the start of every session.
 Update it at the end of any session that changes anything.**
 
-Last updated: 2026-08-16 (build audit: dead code purged, `api/*.js` down to **11/12** with a slot free, and prompt
-caching turned on for the chat prompts — ~84% off the per-message input cost. Also: journal medicines checklist and
-save/publish; Google Sheets trackers live with filtering, sorting and colour — see the newest changelog entries)
+Last updated: 2026-08-16 (build audit: dead code purged, `api/*.js` down to **11/12** with a slot free; prompt caching
+turned on for the chat — 90% off per message; refresh path trimmed 45% — no tool schema on JSON-only calls, no completed
+tasks in a reprioritisation prompt. Also: journal medicines checklist and save/publish; Google Sheets trackers live)
 
 ---
 
@@ -129,19 +129,67 @@ save/publish; Google Sheets trackers live with filtering, sorting and colour —
 
 ## Recent significant changes (newest first)
 
+- **2026-08-16 — Refresh path trimmed: 45,458 → 24,960 tokens per sweep (39% less cost).**
+  No output change. Two independent wastes, both measured by running the real prompt builders
+  against the live 392-task store and the real knowledge blocks.
+
+  **Tool definitions on calls that cannot use them.** `api/claude.js` sent `tools: TOOLS`
+  unconditionally. The ranking and refresh calls ask for a JSON object and parse the reply — no
+  tool is reachable from them — so ~1,450 tokens of schema rode on every one. `sendMessage` now
+  accepts `options.tools === false`, wired into `rankPriorities`, the CoS refresh and the Head
+  refresh. **Deliberately opt-OUT, not opt-in:** a new chat surface that forgot to ask for tools
+  would silently lose the ability to save anything — the failure this repo already spent three days
+  on. A refresh call that forgets to opt out merely costs a little.
+  This also closed a **latent hazard**: the false-confirmation guard matches first-person write
+  verbs, and a refresh summary can legitimately read *"I updated three priorities"* — which fired
+  `forceWriteRetry` with `tool_choice:'any'` and coerced a write nobody asked for. With no tools the
+  same call would be an API error. The guard is now skipped whenever a request carries no tools.
+
+  **Completed tasks in the refresh payload.** `refreshTaskList` had no `is_completed` filter and
+  `readTasksFromSupabase` returns completed rows by default, so every refresh shipped all 165
+  completed tasks beside the 227 active ones — to a prompt whose whole job is reprioritising open
+  work. `formatTasksForCoS` has always filtered; the refresh path never did. Now filtered inside the
+  builder, so a new refresh surface cannot reintroduce it.
+
+  | | before | after |
+  |---|---|---|
+  | CoS refresh (Sonnet) | 18,882 tok · $0.0566 | 12,957 · **$0.0389** |
+  | 7 Head refreshes (Haiku) | 26,576 tok · $0.0266 | 12,003 · **$0.0120** |
+  | Home priorities button (Sonnet) | 13,392 tok · $0.0402 | 11,946 · **$0.0358** |
+
+  **Correction to the record:** the Head refresh runs on the **default Haiku**, not Sonnet — only
+  the CoS refresh and the Home priorities button are Sonnet calls. Sonnet's minimum cacheable prefix
+  is **1,024** tokens, Haiku 4.5's is **4,096**; applying the wrong one badly misreads which calls
+  actually cache.
+
+  **Not done, and why.** Moving the ranking calls to Haiku would cut the two expensive buttons by
+  two-thirds, but ranking 227 tasks against a ~6,700-token strategy document is exactly the
+  synthesis Sonnet is worth paying for — a quality decision, not cleanup. Separately, the `chief`
+  knowledge block has grown to ~22,000 characters and is now the largest fixed cost in the system;
+  it is cached on the chat path but is real money on the Sonnet paths. **Pruning it during the
+  monthly review is worth more than any further code change.**
+
 - **2026-08-16 — Build audit: dead code purged, and prompt caching turned on. ~84% off the chat's
   per-message input cost.**
   Nothing about how the app behaves changed; 132 tests and `vite build` pass.
 
-  **The token finding.** Every chat message was re-sending an uncached prefix of roughly **6,470
-  tokens** — ~1,590 of tool definitions, ~820 of static CoS rules, and ~4,060 of the full 122-task
-  list. Only `buildKnowledgeSystemBlocks` carried a `cache_control` breakpoint; the block holding
-  the rules and the task list did not, and **a breakpoint only covers the prefix up to itself**, so
+  **The token finding.** Every chat message was re-sending an uncached prefix of **14,216 tokens**
+  — ~1,450 of tool definitions, ~6,700 of the `chief` knowledge block, and the 227 active tasks.
+  Only `buildKnowledgeSystemBlocks` carried a `cache_control` breakpoint; the block holding the
+  rules and the task list did not, and **a breakpoint only covers the prefix up to itself**, so
   the tools were never cached either. Fix: a second breakpoint on the **final** system block of
   `SYSTEM_PROMPTS.cos` / `.head` / `.discussion`, which pulls the tools and every earlier block into
-  the cached prefix. Measured on a 20-message conversation: **$0.1293 → $0.0204**. The
-  `prompt-caching-2024-07-31` beta header and the cache-usage accounting were already in
+  the cached prefix. **$0.0142 → $0.0014 per message (90% off)**; over 20 messages $0.284 → $0.045.
+  The `prompt-caching-2024-07-31` beta header and the cache-usage accounting were already in
   `api/claude.js` — only the breakpoint was missing.
+  *(Figures corrected the same day. The first pass estimated ~6,470 tokens/message and a $0.1293 →
+  $0.0204 conversation; that understated the knowledge block and used a stale 122-task count. The
+  numbers above come from running the real prompt builders against the live store.)*
+  Live confirmation it was needed: August Haiku usage showed **`cacheRead: 0, cacheWrite: 0` across
+  all 51 calls** — caching was absent, not merely partial.
+  **Haiku 4.5's minimum cacheable prefix is 4,096 tokens**, so the `head`/`discussion` breakpoints
+  only fire where a bucket's prefix clears it — Systems does, the small buckets do not yet. They
+  cost nothing where they don't fire and switch on by themselves as a bucket grows.
   `REFRESH_PROMPTS` deliberately does **not** get one: those are one-shot with per-bucket text, so
   nothing ever reads the entry back and a breakpoint would buy only the 1.25× write.
   `src/lib/claudeCache.test.js` guards this — the breakpoint is invisible if it goes missing, since
@@ -990,8 +1038,18 @@ save/publish; Google Sheets trackers live with filtering, sorting and colour —
 - **A `cache_control` breakpoint covers the prefix up to itself, not the block it sits on.** The
   request prefix is ordered tools → system → messages, so the breakpoint has to be on the **last**
   system block or the tool definitions are charged in full every message. This was the single
-  largest avoidable cost in the app and it was invisible: behaviour identical, bill 6× higher.
+  largest avoidable cost in the app and it was invisible: behaviour identical, bill 10× higher.
   `src/lib/claudeCache.test.js` is the only thing that would notice it disappearing.
+- **The minimum cacheable prefix is per model and is NOT monotonic: Haiku 4.5 needs 4,096 tokens,
+  Sonnet 4.6 needs 1,024.** Below the threshold a breakpoint is silently ignored — no error, just
+  `cache_creation_input_tokens: 0`. Applying the wrong figure badly misreads which calls cache.
+- **Not every model in this app is the one you'd assume.** The chat and the **Head refresh** run on
+  Haiku; only the **CoS refresh** and the **Home priorities button** are Sonnet. Check the call site
+  before costing anything — `sendMessage` defaults to Haiku when no model is passed.
+- **`tools` is opt-OUT on `/api/claude`, never opt-in.** Pass `{ tools: false }` from calls that
+  parse JSON and cannot act on a tool. It must stay this way round: a chat surface that forgot to
+  ask for tools would silently lose the ability to save anything, which is the 27–29 July failure
+  all over again. A refresh call that forgets to opt out just costs a little.
 - **In the journal charts, a gap must stay a gap.** `null` means no entry and `0` means recorded as
   none — never conflate them, and never interpolate a line across a missing day. `segments()` in
   `src/lib/journalChart.js` enforces the break; a "smoother" chart that joins across gaps is
