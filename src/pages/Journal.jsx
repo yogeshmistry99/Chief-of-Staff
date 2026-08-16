@@ -6,7 +6,7 @@ import {
 import {
   readEntries, readEntry, writeEntry, onJournalChanged, fileToDrive, driveStatus,
   localDate, shiftDate, seedFromPrevious, isBackdated, driveDocUrl,
-  publishState, PUBLISH_LABEL,
+  publishState, PUBLISH_LABEL, PUBLISH_SHORT, PUBLISH_DOT, NO_ENTRY_DOT,
 } from '../lib/journal'
 import JournalTrends from '../components/JournalTrends'
 import ReminderToggle from '../components/ReminderToggle'
@@ -343,32 +343,30 @@ function HistoryRow({ entry, date, onOpen }) {
         className="flex-1 min-w-0 flex items-center gap-3 py-3 text-left"
       >
         <span
-          className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${logged ? 'bg-[#6750A4]' : 'bg-[#E7E0EC]'}`}
-          aria-hidden
+          className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+          style={{ backgroundColor: state ? PUBLISH_DOT[state] : NO_ENTRY_DOT }}
+          title={state ? PUBLISH_LABEL[state] : 'Not logged'}
         />
         <span className="flex-1 min-w-0">
           <span className="block text-sm text-[#1C1B1F]">{TODAY_LABEL(date)}</span>
           <span className="block text-xs text-[#79747E]">
+            {/* The state in words, beside the coloured dot. The dot is the
+                glance; this is what makes it readable without relying on
+                telling amber from green. */}
             {logged
-              ? <>Logged{avg != null && ` · average ${avg.toFixed(1)}`}{isBackdated(entry) && ' · written later'}</>
+              ? <>{PUBLISH_SHORT[state]}{avg != null && ` · average ${avg.toFixed(1)}`}{isBackdated(entry) && ' · written later'}</>
               : 'Not logged'}
           </span>
         </span>
       </button>
 
-      {/* A draft is a normal mid-day state, not a fault — it must not be
-          dressed as the red "filing broke" pill, or the one that genuinely
-          needs chasing stops standing out. Published needs no pill at all;
-          the document icon beside it already says so. */}
-      {logged && state && state !== 'published' && (
-        <span
-          className={`text-[10px] px-2 py-0.5 rounded-full flex-shrink-0 ml-2 ${
-            state === 'failed'
-              ? 'bg-[#FCEEEE] text-[#8C1D18]'
-              : 'bg-[#F3EDF7] text-[#49454F]'
-          }`}
-        >
-          {state === 'edited' ? 'Edited' : PUBLISH_LABEL[state]}
+      {/* Only the state that needs chasing keeps a pill. Draft and Edited are
+          named in the row text and coloured on the dot, so a pill for them would
+          be a third copy of the same fact — and a draft dressed like a failure
+          would stop the real failure standing out. */}
+      {state === 'failed' && (
+        <span className="text-[10px] px-2 py-0.5 rounded-full flex-shrink-0 ml-2 bg-[#FCEEEE] text-[#8C1D18]">
+          Retry
         </span>
       )}
 

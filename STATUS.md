@@ -146,6 +146,14 @@ evening reminder push — see the newest changelog entries)
   `listUnfiled` now means "filed document is not current", which mixes drafts, failures and stale
   entries — its comment says so, and says to filter on `drive_status === 'failed'` for problems only.
   It has no UI caller yet.
+  **The history dot is colour-coded by state** (2026-08-16): draft = brand purple (progress, not a
+  warning — amber for "you wrote today's entry" would nag), published = status green, edited =
+  status amber, failed = status red, no entry = pale grey. These are **status** colours, kept
+  deliberately clear of the tracker series palette so a green dot can never read as "series 4" — a
+  test asserts no overlap. **Colour is never the only signal:** every row prints its state in words
+  beside the dot and the dot carries a title, so amber-vs-green is never load-bearing. Only `failed`
+  keeps a pill (now "Retry"), since draft and edited are already named in the row text and a third
+  copy of the same fact would bury the one that needs action.
 
 - **2026-08-15 — Colour moved onto each filter category, and the palette extended to 18.** The
   separate "Colour" section is gone: every category row now carries its own colour toggle (a small

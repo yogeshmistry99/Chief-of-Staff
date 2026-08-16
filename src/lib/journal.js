@@ -127,6 +127,34 @@ export const PUBLISH_LABEL = {
   failed: 'Not filed',
 }
 
+// The same four states in a list row, where the long form does not fit.
+export const PUBLISH_SHORT = {
+  draft: 'Draft',
+  published: 'Published',
+  edited: 'Edited',
+  failed: 'Not filed',
+}
+
+// Dot colour per state.
+//
+// These are STATUS colours, not chart-series colours: green/amber/red carry
+// their conventional meanings and are deliberately kept apart from the tracker
+// palette so a status can never be mistaken for a category. A draft takes the
+// app's own purple rather than a status hue — it is progress, not a warning,
+// and amber for "you have written today's entry" would be nagging.
+//
+// COLOUR IS NEVER THE ONLY SIGNAL. Every row prints its state in words beside
+// the dot, and the dot carries a title for anyone who cannot see the difference.
+// Do not drop the words and keep the dot.
+export const PUBLISH_DOT = {
+  draft: '#6750A4',      // brand purple — in progress
+  published: '#0ca30c',  // status good
+  edited: '#fab219',     // status warning — the filed document is stale
+  failed: '#d03b3b',     // status critical
+}
+
+export const NO_ENTRY_DOT = '#E7E0EC'
+
 // Link to a filed entry's document.
 //
 // Every entry is filed as a native Google Doc, so the canonical URL is
