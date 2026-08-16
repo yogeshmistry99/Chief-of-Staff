@@ -148,6 +148,17 @@ function formatTasksForPrompt(tasks) {
   }).join('\n')
 }
 
+// Anthropic caches the request prefix in the order tools → system → messages,
+// so a breakpoint on the LAST system block covers the tool definitions and
+// every system block before it — roughly 6.5k tokens per chat message that
+// would otherwise be charged at full rate on every turn. Cached reads are
+// 0.1x, writes 1.25x, so this pays for itself from the second message on.
+//
+// Only the multi-turn chat prompts carry the second breakpoint. The refresh
+// prompts are one-shot with per-bucket text, so there is nothing to read back
+// and a breakpoint there would only buy the 1.25x write.
+const CACHE = { type: 'ephemeral' }
+
 function buildKnowledgeSystemBlocks({ instructions, context, files } = {}) {
   const parts = []
   if (instructions?.trim()) parts.push(`== Instructions ==\n${instructions.trim()}`)
@@ -159,7 +170,7 @@ function buildKnowledgeSystemBlocks({ instructions, context, files } = {}) {
   if (!parts.length) return []
   // Single block with cache_control — placed first in system array so its
   // cache key is independent of the dynamic task list that follows.
-  return [{ type: 'text', text: parts.join('\n\n'), cache_control: { type: 'ephemeral' } }]
+  return [{ type: 'text', text: parts.join('\n\n'), cache_control: CACHE }]
 }
 
 function todayISO() {
@@ -280,7 +291,7 @@ export const SYSTEM_PROMPTS = {
     const calendarSection = calendarEvents !== null
       ? `\nUpcoming calendar (today + 7 days):\n${formatCalendarForPrompt(calendarEvents)}\n`
       : ''
-    const base = { type: 'text', text: `You are the Chief of Staff for Yogesh Mistry, an architect at Gensler. Today is ${today}.
+    const base = { type: 'text', cache_control: CACHE, text: `You are the Chief of Staff for Yogesh Mistry, an architect at Gensler. Today is ${today}.
 
 You oversee all areas of his life organised into seven buckets: Finance, Health, Work, Family, Home, Personal, and Systems.
 
@@ -325,7 +336,7 @@ VERIFICATION ON CHALLENGE — if he questions whether a task exists, was created
     }
     const bucketTasks = tasks?.filter((t) => t._projectName === bucket) ?? []
     const today = todayISO()
-    const base = { type: 'text', text: `You are the ${bucket} Head for Yogesh Mistry — a subject matter expert focused exclusively on ${descriptions[bucket] ?? bucket.toLowerCase()}.
+    const base = { type: 'text', cache_control: CACHE, text: `You are the ${bucket} Head for Yogesh Mistry — a subject matter expert focused exclusively on ${descriptions[bucket] ?? bucket.toLowerCase()}.
 
 Today is ${today}.
 
@@ -351,7 +362,7 @@ Examples:
   discussion: (bucket, title, tasks, cfg) => {
     const bucketTasks = tasks?.filter((t) => t._projectName === bucket) ?? []
     const today = todayISO()
-    const base = { type: 'text', text: `You are the ${bucket} Head for Yogesh Mistry, working through a specific discussion: "${title}".
+    const base = { type: 'text', cache_control: CACHE, text: `You are the ${bucket} Head for Yogesh Mistry, working through a specific discussion: "${title}".
 
 Today is ${today}.
 

@@ -3,9 +3,9 @@
 Single source of truth for system state. **Read this at the start of every session.
 Update it at the end of any session that changes anything.**
 
-Last updated: 2026-08-15 (Google Sheets trackers now live and verified against the real sheets, with filtering and a
-collapsed House table; head-injury journal complete — capture, Drive filing, the filed document, trends charts and the
-evening reminder push — see the newest changelog entries)
+Last updated: 2026-08-16 (build audit: dead code purged, `api/*.js` down to **11/12** with a slot free, and prompt
+caching turned on for the chat prompts — ~84% off the per-message input cost. Also: journal medicines checklist and
+save/publish; Google Sheets trackers live with filtering, sorting and colour — see the newest changelog entries)
 
 ---
 
@@ -16,10 +16,11 @@ evening reminder push — see the newest changelog entries)
 - Supabase (Postgres 17, region eu-central-1) is the persistence layer: tasks, knowledge, discussions, backups.
 - `/api/mcp.js` is an MCP server (JSON-RPC) exposing task/knowledge tools to Claude.ai as a custom connector.
 - GitHub is version control; Vercel auto-deploys `main`. Working branch: `claude/calendar-recurring-events-7tsptn`.
-- **`api/*.js` is at 12/12 — the Vercel Hobby function cap.** Adding an `api/*.js` file fails the
-  deploy. `api/_lib/*` is excluded from the count, which is why shared logic lives there. Vercel
-  cron paths accept query strings, so one function can serve several jobs (`api/cron.js?job=…`).
-  Hobby also allows only **2 cron jobs**.
+- **`api/*.js` is at 11/12 — the Vercel Hobby function cap is 12.** One slot is free as of
+  2026-08-16 (retired `api/sync-all-buckets.js` deleted). Treat the slot as spent the moment a new
+  endpoint is proposed: `api/_lib/*` is excluded from the count, which is why shared logic lives
+  there, and Vercel cron paths accept query strings, so one function can serve several jobs
+  (`api/cron.js?job=…`, `api/google.js?action=…`). Hobby also allows only **2 cron jobs** — 2/2.
 
 ---
 
@@ -127,6 +128,39 @@ evening reminder push — see the newest changelog entries)
 ---
 
 ## Recent significant changes (newest first)
+
+- **2026-08-16 — Build audit: dead code purged, and prompt caching turned on. ~84% off the chat's
+  per-message input cost.**
+  Nothing about how the app behaves changed; 132 tests and `vite build` pass.
+
+  **The token finding.** Every chat message was re-sending an uncached prefix of roughly **6,470
+  tokens** — ~1,590 of tool definitions, ~820 of static CoS rules, and ~4,060 of the full 122-task
+  list. Only `buildKnowledgeSystemBlocks` carried a `cache_control` breakpoint; the block holding
+  the rules and the task list did not, and **a breakpoint only covers the prefix up to itself**, so
+  the tools were never cached either. Fix: a second breakpoint on the **final** system block of
+  `SYSTEM_PROMPTS.cos` / `.head` / `.discussion`, which pulls the tools and every earlier block into
+  the cached prefix. Measured on a 20-message conversation: **$0.1293 → $0.0204**. The
+  `prompt-caching-2024-07-31` beta header and the cache-usage accounting were already in
+  `api/claude.js` — only the breakpoint was missing.
+  `REFRESH_PROMPTS` deliberately does **not** get one: those are one-shot with per-bucket text, so
+  nothing ever reads the entry back and a breakpoint would buy only the 1.25× write.
+  `src/lib/claudeCache.test.js` guards this — the breakpoint is invisible if it goes missing, since
+  the app behaves identically and only the bill changes.
+
+  **Deleted, all verified unreferenced by an import-graph walk from `src/main.jsx`, every
+  `api/*.js`, and every test:**
+  - `api/sync-all-buckets.js` — retired 2026-07-26, returned 410 before doing anything, but still
+    occupied a serverless slot. **`api/*.js` is now 11/12.**
+  - `src/pages/Chat.jsx` — unreachable from any route or entry point.
+  - `server.js` + the `express` dependency + the `npm start` script — a pre-Vercel local server
+    whose only endpoint proxied the retired Todoist API. Vercel never ran it (`buildCommand` +
+    `outputDirectory` + `api/`), so this is production-inert.
+
+  After the sweep the only unreached modules left are `vite.config.js` and `src/test-setup.js`,
+  both of which are vitest entry points. **Not touched, deliberately:** `api/todoist.js` and the
+  Todoist read paths (tracked open bug), `api/google-callback.js`'s duplicate `getSupabase` (it is
+  the registered OAuth redirect URI — not worth touching for five lines), and a long tail of
+  exported-but-only-used-internally helpers.
 
 - **2026-08-16 — Journal: medicines checklist, and notes are no longer behind a button.**
   New **Medicines** section beside the symptom groups, with the five current medicines. **Every one
@@ -950,9 +984,14 @@ evening reminder push — see the newest changelog entries)
   worker with no `fetch` listener cannot serve stale content; one with a `fetch` listener can, and
   the app silently stops updating. A test asserts the handler's absence — if it fails, do not
   "fix" the test.
-- **`api/*.js` is the constraint, not a preference.** 12/12 on Vercel Hobby. New server work goes
-  into `api/_lib/` or folds into an existing function via a query param (`api/cron.js?job=…`,
-  `api/google.js?action=…`). Crons are also at 2/2.
+- **`api/*.js` is the constraint, not a preference.** 11/12 on Vercel Hobby — one slot, and it goes
+  once. New server work still belongs in `api/_lib/` or folded into an existing function via a query
+  param (`api/cron.js?job=…`, `api/google.js?action=…`). Crons are at 2/2 with no slack at all.
+- **A `cache_control` breakpoint covers the prefix up to itself, not the block it sits on.** The
+  request prefix is ordered tools → system → messages, so the breakpoint has to be on the **last**
+  system block or the tool definitions are charged in full every message. This was the single
+  largest avoidable cost in the app and it was invisible: behaviour identical, bill 6× higher.
+  `src/lib/claudeCache.test.js` is the only thing that would notice it disappearing.
 - **In the journal charts, a gap must stay a gap.** `null` means no entry and `0` means recorded as
   none — never conflate them, and never interpolate a line across a missing day. `segments()` in
   `src/lib/journalChart.js` enforces the break; a "smoother" chart that joins across gaps is
