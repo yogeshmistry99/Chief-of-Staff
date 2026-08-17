@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { haptic } from '../lib/haptic'
 import { createTaskRow, updateTaskRow } from '../lib/taskCache'
+import { editSnapshot, diffTaskEdits } from '../lib/taskEdits'
 import ScoringPanel from './ScoringPanel'
 
 const P_META = {
@@ -190,6 +191,14 @@ export default function TaskEditSheet({ open, onClose, task, allTasks = [], task
   const currentTaskRef = useRef(task)
   currentTaskRef.current = task
 
+  // The task as it was when it was loaded into this sheet. Every save diffs
+  // against this and sends only what diverged, so a field the user never touched
+  // is never written — see src/lib/taskEdits.js for why that matters.
+  // Declared here, above every effect that reads it: a hook's dependency array is
+  // evaluated during render, and a ref referenced before its declaration takes
+  // the whole app to the error boundary while building perfectly clean.
+  const baselineRef = useRef(null)
+
   // Sheet open/close animation
   useEffect(() => {
     if (open) {
@@ -209,15 +218,20 @@ export default function TaskEditSheet({ open, onClose, task, allTasks = [], task
   // Populate fields when task changes
   useEffect(() => {
     if (!task || !open) return
-    setContent(task.content ?? '')
-    setPriority(task.priority ?? 1)
-    setDue(task.due?.date ?? '')
-    setDescription(task.description ?? '')
+    // One normalisation for both the form fields and the save baseline. If these
+    // two disagreed on a field's shape it would read as permanently dirty and be
+    // rewritten on every save — which is the bug this is here to prevent.
+    const snap = editSnapshot(task)
+    baselineRef.current = snap
+    setContent(snap.content)
+    setPriority(snap.priority)
+    setDue(snap.due)
+    setDescription(snap.description)
     setScores({
-      consequence:   task.consequence   ?? null,
-      reversibility: task.reversibility ?? null,
-      compounding:   task.compounding   ?? null,
-      effort:        task.effort        ?? null,
+      consequence:   snap.consequence,
+      reversibility: snap.reversibility,
+      compounding:   snap.compounding,
+      effort:        snap.effort,
     })
     setSubtasks(allTasks.filter((t) => t.parent_id === task.id))
     setEditingContent(false); setEditingDue(false); setEditingDesc(false)
@@ -245,18 +259,34 @@ export default function TaskEditSheet({ open, onClose, task, allTasks = [], task
 
   async function doSave(closeAfter = true) {
     if (!task || saving.current) return
-    saving.current = true
     clearTimeout(autoSaveRef.current)
+    // Send ONLY the fields that diverge from the task as loaded. Writing the whole
+    // field set would revert a concurrent MCP / Head chat / CoS edit to a field
+    // nobody touched in here, silently. This covers the 1.5s autosave as well as
+    // an explicit save — and the autosave is the likelier trigger, since it fires
+    // without the user deciding to save anything.
+    const current = { content, priority, description, due, ...scores }
+    const edits = diffTaskEdits(baselineRef.current, current)
+    if (!Object.keys(edits).length) {
+      // Nothing diverged, so nothing is written. An explicit tap must still close
+      // the sheet, or the Save button reads as dead.
+      if (closeAfter) { haptic.success(); dismiss() }
+      return
+    }
+    saving.current = true
     try {
       haptic.success()
-      // `scores` must ride along in BOTH the optimistic object and the store
-      // write, or an edited score renders once and silently vanishes on reload.
-      const edits = { content, priority, description, ...scores, due: due ? { date: due } : task.due }
+      // Edited `scores` ride along in BOTH the optimistic object and the store
+      // write, or a changed score renders once and silently vanishes on reload.
       const savedTask = { ...task, ...edits }
       onSaved?.(savedTask)
       // Persist only this task's changed fields. Throws if the write doesn't
       // land, so the catch below reports failure instead of a false success.
       await updateTaskRow(task.id, edits)
+      // Baseline advances to what was just persisted. Without this a second save
+      // would re-send the fields the first one already wrote, and clobber anything
+      // that changed out of band in between — the original bug, one step later.
+      baselineRef.current = current
       if (closeAfter) dismiss()
       else {
         setAutoSaved(true)
