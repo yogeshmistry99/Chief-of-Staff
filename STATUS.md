@@ -129,6 +129,36 @@ purged, `api/*.js` at **11/12**, chat prompt caching 90% cheaper, refresh path t
 
 ## Recent significant changes (newest first)
 
+- **2026-08-17 — Task edit sheet now sends only the fields the user changed (lost-update window
+  closed).**
+  The sheet built its save payload from current form state every time, so a save that only touched
+  the title also wrote `content`, `priority`, `due`, `description` and the four scoring fields. If
+  any of those had changed out of band while the sheet sat open — MCP via Claude.ai, a Head chat,
+  CoS — the sheet's stale copy overwrote it, with no error and nothing on screen. Editing the same
+  task from three surfaces is routine here, so that was normal use, not an edge case.
+  Saves now diff current form state against a snapshot taken when the task was loaded
+  (`src/lib/taskEdits.js` — `editSnapshot` + `diffTaskEdits`) and send only diverged fields.
+  `tasksRepo.patchToRow` already omits absent keys from the UPDATE, so an untouched field is never
+  written. **Covers the 1.5s autosave and the swipe-nav save as well as an explicit tap** — the
+  autosave being the likelier trigger, since it fires without the user deciding to save anything.
+  **The baseline advances after each successful write**, or a second save would re-send what the
+  first already persisted and reintroduce the same clobber one step later. When nothing diverged
+  there is now no write at all (swiping through tasks no longer writes every task it passes).
+  **Also fixed a latent bug in the same expression:** clearing a due date used to fall back to the
+  task's existing `due`, so a due date could not be cleared from this sheet at all. A cleared date
+  now sends an explicit `null`.
+  **Deliberately NOT optimistic concurrency** — no versions, no conflict UI. Two surfaces editing
+  the *same* field still resolve last-write-wins; what is fixed is one surface silently reverting a
+  field it never touched. Anything more is disproportionate for a single-user app.
+  **Verified live, not just green:** created a throwaway task, loaded it, changed its description via
+  the MCP `update_task` tool, applied the exact single-column UPDATE the shipped modules produce for
+  a title-only edit, and read back through a second path — the retitle landed and the MCP
+  description survived. Guarded by a render test that fails against the previous payload, plus pure
+  diff tests (20 new assertions; suite 237 passing). `api/*.js` unchanged at 11.
+  Separately: **the suspected `update_task` field-clobbering bug was closed as not reproducible** —
+  all three write surfaces (MCP, in-app, CoS chat) funnel into one `hasOwnProperty`-guarded
+  `repo.updateTask`, verified against Supabase in both directions.
+
 - **2026-08-16 — Health moved into the Health bucket; trackers got their own card. Bottom nav back
   to five.**
   Health is now the **"Today" tab inside the Health bucket** (`/buckets/Health`), alongside Tasks /
@@ -1078,6 +1108,14 @@ purged, `api/*.js` at **11/12**, chat prompt caching 90% cheaper, refresh path t
   a frozen fallback, refreshed weekly from live rows.
 - **All task reads must filter `deleted_at is null`.** `tasksRepo` does this; hand-rolled SQL or a
   raw `.from('tasks')` call will resurrect deleted tasks.
+- **The task edit sheet must send only the fields the user changed — never a whole-object save.**
+  It diffs form state against a snapshot taken at load (`src/lib/taskEdits.js`) and the baseline
+  advances after every successful write. Collapsing that back into `{ content, priority,
+  description, ...scores, due }` looks like a tidy simplification and silently reverts whatever
+  another surface (MCP, Head chat, CoS) changed while the sheet was open — the 1.5s autosave fires
+  it without the user asking. Any new field the sheet learns to edit must be added to
+  `EDITABLE_FIELDS` *and* to `editSnapshot`, or it will never save; anything the sheet does NOT own
+  (`is_completed`, `project_id`, `parent_id`, `pinned`) must stay out of both.
 - **Never send chat history to the model as text-only when tools are involved.** `tool_use` blocks
   are not persisted, so a raw replay teaches the model that writing "✓ Task created" *is* the
   action — it then stops calling the tool, and tasks are confirmed but never saved. Build history
