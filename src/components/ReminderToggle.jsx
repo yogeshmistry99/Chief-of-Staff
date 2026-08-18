@@ -4,6 +4,10 @@ import {
   reminderStatus, enableReminders, disableReminders, sendTestNotification,
   pushSupported, isConfigured, shouldAutoEnable,
 } from '../lib/push'
+import {
+  readReminderTime, saveReminderTime, listenForReminderTone,
+  isValidTime, DEFAULT_REMINDER_TIME,
+} from '../lib/reminderSettings'
 
 // The evening reminder switch.
 //
@@ -21,6 +25,9 @@ export default function ReminderToggle() {
   const [error, setError] = useState(null)
   const [testing, setTesting] = useState(false)
   const [test, setTest] = useState(null)   // outcome of the last test send
+  const [time, setTime] = useState(DEFAULT_REMINDER_TIME)
+  const [savingTime, setSavingTime] = useState(false)
+  const [timeError, setTimeError] = useState(null)
 
   const refresh = useCallback(async () => {
     setStatus(await reminderStatus())
@@ -56,6 +63,43 @@ export default function ReminderToggle() {
     })()
     return () => { cancelled = true }
   }, [])
+
+  // Load the stored reminder time. Declared below the state it sets, because a
+  // hook's dependency array is evaluated during render and a hook placed above
+  // its values takes the whole app to the error boundary while building clean.
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      const stored = await readReminderTime()
+      if (!cancelled) setTime(stored)
+    })()
+    return () => { cancelled = true }
+  }, [])
+
+  // The tone belongs to the app, not the notification: a service worker cannot
+  // play audio, so it messages the page and the page rings.
+  useEffect(() => listenForReminderTone(), [])
+
+  async function saveTime(next) {
+    if (savingTime) return
+    // Show the new time immediately, but keep the old one to fall back to — an
+    // input that snaps back on failure is how the user learns it did not save.
+    const previous = time
+    setTime(next)
+    setTimeError(null)
+    if (!isValidTime(next)) { setTime(previous); return }   // cleared or half-typed
+    setSavingTime(true)
+    try {
+      await saveReminderTime(next)
+      haptic.light()
+    } catch (e) {
+      haptic.error()
+      setTime(previous)
+      setTimeError(e.message)
+    } finally {
+      setSavingTime(false)
+    }
+  }
 
   // This control ALWAYS renders, even when it cannot work.
   //
@@ -154,6 +198,32 @@ export default function ReminderToggle() {
 
       {error && (
         <p className="mt-2 text-[11px] text-[#8C1D18] leading-relaxed break-words">{error}</p>
+      )}
+
+      {enabled && (
+        <div className="mt-2 pt-2 border-t border-[#F3EDF7] flex items-center gap-3">
+          <div className="flex-1 min-w-0">
+            <label htmlFor="reminder-time" className="text-[11px] text-[#49454F]">
+              Remind me at
+            </label>
+            <p className="text-[11px] text-[#79747E] leading-relaxed">
+              Only if the day isn’t published by then. The evening send runs
+              around 9pm — a later time here waits for the next one.
+            </p>
+          </div>
+          <input
+            id="reminder-time"
+            type="time"
+            value={time}
+            disabled={savingTime}
+            onChange={(e) => saveTime(e.target.value)}
+            className="flex-shrink-0 text-sm text-[#1C1B1F] bg-[#F3EDF7] rounded-lg px-2 py-1 outline-none border border-transparent focus:border-[#6750A4] disabled:opacity-40"
+          />
+        </div>
+      )}
+
+      {enabled && timeError && (
+        <p className="mt-1.5 text-[11px] text-[#8C1D18] leading-relaxed break-words">{timeError}</p>
       )}
 
       {enabled && (

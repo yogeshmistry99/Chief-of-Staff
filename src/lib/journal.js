@@ -99,26 +99,11 @@ export async function fileToDrive(entryDate) {
 
 // Where an entry stands between "being written" and "filed as evidence".
 //
-// Saving and publishing are deliberately separate actions: the day is written in
-// pieces as things are remembered, and only submitted once at the end. So an
-// entry that has been saved but not filed is a DRAFT, not a failure — the
-// history list must not nag about it the way it does about a filing that broke.
-//
-//   draft      saved, never filed — the normal state during the day
-//   published  filed, and the document matches what is stored
-//   edited     filed, then changed since — the document is now stale
-//   failed     filing was attempted and broke; retryable, and worth chasing
-//
-// `edited` is decided on revision, not timestamps: recording a successful filing
-// updates the row, which bumps updated_at, so comparing updated_at against
-// drive_filed_at reports a phantom edit on every single publish.
-export function publishState(entry) {
-  if (!entry) return null
-  if (entry.drive_status === 'failed') return 'failed'
-  if (entry.drive_status !== 'filed') return 'draft'
-  const filed = entry.filed_revision ?? 0
-  return (entry.revision ?? 1) > filed ? 'edited' : 'published'
-}
+// The rule itself moved to api/_lib/journalPublish.js because the evening
+// reminder needs the same answer, and api cannot import from src. Re-exported
+// here so every existing caller (and its tests) keeps importing it from where
+// it has always lived.
+export { publishState } from '../../api/_lib/journalPublish.js'
 
 export const PUBLISH_LABEL = {
   draft: 'Draft',

@@ -48,10 +48,27 @@ self.addEventListener('push', (event) => {
     tag: payload.tag || NOTIFICATION_TAG,
     renotify: false,
     requireInteraction: false,
+    // The app's haptic signature, in the same family as the in-app pulses
+    // (light 10, chat 12, success [10,50,10]): a soft double tap, spaced a
+    // little wider so it reads as calm rather than urgent. This is the ONE part
+    // of the alert sound a web push can actually choose — the tone itself comes
+    // from the phone's notification channel and cannot be set from here, so the
+    // vibration is what carries the app's voice when the app is closed.
+    vibrate: payload.vibrate || [12, 70, 12],
+    silent: false,
     data: { url: payload.url || '/journal' },
   }
 
-  event.waitUntil(self.registration.showNotification(title, options))
+  event.waitUntil((async () => {
+    await self.registration.showNotification(title, options)
+    // If a window is open, let the page play the app's own two-note tone — a
+    // service worker has no AudioContext, so this is the only way the reminder
+    // can sound like the rest of the app rather than like a generic alert.
+    const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+    for (const client of windows) {
+      client.postMessage({ type: 'journal-reminder' })
+    }
+  })())
 })
 
 self.addEventListener('notificationclick', (event) => {

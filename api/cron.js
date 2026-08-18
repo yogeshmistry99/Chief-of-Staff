@@ -4,7 +4,10 @@ import { getEntryByDate } from './_lib/journalRepo.js'
 import {
   listSubscriptions, getSubscription, toSubscription, recordSendResult,
 } from './_lib/pushRepo.js'
-import { londonDate, reminderBody } from './_lib/reminder.js'
+import {
+  londonDate, reminderBody, isDue, readReminderTime, readLastSentDate, recordSentDate,
+} from './_lib/reminder.js'
+import { publishState, needsReminder } from './_lib/journalPublish.js'
 
 // Both scheduled jobs, in one function.
 //
@@ -151,8 +154,12 @@ async function journalReminder(req, res, sb) {
   // would ask about the wrong day for part of the year.
   const today = londonDate()
 
-  // Never nag. A reminder to do something already done is friction, and
-  // removing friction is the entire point of this feature.
+  // `?force=1` sends regardless of state or time, for verifying the path.
+  const force = req.query.force === '1' || req.query.force === 'true'
+
+  // Never nag about a day that is FINISHED — and finished means published, not
+  // merely saved. Skipping on mere existence meant a day started in the morning
+  // and left as a draft was never mentioned, which is the day most worth a nudge.
   let entry = null
   try {
     entry = await getEntryByDate(sb, today)
@@ -161,8 +168,23 @@ async function journalReminder(req, res, sb) {
     // costs a moment, a skipped one can cost the day's entry.
     console.warn('[cron] journal lookup failed, sending anyway:', e.message)
   }
-  if (entry) {
-    return res.status(200).json({ ok: true, date: today, skipped: 'already logged' })
+  const state = publishState(entry)
+  if (!force && !needsReminder(entry)) {
+    return res.status(200).json({ ok: true, date: today, skipped: 'already published', state })
+  }
+
+  // Hold until the time the user set. Harmless under the single daily cron —
+  // which fires once, after the default — and what makes the job correct if it
+  // is ever polled more often than that.
+  const setTime = await readReminderTime(sb)
+  if (!force && !isDue(setTime)) {
+    return res.status(200).json({ ok: true, date: today, skipped: 'before reminder time', time: setTime })
+  }
+
+  // One nudge a day, however many times this is called. Checked before sending
+  // rather than relying on the caller's schedule.
+  if (!force && (await readLastSentDate(sb)) === today) {
+    return res.status(200).json({ ok: true, date: today, skipped: 'already sent today' })
   }
 
   const { VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT } = process.env
@@ -186,7 +208,7 @@ async function journalReminder(req, res, sb) {
 
   const payload = JSON.stringify({
     title: 'Journal',
-    body: reminderBody(),
+    body: reminderBody(state),
     url: '/journal',
     tag: 'journal-reminder',
   })
@@ -209,7 +231,11 @@ async function journalReminder(req, res, sb) {
     outcomes[result] = (outcomes[result] ?? 0) + 1
   }
 
-  return res.status(200).json({ ok: true, date: today, devices: subs.length, ...outcomes })
+  // Only a nudge that actually reached a device counts as "sent today"; if every
+  // push failed, the next call should try again rather than treat it as done.
+  if (outcomes.sent > 0) await recordSentDate(sb, today)
+
+  return res.status(200).json({ ok: true, date: today, state, time: setTime, devices: subs.length, ...outcomes })
 }
 
 // ─── Weekly task-store backup ─────────────────────────────────────────────────

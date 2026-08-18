@@ -44,6 +44,33 @@ export const haptic = {
       })
     } catch {}
   },
+  // The journal reminder's voice.
+  //
+  // Same construction as `send` and `chat` — two sine notes, short, quiet, with
+  // an exponential tail — so it is recognisably the same app. Deliberately the
+  // GENTLEST of the three: lower pitches (G4 → D5), a slower interval and about
+  // two-thirds the volume, because this one arrives uninvited on an evening that
+  // may already be a bad one. The journal's tone rule applies to sound as much
+  // as to words — an offer, not a demand, so nothing bright or congratulatory.
+  journal: () => {
+    try {
+      navigator.vibrate?.([12, 70, 12])
+      const ctx = new (window.AudioContext || window.webkitAudioContext)()
+      const notes = [[392, 0], [587.33, 0.13]]
+      notes.forEach(([freq, when]) => {
+        const osc = ctx.createOscillator()
+        const gain = ctx.createGain()
+        osc.connect(gain); gain.connect(ctx.destination)
+        osc.type = 'sine'
+        osc.frequency.value = freq
+        gain.gain.setValueAtTime(0.08, ctx.currentTime + when)
+        gain.gain.exponentialRampToValueAtTime(0.0008, ctx.currentTime + when + 0.22)
+        osc.start(ctx.currentTime + when)
+        osc.stop(ctx.currentTime + when + 0.24)
+      })
+      setTimeout(() => ctx.close?.(), 500)
+    } catch {}
+  },
   fanfare: () => {
     try {
       const ctx = new (window.AudioContext || window.webkitAudioContext)()
