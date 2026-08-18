@@ -35,7 +35,7 @@ vi.mock('../lib/reminderSettings', async (importOriginal) => ({
 
 vi.mock('../lib/haptic', () => ({ haptic: new Proxy({}, { get: () => () => {} }) }))
 
-const timeInput = () => screen.getByLabelText('Remind me at')
+const timeInput = () => screen.getByLabelText('Remind me if not published by')
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -44,7 +44,7 @@ beforeEach(() => {
   mockSave.mockImplementation(async (t) => t)
 })
 
-describe('ReminderToggle — the reminder time control', () => {
+describe('ReminderToggle — the publish deadline control', () => {
   it('renders without throwing and shows the stored time', async () => {
     render(<ReminderToggle />)
     await waitFor(() => expect(timeInput()).toHaveValue('21:00'))
@@ -82,10 +82,10 @@ describe('ReminderToggle — the reminder time control', () => {
     expect(mockSave).not.toHaveBeenCalled()
   })
 
-  it('hides the time control when reminders are off — nothing to schedule', async () => {
+  it('hides the deadline control when reminders are off — nothing to schedule', async () => {
     mockStatus.mockResolvedValue({ enabled: false, permission: 'default' })
     render(<ReminderToggle />)
     await waitFor(() => expect(screen.getByText('Evening reminder')).toBeInTheDocument())
-    expect(screen.queryByLabelText('Remind me at')).toBeNull()
+    expect(screen.queryByLabelText('Remind me if not published by')).toBeNull()
   })
 })

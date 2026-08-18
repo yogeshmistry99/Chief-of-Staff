@@ -141,7 +141,7 @@ purged, `api/*.js` at **11/12**, chat prompt caching 90% cheaper, refresh path t
   existing caller and its tests unchanged. No entry, a draft, or a failed filing each get a nudge;
   `published` and `edited` stay quiet (edited HAS been published; chasing a re-publish is a
   different job). The body matches the state, so a day already written is never told to "log today".
-  **Editable time** in the evening reminder card, stored in `app_data.journal_reminder` as
+  **A publish deadline** ("Remind me if not published by") in the evening reminder card, stored in `app_data.journal_reminder` as
   `{ time: 'HH:MM' }` so the server reads the same value the switch writes. The write throws if it
   does not land and the picker snaps back — deliberately NOT the fire-and-forget `app_data` helper
   in sync.js, which swallows errors and would leave the user believing they had moved their

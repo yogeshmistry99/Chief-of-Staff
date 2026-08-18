@@ -203,12 +203,18 @@ export default function ReminderToggle() {
       {enabled && (
         <div className="mt-2 pt-2 border-t border-[#F3EDF7] flex items-center gap-3">
           <div className="flex-1 min-w-0">
+            {/* A DEADLINE, not a delivery time, and the label has to say so.
+                The single daily cron decides when the nudge lands; this decides
+                whether it is still wanted by then. Labelled "Remind me at" it
+                read as the delivery time and was wrong by an hour all summer —
+                and would have been right all winter, which is worse, because
+                the discrepancy would come and go with the clocks. */}
             <label htmlFor="reminder-time" className="text-[11px] text-[#49454F]">
-              Remind me at
+              Remind me if not published by
             </label>
             <p className="text-[11px] text-[#79747E] leading-relaxed">
-              Only if the day isn’t published by then. The evening send runs
-              around 9pm — a later time here waits for the next one.
+              The nudge itself arrives at the evening send — around 9pm in
+              summer, 8pm in winter.
             </p>
           </div>
           <input
