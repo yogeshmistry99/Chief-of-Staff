@@ -129,6 +129,38 @@ purged, `api/*.js` at **11/12**, chat prompt caching 90% cheaper, refresh path t
 
 ## Recent significant changes (newest first)
 
+- **2026-08-18 — Journal reminder now fires on UNPUBLISHED days, and has an editable time.**
+  The job skipped whenever a row existed for the day, so a day started in the morning and left as
+  a draft was never mentioned — the day most worth a nudge. Confirmed against live rows: 16, 17 and
+  18 Aug were each authored in the morning and not filed until 21:31, 20:59 and 21:23 respectively,
+  so all three were unpublished drafts at the 20:00 fire and all three stayed silent. That is what
+  "I didn't get a journal notification today" was.
+  **Publishing is the finish line, not saving.** The rule moved to `api/_lib/journalPublish.js`
+  (`publishState` + `needsReminder`) so the job and the UI share one definition — api cannot import
+  from src, so it lives on the api side and `src/lib/journal.js` re-exports it, leaving every
+  existing caller and its tests unchanged. No entry, a draft, or a failed filing each get a nudge;
+  `published` and `edited` stay quiet (edited HAS been published; chasing a re-publish is a
+  different job). The body matches the state, so a day already written is never told to "log today".
+  **Editable time** in the evening reminder card, stored in `app_data.journal_reminder` as
+  `{ time: 'HH:MM' }` so the server reads the same value the switch writes. The write throws if it
+  does not land and the picker snaps back — deliberately NOT the fire-and-forget `app_data` helper
+  in sync.js, which swallows errors and would leave the user believing they had moved their
+  reminder. The job holds until that time and sends at most once a day, checked before sending
+  rather than trusted from the schedule, so it stays correct at any polling rate.
+  **The default is 20:00, not 21:00.** The single daily cron fires at 20:00 UTC = 21:00 London in
+  BST but 20:00 in GMT, so a 21:00 default would pass all summer and then silently stop firing the
+  night the clocks go back. Tested in both directions.
+  **Sound:** the notification carries a vibration signature in the app's haptic family
+  (`[12,70,12]`, alongside light 10 / chat 12 / success [10,50,10]), and an open window plays a new
+  `haptic.journal()` two-note tone built like the existing send/chat pings but lower and quieter —
+  a service worker has no AudioContext, so it posts a message and the page rings. **The
+  notification's own tone comes from the phone's channel and cannot be set from a web push.**
+  **Still open:** with ONE daily Vercel fire, the chosen time acts as a floor, not a delivery
+  moment — a time later than the fire waits for the next evening. Delivery *at* an arbitrary time
+  needs the endpoint polled more often than Hobby's once-per-day cron allows (a GitHub Actions
+  poller every 15 min would do it, using the existing `MCP_API_KEY`; nothing is built for this yet).
+  23 new tests (259 total).
+
 - **2026-08-17 — Task edit sheet now sends only the fields the user changed (lost-update window
   closed).**
   The sheet built its save payload from current form state every time, so a save that only touched
@@ -1108,6 +1140,14 @@ purged, `api/*.js` at **11/12**, chat prompt caching 90% cheaper, refresh path t
   a frozen fallback, refreshed weekly from live rows.
 - **All task reads must filter `deleted_at is null`.** `tasksRepo` does this; hand-rolled SQL or a
   raw `.from('tasks')` call will resurrect deleted tasks.
+- **The journal reminder skips on PUBLISHED, not on "an entry exists".** A saved-but-unfiled draft
+  is the state most worth nudging, and treating a row's existence as "done" silenced the reminder on
+  every day that was started in the morning. `needsReminder` in `api/_lib/journalPublish.js` is the
+  single definition; do not re-derive it anywhere.
+- **The reminder's default time must be one the WINTER fire can satisfy.** The cron is fixed-UTC and
+  fires once a day; 20:00 UTC is 21:00 London in BST and 20:00 in GMT. Any default or clamp above
+  20:00 works all summer and then silently stops firing the night the clocks go back — no error, no
+  log, just nothing arriving. Same trap for any user-set time later than the fire.
 - **The task edit sheet must send only the fields the user changed — never a whole-object save.**
   It diffs form state against a snapshot taken at load (`src/lib/taskEdits.js`) and the baseline
   advances after every successful write. Collapsing that back into `{ content, priority,
