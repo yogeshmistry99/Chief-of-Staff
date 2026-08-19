@@ -2,10 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { haptic } from '../lib/haptic'
 import {
-  fetchHealth, RINGS, displayValue, displayUnit, stageSegments, absentCopy, ABSENT_COPY,
+  fetchHealth, RINGS, displayValue, displayUnit, absentCopy,
 } from '../lib/healthClient'
 import ScoreRing from '../components/health/ScoreRing'
-import StageBar from '../components/health/StageBar'
 import ActivityFeed from '../components/health/ActivityFeed'
 import { Card } from '../components/health/HealthCard'
 
@@ -54,7 +53,6 @@ export default function Health({ active, embedded = false }) {
 
   const metrics = state.metrics ?? {}
   const sleep = metrics.sleep
-  const segments = stageSegments(sleep?.stages)
 
   return (
     <div className="flex flex-col h-full">
@@ -183,20 +181,6 @@ export default function Health({ active, embedded = false }) {
             <p className="text-[10px] text-[#79747E] text-center leading-relaxed px-4 pb-3">
               The number is your reading. The ring shows where it sits in your own last 30 days.
             </p>
-
-            {/* Sleep stages: the one piece of detail earning a place on the
-                front screen, because it is the shape of the night rather than
-                another number. */}
-            <Card title="Sleep stages">
-              <StageBar
-                segments={segments}
-                absent={
-                  sleep?.absent ? absentCopy(sleep)
-                    : sleep?.stagesAbsent ? ABSENT_COPY.no_stages
-                    : null
-                }
-              />
-            </Card>
 
             {/* The day's record, beneath the rings. Chronological, one line of
                 meaning per entry, naps included as ordinary rows. */}

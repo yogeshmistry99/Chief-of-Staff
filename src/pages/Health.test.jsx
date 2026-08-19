@@ -184,16 +184,14 @@ describe('absence is rendered as a reason, never as a number', () => {
     expect(screen.queryByText('0')).not.toBeInTheDocument()
   })
 
-  it('states that a classic night has no stage detail instead of drawing empty stages', async () => {
-    // Four zero-width segments would read as "no deep sleep, no REM" — a false
-    // claim about a real night.
-    const g = good()
-    mockFetchHealth.mockResolvedValue({
-      ...g,
-      metrics: { ...g.metrics, sleep: { ...g.metrics.sleep, type: 'CLASSIC', stages: null, stagesAbsent: 'no_stages' } },
-    })
+  it('keeps the stage breakdown OFF the today screen entirely', async () => {
+    // Today answers "how am I" and lists what happened. The shape of the night is
+    // reference: it belongs on the sleep ring's own screen, with a one-line
+    // summary in the feed's drop-down. The classic-night absence copy moved with
+    // it — see HealthRingDetail.test.jsx.
     renderHealth()
-    expect(await screen.findByText(/recorded without stage detail/i)).toBeInTheDocument()
+    await screen.findByText('Sleep')
+    expect(screen.queryByText('Sleep stages')).not.toBeInTheDocument()
     expect(screen.queryByText('Deep')).not.toBeInTheDocument()
   })
 

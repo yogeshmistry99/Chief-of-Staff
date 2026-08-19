@@ -39,13 +39,24 @@ function getTabIdx(pathname) {
   return TABS.findIndex((t, i) => i > 0 && pathname.startsWith(t.path))
 }
 
-function isSubRoute(pathname) {
+// Which paths render as a full screen with a back-stack, rather than as one of
+// the swipeable tabs.
+//
+// EXPORTED so it can be tested. It gates the <Routes> block below, which means a
+// path missing here has its route silently never render — the app falls through
+// to the tab view and the screen simply does not exist. That is exactly what
+// happened to /health/ring/:key: it was matched EXACTLY as '/health', the detail
+// screens fell through, and the build was clean and every render test passed
+// because those tests mount the page directly with their own router.
+export function isSubRoute(pathname) {
   return (pathname.startsWith('/buckets/') && pathname !== '/buckets') ||
          pathname.startsWith('/calendar/event') ||
          pathname === '/weekly-review' ||
          pathname === '/chief' ||
          pathname.startsWith('/chief/') ||
-         pathname === '/health' ||
+         // startsWith, not equality: /health/ring/:key and /health/session are
+         // full screens too.
+         pathname.startsWith('/health') ||
          pathname === '/trackers' ||
          pathname.startsWith('/trackers/')
 }

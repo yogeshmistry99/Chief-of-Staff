@@ -143,6 +143,19 @@ export const DETAIL_GROUPS = [
 // Nothing is invented to fill a gap: a field the API did not return for that
 // session type is simply absent from the row, never a dash and never a zero.
 
+// Asleep stages in one line: "Deep 48m · REM 1h 9m · Light 3h 34m".
+//
+// AWAKE is deliberately left out — it is the absence of sleep rather than a kind
+// of it, and it already has its own row. Null when the night carries no stage
+// breakdown at all, so nothing renders rather than an empty string.
+export function stageSummary(stages) {
+  if (!stages) return null
+  const parts = STAGE_ORDER
+    .filter((k) => k !== 'AWAKE' && typeof stages[k] === 'number' && stages[k] > 0)
+    .map((k) => `${STAGE_LABEL[k] ?? k} ${formatMinutes(stages[k])}`)
+  return parts.length ? parts.join(' · ') : null
+}
+
 export function sessionTime(iso) {
   if (!iso) return null
   const d = new Date(iso)
@@ -166,6 +179,9 @@ export function sessionDetail(s) {
   const add = (label, value) => { if (value != null) rows.push({ label, value }) }
 
   if (s.kind === 'sleep') {
+    // The shape of the night in one line. The full split has its own screen; this
+    // is the summary that answers "was it decent" without leaving the feed.
+    add('Stages', stageSummary(s.stages))
     add('Time in bed', formatMinutes(s.minutesInSleepPeriod))
     add('Sleep efficiency', s.efficiency != null ? `${Math.round(s.efficiency * 100)}%` : null)
     add('Time to fall asleep', formatMinutes(s.minutesToFallAsleep))

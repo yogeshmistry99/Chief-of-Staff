@@ -97,6 +97,17 @@ describe('HealthRingDetail', () => {
     expect(screen.getByText('62 bpm')).toBeInTheDocument()
   })
 
+  it('states that a classic night has no stage detail instead of drawing empty stages', async () => {
+    // Four zero-width segments would read as "no deep sleep, no REM" — a false
+    // claim about a real night. This assertion moved here when the stage bar left
+    // the today screen.
+    draw('sleep', {
+      health: { ...health, metrics: { ...health.metrics, sleep: { ...health.metrics.sleep, type: 'CLASSIC', stages: null, stagesAbsent: 'no_stages' } } },
+    })
+    expect(await screen.findByText(/recorded without stage detail/i)).toBeInTheDocument()
+    expect(screen.queryByText('Deep')).not.toBeInTheDocument()
+  })
+
   it('says plainly when there is no range to place the reading in', async () => {
     draw('cardio', { health: { ...health, metrics: { ...health.metrics, cardio: { value: 3, absent: null, position: null, range: null } } } })
     expect(await screen.findByText(/not enough recent days/i)).toBeInTheDocument()

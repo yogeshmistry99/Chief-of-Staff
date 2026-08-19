@@ -33,7 +33,10 @@ const napPoint = {
   name: 'nap', sleep: {
     type: 'STAGES', metadata: { nap: true },
     interval: { startTime: '2026-08-19T12:13:00Z', endTime: '2026-08-19T13:02:00Z' },
-    summary: { minutesAsleep: '21', minutesAwake: '7', minutesInSleepPeriod: '28' },
+    summary: {
+      minutesAsleep: '21', minutesAwake: '7', minutesInSleepPeriod: '28',
+      stagesSummary: [{ stage: 'LIGHT', totalMinutes: '21' }, { stage: 'AWAKE', totalMinutes: '7' }],
+    },
   },
 }
 
@@ -87,6 +90,16 @@ describe('ActivityFeed', () => {
     expect(screen.queryByText(/full detail/i)).toBeNull()
     fireEvent.click(screen.getByText('Walk'))
     expect(screen.getByText(/full detail/i)).toBeInTheDocument()
+  })
+
+  it('summarises the sleep stages in the drop-down, without the full split', () => {
+    // The shape of the night, in one line, without leaving the feed. AWAKE is
+    // left out — it is the absence of sleep and has its own row.
+    render(<MemoryRouter><ActivityFeed sessions={feed()} /></MemoryRouter>)
+    fireEvent.click(screen.getByText('Nap'))
+    expect(screen.getByText('Stages')).toBeInTheDocument()
+    expect(screen.getByText(/Light 21m/)).toBeInTheDocument()
+    expect(screen.queryByText(/Awake 7m/)).toBeNull()
   })
 
   it('says an empty day is empty', () => {
