@@ -128,6 +128,31 @@ export function inputScore(input, value, stats) {
 // Deliberately centred rather than stretched to fill the range. A day that is
 // unremarkable in every signal should read as unremarkable, and only genuine
 // departures should move it far.
+// Whole points that add up.
+//
+// The detail screen lists each input's contribution and the score above it, and
+// someone WILL add the column up. Rounding each share on its own does not
+// survive that: on the first real day this ran, five shares rounded to -7, +1,
+// -2, -1 and 0 — a sum of -9 under a score of 40, which says -10.
+//
+// Largest remainder instead: floor everything, then hand the leftover points to
+// whichever shares were cut hardest. Every number stays an integer, each is
+// within a point of its true share, and the column sums to exactly what the
+// score claims.
+export function apportion(shares, total) {
+  const floors = shares.map((v) => Math.floor(v))
+  let left = Math.round(total) - floors.reduce((a, b) => a + b, 0)
+  const order = shares
+    .map((v, i) => ({ i, remainder: v - Math.floor(v) }))
+    .sort((a, b) => b.remainder - a.remainder)
+  const out = floors.slice()
+  for (let k = 0; left > 0 && k < order.length; k++, left--) out[order[k].i] += 1
+  // A negative leftover takes back from the shares that were rounded up most
+  // generously — the same rule, read from the other end.
+  for (let k = order.length - 1; left < 0 && k >= 0; k--, left++) out[order[k].i] -= 1
+  return out
+}
+
 export function recoveryScore(values, baselines) {
   const contributions = []
   const missing = []
@@ -160,8 +185,6 @@ export function recoveryScore(values, baselines) {
       nights: stats.n,
       z: zScore(value, stats),
       score,
-      // What this one did to the final number, in points.
-      points: Math.round(score * input.weight * 50),
       mode: input.mode,
       higherIsBetter: input.higherIsBetter ?? null,
     })
@@ -184,6 +207,8 @@ export function recoveryScore(values, baselines) {
 
   const nights = Math.min(...contributions.map((c) => c.nights))
   if (nights < MIN_BASELINE_NIGHTS) {
+    // No score, so nothing for the points to add up TO. They are left off rather
+    // than shown against a number that does not exist.
     return {
       score: null,
       absent: 'learning',
@@ -198,6 +223,13 @@ export function recoveryScore(values, baselines) {
   // signal shifts the score's precision rather than dragging it toward zero.
   const normalised = weightUsed > 0 ? weighted / weightUsed : 0
   const score = Math.round(Math.max(0, Math.min(100, 50 + normalised * 50)))
+
+  // Each input's share of the distance from 50, denominated on the weight that
+  // was actually used — so a missing minor signal changes how the rest are
+  // credited rather than leaving a gap in the column.
+  const shares = contributions.map((c) => (c.score * c.weight * 50) / weightUsed)
+  const points = apportion(shares, score - 50)
+  contributions.forEach((c, i) => { c.points = points[i] })
 
   return {
     score,

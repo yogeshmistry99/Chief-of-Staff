@@ -67,7 +67,12 @@ export default function RecoveryBreakdown({ metric }) {
                 </p>
               </div>
               <div className="flex-shrink-0 text-right">
-                <p className="text-sm font-medium text-[#1C1B1F] tabular-nums">{SIGN(c.points)}</p>
+                {/* No points while the baseline is still building: there is no
+                    score for them to add up to, and a column of zeroes would
+                    read as "this signal did nothing". */}
+                {c.points != null && (
+                  <p className="text-sm font-medium text-[#1C1B1F] tabular-nums">{SIGN(c.points)}</p>
+                )}
                 <p className="text-[11px] text-[#79747E] tabular-nums leading-tight">
                   {Math.round(c.weight * 100)}% weight
                 </p>

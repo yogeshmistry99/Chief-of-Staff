@@ -122,12 +122,54 @@ purged, `api/*.js` at **11/12**, chat prompt caching 90% cheaper, refresh path t
 7. ~~**The journal's 9pm reminder push (phase 2) is not built.**~~ — BUILT 2026-08-15, and the
    **four VAPID variables are now set in Vercel** (production + preview), so it is live rather than
    inert. All four journal phases are shipped.
-8. **Cron slots are now 2/2** (weekly backup + journal reminder) — the Vercel Hobby maximum. A third
+8. **The recovery score's weights are a judgement call, not a validated model.** They come from
+   Whoop's and Fitbit's published *descriptions* of what their scores weigh, not from their actual
+   coefficients, which are unpublished. The score is internally consistent — the same physiology
+   moves it the same way every day — but it is not calibrated against anything and will not match
+   Fitbit's readiness number. Revising the weights is fair game; the tests deliberately assert the
+   score's *properties* (bounded, 50 at normal, no score without HRV) rather than exact values, so
+   a reweighting does not break them.
+9. **Cron slots are now 2/2** (weekly backup + journal reminder) — the Vercel Hobby maximum. A third
    scheduled job needs an existing one to absorb it, the same way `api/cron.js` absorbed both.
 
 ---
 
 ## Recent significant changes (newest first)
+
+- **2026-08-19 (cont. 5) — A computed recovery score replaces the HRV ring.**
+  Whoop's three rings are sleep, recovery and strain; the Fitbit equivalents are readiness and
+  cardio load. **Neither is published by any API.** Verified against the Google Health discovery
+  document (revision 20260817): zero occurrences of readiness or cardio load across all 44 data
+  types and 31 rollup schemas. The legacy Fitbit Web API never exposed readiness either, and it
+  retires in September 2026. Both numbers are computed inside the Fitbit app and stay there.
+  So the choice was an empty ring or an honest estimate, and the estimate was chosen deliberately.
+  `api/_lib/recovery.js` is **the app's single exception to "never invent a number"**, and it
+  carries its own workings so it can be argued with. Five inputs, each a z-score against the
+  wearer's own trailing baseline, never a population norm: HRV 50% (required — no HRV, no score),
+  resting heart rate 25%, sleep 15%, breathing rate 6%, skin temperature 4%. The first three are
+  *directional* (one end is better); the last two are *deviation* (any departure from your own
+  normal counts against you, in either direction — an unusually low respiratory rate is not a
+  bonus). z is clamped at ±2 SD so one freak night moves the score to the end of the scale and
+  stops. 50 means "exactly your own normal". Below **7 nights** of baseline it says "still
+  learning" rather than offering a provisional number, and a missing minor input is re-weighted
+  around rather than counted as a zero.
+  Against 30 days of real data on 19 Aug: **40, "About normal for you"**, 9 nights, 100% of the
+  weight covered — HRV 33.4 vs a usual 36.3 taking 7 points off it.
+  **The points on the detail screen add up.** Rounding each input's share on its own does not
+  survive someone adding the column: the first real day produced -7, +1, -2, -1, 0 under a score of
+  40, a column claiming 41. Shares are apportioned by largest remainder instead — every number an
+  integer, each within a point of its true share, and the column summing to exactly `score - 50`.
+  Caught by calling live production, not by the tests, which had passed on a fixture where the
+  rounding happened to align.
+  The detail screen shows every input's reading, the wearer's usual, its weight and the points it
+  moved the score, and says in plain words at the top that it is an estimate rather than a
+  measurement. The home-screen ring's caption says "estimated, out of 100" for the same reason: a
+  glance at three identical rings is exactly where the distinction is easiest to lose.
+  HRV's own extra fields (non-REM heart rate, deep-sleep RMSSD, entropy) followed it onto the
+  Recovery screen — otherwise the only route to them was a ring that no longer exists.
+  `shouldCacheReading` moved from `RING_METRICS` to the new `BASELINE_METRICS`, because `recovery`
+  is computed and never appears in a fetch's `wanted` list; leaving the gate on the ring list would
+  have made it permanently false and starved the home screen of readings.
 
 - **2026-08-19 (cont. 3) — Detail screens made reachable; stage detail off Today.**
   The ring and session screens from cont. 2 **shipped unreachable**: `isSubRoute()` in App.jsx
@@ -1224,6 +1266,17 @@ purged, `api/*.js` at **11/12**, chat prompt caching 90% cheaper, refresh path t
 
 ## Traps and hard-won lessons
 
+- **`api/_lib/recovery.js` is the ONE place this app is allowed to invent a number**, and only
+  because Fitbit's Readiness and Cardio Load are published by no API — not Google Health (checked
+  across all 44 data types and 31 rollups), not the retiring Fitbit Web API. Everything in
+  `api/_lib/health.js` is still a reading and must stay one. The terms of the exception are that
+  the score always shows its inputs, always says on screen that it is an estimate, and never
+  appears without HRV or on fewer than 7 nights of baseline. Do not add a second computed metric
+  by pointing at this one as precedent.
+- **The cache gate reads `BASELINE_METRICS`, not `RING_METRICS`.** `recovery` is a ring but is
+  never fetched, so it can never appear in a request's `wanted` list. Checking the ring list makes
+  `shouldCacheReading` permanently false and the home screen silently stops getting new readings —
+  no error, no empty state, just a timestamp that stops moving.
 - **Supabase project ref is `xrmjzglsabnnqqeyubgh`** (`xrmjzglsabnnqqeyubgh.supabase.co`). Direct HTTP is blocked from the sandbox — query via the Supabase MCP or the app, not `curl`/`fetch`.
 - **`app_data.todoist_task_cache` is NO LONGER the task store.** It was the single JSON blob that held every task; since the 2026-07-26 per-row migration the source of truth is the `tasks` table and the blob is a frozen fallback, refreshed weekly from live rows. (Its name never meant Todoist was authoritative — it isn't, and the Todoist paths are retired.)
 - **The weekly backup is a Vercel cron** (`api/cron-weekly-backup.js`, `0 8 * * 0`, Sundays 08:00 UTC) — server-side, no longer dependent on the app being opened. The client-side `maybeRunAutoBackup` (Sunday, browser-gated) remains as a deduped fallback: both paths skip if a `Weekly backup%` snapshot exists in the last 6 days, so a week never stores two. Hobby-plan cron timing is accurate to ~1h and the first fire after a deploy can take up to ~24h to activate.

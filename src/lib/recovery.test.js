@@ -155,10 +155,42 @@ describe('recoveryScore', () => {
     expect(c).toMatchObject({ label: 'Heart rate variability', weight: 0.5, value: 40, mean: 40, z: 0, points: 0 })
   })
 
-  it('reports points that account for the score', () => {
-    const r = recoveryScore({ ...NORMAL, hrv: 50 }, BASE)
-    const total = r.contributions.reduce((n, c) => n + c.points, 0)
-    expect(r.score).toBe(50 + total)
+  it('reports points that add up to the score, on every day of a real month', () => {
+    // Someone WILL add the column up. Rounding each share on its own does not
+    // survive that — the first real day this ran produced shares of -7, +1, -2,
+    // -1 and 0 under a score of 40, a column that said 41.
+    const days = []
+    for (let i = 0; i < 200; i++) {
+      days.push({
+        hrv: 40 + ((i * 7) % 23) - 11,
+        rhr: 60 + ((i * 5) % 11) - 5,
+        sleep: 420 + ((i * 31) % 181) - 90,
+        breathing: 14 + (((i * 3) % 7) - 3) / 4,
+        skinTemp: (((i * 11) % 9) - 4) / 10,
+      })
+    }
+    for (const day of days) {
+      const r = recoveryScore(day, BASE)
+      const total = r.contributions.reduce((n, c) => n + c.points, 0)
+      expect(r.score).toBe(50 + total)
+    }
+  })
+
+  it('keeps every point within one of its true share', () => {
+    // Largest remainder must not shunt a whole point onto one input to make the
+    // sum work — each share stays honest to a rounding.
+    const r = recoveryScore({ ...NORMAL, hrv: 50, rhr: 66, breathing: 15.2 }, BASE)
+    for (const c of r.contributions) {
+      const share = (c.score * c.weight * 50) / r.weightUsed
+      expect(Math.abs(c.points - share)).toBeLessThan(1)
+    }
+  })
+
+  it('offers no points at all while the baseline is still building', () => {
+    const short = Object.fromEntries(Object.entries(BASE).map(([k, v]) => [k, { ...v, n: 3 }]))
+    for (const c of recoveryScore(NORMAL, short).contributions) {
+      expect(c.points).toBeUndefined()
+    }
   })
 
   it('weights sum to one, so a complete day uses the whole scale', () => {
