@@ -3,9 +3,10 @@
 Single source of truth for system state. **Read this at the start of every session.
 Update it at the end of any session that changes anything.**
 
-Last updated: 2026-08-16 (**Health tab live** — today's Fitbit data from the Google Health API, three rings bound to
-measured values because the API has no Readiness/Cardio Load/score at all; six tabs now. Plus the build audit: dead code
-purged, `api/*.js` at **11/12**, chat prompt caching 90% cheaper, refresh path trimmed 45%)
+Last updated: 2026-08-19 (**Morning brief shipped** — the last Phase 1 "Notifications" item. A daily push naming what's
+overdue or due today, deterministic urgency off the existing bucket-weighting framework (no LLM call), reusing all the
+journal-reminder push infra. Fitted into the 2/2 cron cap by folding the weekly backup into a new daily `?job=morning`
+cron that also runs the backup on Sundays. Plus: Health tab, three rings, six tabs; build audit; `api/*.js` at **11/12**)
 
 ---
 
@@ -20,7 +21,10 @@ purged, `api/*.js` at **11/12**, chat prompt caching 90% cheaper, refresh path t
   2026-08-16 (retired `api/sync-all-buckets.js` deleted). Treat the slot as spent the moment a new
   endpoint is proposed: `api/_lib/*` is excluded from the count, which is why shared logic lives
   there, and Vercel cron paths accept query strings, so one function can serve several jobs
-  (`api/cron.js?job=…`, `api/google.js?action=…`). Hobby also allows only **2 cron jobs** — 2/2.
+  (`api/cron.js?job=…`, `api/google.js?action=…`). Hobby also allows only **2 cron jobs** — 2/2:
+  `?job=morning` (daily 07:00 UTC — the urgency brief every day, plus the weekly backup on Sundays only) and
+  `?job=journal-reminder` (daily 20:00 UTC). The weekly backup no longer owns a cron slot; it rides the morning fire,
+  gated to Sunday, and its own weekly dedupe makes a repeat run in the same week a no-op.
 
 ---
 
@@ -75,6 +79,12 @@ purged, `api/*.js` at **11/12**, chat prompt caching 90% cheaper, refresh path t
     renaming a live key for cosmetic accuracy is the exact trap `todoist_task_cache` taught. The
     granted `scope` string is stored so the app can detect a pre-Drive grant and ask for a
     reconnect *before* filing 403s rather than after.
+  - `morning_brief` — **MORNING-BRIEF SETTINGS (added 2026-08-19).** jsonb `{ enabled: bool, time?: 'HH:MM' }`.
+    Default ON (opt-out): absent row or missing flag reads as enabled; only explicit `false` disables. Read server-side
+    by `?job=morning`. Written by the Settings "Notifications" toggle (`src/lib/morningBrief.js`, throws if the write
+    doesn't land). Time defaults to 07:00 — chosen so the 07:00-UTC fire satisfies the gate in both GMT and BST (same
+    DST trap the journal reminder's 20:00 avoids).
+  - `morning_brief_last_sent` — `{ date: 'YYYY-MM-DD' }`, the day the brief last sent, so a repeat call can't send twice.
   - `ai_usage_${YYYY_MM}` — **THE AI SPEND STORE (added 2026-07-26).** Per-month token/cost totals for the Settings "AI Spend" widget. jsonb: `{input, output, cacheWrite, cacheRead, cost, calls, by_model:{haiku:{…}, sonnet:{…}}}`. Written server-side by every `/api/*` call that spends `ANTHROPIC_API_KEY`, via the atomic `bump_ai_usage(p_key,p_model,p_input,p_output,p_cache_write,p_cache_read,p_cost)` RPC (SECURITY DEFINER, row-locked). Replaces the old per-browser `localStorage.usage_${month}`.
   - **`app_roadmap` — referenced by code (`get_roadmap`/`update_roadmap`) but NO ROW exists yet.** Not set until the roadmap is first saved.
 - **`task_backups`** — task-store snapshots (`label`, `tasks`, `task_count`, `created_at`). **12 rows — currently AT the cap.** Capped at 12 (`MAX_SNAPSHOTS`, pruned on every write in `src/lib/backups.js`).
@@ -129,12 +139,38 @@ purged, `api/*.js` at **11/12**, chat prompt caching 90% cheaper, refresh path t
    Fitbit's readiness number. Revising the weights is fair game; the tests deliberately assert the
    score's *properties* (bounded, 50 at normal, no score without HRV) rather than exact values, so
    a reweighting does not break them.
-9. **Cron slots are now 2/2** (weekly backup + journal reminder) — the Vercel Hobby maximum. A third
-   scheduled job needs an existing one to absorb it, the same way `api/cron.js` absorbed both.
+9. **Cron slots are 2/2** (`?job=morning` + `?job=journal-reminder`) — the Vercel Hobby maximum. The morning fire now
+   carries BOTH the daily urgency brief and the Sunday weekly backup, so a fourth scheduled job (there are effectively
+   three now) needs an existing fire to absorb it, the same way `?job=morning` absorbed the backup.
 
 ---
 
 ## Recent significant changes (newest first)
+
+- **2026-08-19 (cont. 6) — Morning brief: the last Phase 1 "Notifications" item.**
+  A daily push each morning naming what is **overdue or due today**, ordered the same way the Home priority list is. It
+  closes the one remaining Foundation subtask ("Notifications — smart reminders from AI-spotted urgency", 7/8 → 8/8).
+  **Deterministic, not an LLM call — deliberately.** `api/_lib/urgency.js` mirrors `scoreTask`'s bands (due-today 100 >
+  overdue 90, plus the seven bucket weights Finance 35 → … → Systems 8, plus the P1/P2/P3 bump) so the brief and the
+  Home list agree about what matters. A daily Claude call would cost tokens, could invent a "priority", and couldn't
+  explain itself; the score can. **Only surfaces act-today work** (overdue + due-today) — a standing P1 with no date is
+  real but not a thing to be pushed about every morning, which is the "annoying" failure the roadmap item warned of. The
+  self-limiting consequence is the point: **on a day with nothing overdue or due, it sends nothing at all.**
+  **Reuses every piece of the journal-reminder push stack** — VAPID keys (already live in Vercel), the service worker,
+  `push_subscriptions`, `pushRepo.js`, the send loop. Only the *decision* of what to say was missing. Shares the push
+  transport but has its own on/off flag (`app_data.morning_brief`, default ON) and its own once-a-day marker
+  (`morning_brief_last_sent`), so a device can want the evening journal nudge and not the morning brief, or the reverse.
+  **The cron cap was the real constraint, and it's handled without a new slot.** Hobby allows 2 cron jobs and both were
+  used. The weekly backup gave up its own cron: it now rides a new daily `?job=morning` fire (07:00 UTC) that runs the
+  brief every day and the backup on Sundays only. The backup's existing weekly dedupe makes the Sunday gate
+  belt-and-braces — a second run in the same week is already a no-op. `api/cron.js`'s `weeklyBackup`/`runUrgencyBrief`
+  cores now return `{statusCode, payload}` so `morning` can run both and answer once. Manual paths kept: `?job=urgency`
+  (brief alone), `?job=weekly-backup` (backup alone), both `?force=1`-able.
+  **07:00 default brief time is a DST choice, not a preference** — the 07:00-UTC fire is 07:00 in London under GMT and
+  08:00 under BST, so the default must be ≤ 07:00 to pass the gate year-round; the same trap the journal reminder's
+  20:00 default already documents. Settings gains a "Notifications" section with a Morning-brief toggle
+  (`MorningBriefToggle.jsx`) that ensures a push subscription on enable and leaves the shared subscription alone on
+  disable. **`api/*.js` unchanged at 11/12** (all new logic in `api/_lib/`). 20 new tests (451 total), build clean.
 
 - **2026-08-19 (cont. 5) — A computed recovery score replaces the HRV ring.**
   Whoop's three rings are sleep, recovery and strain; the Fitbit equivalents are readiness and

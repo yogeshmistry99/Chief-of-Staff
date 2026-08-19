@@ -7,6 +7,7 @@ import { listTasks } from '../../api/_lib/tasksRepo.js'
 import { supabase } from '../lib/supabase'
 import { onSyncChange } from '../lib/sync'
 import { listBackups, createBackup, restoreBackup, fmtBackupDate, fmtLabel } from '../lib/backups'
+import MorningBriefToggle from '../components/MorningBriefToggle'
 
 // Cost is computed and stored server-side (api/_lib/pricing.js + usage.js) from
 // every AI call's real token usage, incl. cache tokens, at current Anthropic
@@ -428,6 +429,14 @@ export default function Settings() {
       >
         {refreshDone ? '✓ Refreshing…' : 'Hard refresh (clear cache)'}
       </button>
+
+      {/* Notifications */}
+      <CollapsibleSection
+        title="Notifications"
+        subtitle="Morning brief · overdue and due-today tasks"
+      >
+        <MorningBriefToggle />
+      </CollapsibleSection>
 
       {/* AI Spend */}
       <CollapsibleSection

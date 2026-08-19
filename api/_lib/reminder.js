@@ -18,6 +18,18 @@ export function londonDate(now = new Date()) {
   }).format(now)
 }
 
+// The London weekday, 0=Sunday..6=Saturday.
+//
+// Used to gate the weekly backup, which now rides the daily morning cron rather
+// than owning its own Vercel cron slot (Hobby allows only 2). Computed in London,
+// not UTC, so the backup day never drifts by the BST offset near midnight.
+export function londonWeekday(now = new Date()) {
+  const wd = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Europe/London', weekday: 'short',
+  }).format(now)
+  return { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 }[wd] ?? new Date(now).getDay()
+}
+
 // Now in Europe/London as HH:MM, 24-hour and zero-padded.
 //
 // `hourCycle: 'h23'` rather than `hour12: false` — the latter renders midnight
