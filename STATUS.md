@@ -129,6 +129,24 @@ purged, `api/*.js` at **11/12**, chat prompt caching 90% cheaper, refresh path t
 
 ## Recent significant changes (newest first)
 
+- **2026-08-19 (cont. 2) — A screen per ring, and a screen per session.**
+  Tapping a ring opens `/health/ring/:key` rather than expanding a card underneath. The ring stays
+  at the top, then what the arc is relative to in numbers (30-day low / high / days measured), then
+  the breakdown: **sleep** gains time in each stage and the full night summary; **cardio** gains
+  minutes by heart-rate zone (the zone is already on every AZM point, so a read not a derivation);
+  **HRV** gains the fields the API returns beside the average — non-REM heart rate, deep-sleep
+  RMSSD, entropy.
+  The activity feed's drop-down is unchanged. Going deeper is a **separate control inside it**
+  rather than a second meaning for the row tap, so one target never has two outcomes.
+  `/health/session?id=…` shows everything returned for a session — distance, steps, pace,
+  elevation, time in each heart-rate zone. **Still no peak heart rate: the API has no such field.**
+  **Neither screen fetches when reached from Today** — the reading and the session travel in router
+  state. Opened cold each fetches once, which is a deliberate navigation rather than an app-open. A
+  session that cannot be found says so. The session id is a Google resource name containing slashes,
+  so it rides in a QUERY parameter; an encoded `%2F` in a path segment is handled inconsistently.
+  `Card`/`DetailRow` now live in `components/health/HealthCard.jsx` and the absence copy in
+  `healthClient`, so all three surfaces render a row identically. 17 new tests (336 total).
+
 - **2026-08-19 (cont.) — Health rings graded by level; card and tab order moved.**
   The home health card sits **above** the four count blocks now, directly under the quote — "how am
   I today" is one glance rather than a list to read. It still never calls the Health API.
