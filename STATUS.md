@@ -155,10 +155,16 @@ purged, `api/*.js` at **11/12**, chat prompt caching 90% cheaper, refresh path t
   `haptic.journal()` two-note tone built like the existing send/chat pings but lower and quieter —
   a service worker has no AudioContext, so it posts a message and the page rings. **The
   notification's own tone comes from the phone's channel and cannot be set from a web push.**
-  **Still open:** with ONE daily Vercel fire, the chosen time acts as a floor, not a delivery
-  moment — a time later than the fire waits for the next evening. Delivery *at* an arbitrary time
-  needs the endpoint polled more often than Hobby's once-per-day cron allows (a GitHub Actions
-  poller every 15 min would do it, using the existing `MCP_API_KEY`; nothing is built for this yet).
+  **The setting is a DEADLINE, not a delivery time — and that is now settled, not a gap.** With one
+  daily Vercel fire there is exactly one moment per day when anything can be sent, so the chosen
+  time acts as a floor: any time up to the fire produces the same ~9pm nudge, and a time later than
+  the fire means no nudge that day. The control is labelled **"Remind me if not published by"** and
+  states the arrival time on its face, so it no longer implies otherwise.
+  **Decided against (19 Aug): the GitHub Actions poller.** Polling the endpoint every 15 min would
+  make the chosen time the actual delivery time — the job is already written to be correct at any
+  polling rate, so it needs no server change — but it costs a repo secret and a moving part to
+  maintain, and ~9pm is fine. **Do not re-propose it as missing work.** If an exact delivery time is
+  ever wanted, that is the route, and `isDue`/`readLastSentDate` already support it.
   23 new tests (259 total).
 
 - **2026-08-17 — Task edit sheet now sends only the fields the user changed (lost-update window
