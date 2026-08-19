@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import ActivityFeed from './ActivityFeed'
 import { buildFeed } from '../../../api/_lib/health.js'
 
@@ -40,28 +41,28 @@ const feed = () => buildFeed({ dataPoints: [napPoint] }, { dataPoints: [walkBand
 
 describe('ActivityFeed', () => {
   it('renders one row per real session — the duplicated walk appears once', () => {
-    render(<ActivityFeed sessions={feed()} />)
+    render(<MemoryRouter><ActivityFeed sessions={feed()} /></MemoryRouter>)
     expect(screen.getAllByText('Walk')).toHaveLength(1)
   })
 
   it('shows a nap as an ordinary row', () => {
-    render(<ActivityFeed sessions={feed()} />)
+    render(<MemoryRouter><ActivityFeed sessions={feed()} /></MemoryRouter>)
     expect(screen.getByText('Nap')).toBeInTheDocument()
   })
 
   it('puts duration, calories and average HR on the row where they exist', () => {
-    render(<ActivityFeed sessions={feed()} />)
+    render(<MemoryRouter><ActivityFeed sessions={feed()} /></MemoryRouter>)
     expect(screen.getByText(/15m · 102 kcal · 112 bpm avg/)).toBeInTheDocument()
   })
 
   it('omits calories and HR for sleep rather than showing a dash or a zero', () => {
-    render(<ActivityFeed sessions={feed()} />)
+    render(<MemoryRouter><ActivityFeed sessions={feed()} /></MemoryRouter>)
     const nap = screen.getByText('Nap').closest('div')
     expect(nap.textContent).not.toMatch(/kcal|bpm|—|\b0\b/)
   })
 
   it('keeps distance, steps and zone minutes behind a tap', () => {
-    render(<ActivityFeed sessions={feed()} />)
+    render(<MemoryRouter><ActivityFeed sessions={feed()} /></MemoryRouter>)
     expect(screen.queryByText('Distance')).toBeNull()
 
     fireEvent.click(screen.getByText('Walk'))
@@ -72,20 +73,29 @@ describe('ActivityFeed', () => {
   })
 
   it('collapses again on a second tap', () => {
-    render(<ActivityFeed sessions={feed()} />)
+    render(<MemoryRouter><ActivityFeed sessions={feed()} /></MemoryRouter>)
     fireEvent.click(screen.getByText('Walk'))
     expect(screen.getByText('Distance')).toBeInTheDocument()
     fireEvent.click(screen.getByText('Walk'))
     expect(screen.queryByText('Distance')).toBeNull()
   })
 
+  it('offers a way to the full session screen from inside the drop-down', () => {
+    // The row tap stays the drop-down. Going deeper is its own control, so one
+    // target never has two outcomes.
+    render(<MemoryRouter><ActivityFeed sessions={feed()} /></MemoryRouter>)
+    expect(screen.queryByText(/full detail/i)).toBeNull()
+    fireEvent.click(screen.getByText('Walk'))
+    expect(screen.getByText(/full detail/i)).toBeInTheDocument()
+  })
+
   it('says an empty day is empty', () => {
-    render(<ActivityFeed sessions={[]} />)
+    render(<MemoryRouter><ActivityFeed sessions={[]} /></MemoryRouter>)
     expect(screen.getByText(/no sessions recorded today/i)).toBeInTheDocument()
   })
 
   it('says so for a missing feed too, rather than rendering nothing', () => {
-    render(<ActivityFeed sessions={null} />)
+    render(<MemoryRouter><ActivityFeed sessions={null} /></MemoryRouter>)
     expect(screen.getByText(/no sessions recorded today/i)).toBeInTheDocument()
   })
 })

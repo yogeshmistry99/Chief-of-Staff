@@ -192,3 +192,34 @@ export async function readCachedRings() {
     return null
   }
 }
+
+// ─── Absence copy ─────────────────────────────────────────────────────────────
+//
+// Lifted out of Health.jsx so the tab and both detail screens say the same thing
+// about the same gap. A gap is data here; the reason is the content.
+
+// The reason a metric is missing, in words the wearer can act on. Distinct
+// causes get distinct sentences — "not worn" and "not synced" are different
+// facts and only one of them is worth doing something about.
+export const ABSENT_COPY = {
+  no_scope:     'Google has no Health permission yet.',
+  api_disabled: 'The Google Health API is not enabled.',
+  no_data:      'Not recorded — band not worn, or not synced yet.',
+  no_stages:    'This night was recorded without stage detail.',
+  // NOT "band not worn": active zone minutes are earned, not measured, so an
+  // empty reading on a worn band means a quiet day. Saying otherwise blames the
+  // hardware for something it recorded correctly.
+  no_activity:  'No active zone minutes yet today.',
+  error:        'Could not be read.',
+}
+
+export function absentCopy(metric) {
+  if (!metric?.absent) return null
+  // For a genuine error the DETAIL is the whole point — Google's own message is
+  // what identifies the cause. Showing a generic "Could not be read." instead
+  // hid "Request contains disallowed OAuth scope(s)" behind three identical
+  // rings and made a one-line diagnosis into a server-log hunt. The reason
+  // always wins over the generic sentence where one exists.
+  if (metric.absent === 'error') return metric.detail ?? ABSENT_COPY.error
+  return ABSENT_COPY[metric.absent] ?? metric.detail ?? 'Not available.'
+}

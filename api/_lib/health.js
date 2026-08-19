@@ -302,6 +302,31 @@ export function sumInterval(payload, pick) {
   return total == null ? absence(ABSENT.NO_DATA) : { value: total, absent: null }
 }
 
+// Active zone minutes split by heart-rate zone.
+//
+// `sumInterval` collapses the day to one total, which is the right figure for a
+// ring. The detail screen can show more, and the zone is already on every point
+// (`heartRateZone`: FAT_BURN / CARDIO / PEAK), so this is a read rather than a
+// derivation. Returns null — not an object of zeroes — when there are no points.
+export function parseCardioZones(payload) {
+  const zones = {}
+  for (const p of (Array.isArray(payload?.dataPoints) ? payload.dataPoints : [])) {
+    const b = p.activeZoneMinutes
+    if (!b) continue
+    const zone = b.heartRateZone
+    const v = num(b.activeZoneMinutes)
+    if (!zone || zone === 'HEART_RATE_ZONE_UNSPECIFIED' || v == null) continue
+    zones[zone] = (zones[zone] ?? 0) + v
+  }
+  return Object.keys(zones).length ? zones : null
+}
+
+export const CARDIO_ZONE_LABEL = {
+  FAT_BURN: 'Fat burn',
+  CARDIO: 'Cardio',
+  PEAK: 'Peak',
+}
+
 export const PICK = {
   hrv:       (b) => num(b.averageHeartRateVariabilityMilliseconds),
   rhr:       (b) => num(b.beatsPerMinute),
@@ -389,6 +414,9 @@ export function shapeMetric(key, payload) {
   if (!pick) return absence(ABSENT.ERROR, `No parser for ${key}`)
   const shaped = m.kind === KIND.INTERVAL ? sumInterval(payload, pick) : parseDaily(payload, pick)
   if (shaped.absent === ABSENT.NO_DATA && EMPTY_REASON[key]) return absence(EMPTY_REASON[key])
+  // The zone split rides along for the detail screen. Stays out of the endpoint
+  // so that file keeps holding no per-metric knowledge.
+  if (key === 'cardio' && !shaped.absent) return { ...shaped, zones: parseCardioZones(payload) }
   return shaped
 }
 
@@ -511,6 +539,28 @@ export function dedupeSessions(sessions) {
   return kept
 }
 
+// Time in each heart-rate zone for one session, in minutes.
+//
+// TimeInHeartRateZones carries four protobuf Durations (light / moderate /
+// vigorous / peak). Absent zones are dropped rather than zeroed: "no time in
+// peak" and "peak not reported" are different facts.
+export function parseZoneDurations(zones) {
+  if (!zones) return null
+  const out = {}
+  for (const [field, label] of Object.entries(HR_ZONE_FIELDS)) {
+    const seconds = parseDuration(zones[field])
+    if (seconds != null) out[label] = Math.round(seconds / 60)
+  }
+  return Object.keys(out).length ? out : null
+}
+
+export const HR_ZONE_FIELDS = {
+  lightTime: 'Light',
+  moderateTime: 'Moderate',
+  vigorousTime: 'Vigorous',
+  peakTime: 'Peak',
+}
+
 // Every sleep session for the day, naps included.
 export function parseSleepSessions(payload) {
   return points(payload).map((p) => {
@@ -580,6 +630,12 @@ export function parseExerciseSessions(payload) {
       steps: num(m.steps),
       distanceKm: distanceMm != null ? distanceMm / 1_000_000 : null,
       activeZoneMinutes: num(m.activeZoneMinutes),
+      // Detail screen only — not on the row, and not in the dropdown.
+      activeDurationSeconds: seconds,
+      paceSecondsPerMeter: num(m.averagePaceSecondsPerMeter),
+      speedMmPerSecond: num(m.averageSpeedMillimetersPerSecond),
+      elevationGainMm: num(m.elevationGainMillimeters),
+      zoneMinutes: parseZoneDurations(m.heartRateZoneDurations),
     }
   }).filter(Boolean)
 }

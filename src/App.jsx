@@ -16,6 +16,8 @@ import TrackerView from './pages/TrackerView'
 import ChiefPage from './pages/ChiefPage'
 import HeadConfig from './pages/HeadConfig'
 import SyncProvider from './components/SyncProvider'
+import HealthRingDetail from './pages/HealthRingDetail'
+import HealthSessionDetail from './pages/HealthSessionDetail'
 
 // NOTE: every one of these mounts at once — the strip renders all tabs side by
 // side so a swipe is instant. A tab that fetches on mount therefore fetches on
@@ -170,6 +172,10 @@ function AppInner() {
                 reconnect card, so it must keep resolving. It now lands on the
                 Health bucket's Today tab, which is where the screen lives. */}
             <Route path="/health" element={<Navigate to="/buckets/Health" replace state={{ tab: 'health' }} />} />
+            {/* Ring and session detail. Both take their data from router state
+                when opened from Today, and fetch once when opened cold. */}
+            <Route path="/health/ring/:key"                      element={<HealthRingDetail />} />
+            <Route path="/health/session"                        element={<HealthSessionDetail />} />
             <Route path="/trackers"                             element={<Trackers />} />
             <Route path="/trackers/:key"                        element={<TrackerView />} />
             <Route path="/chief"                                element={<ChiefPage />} />

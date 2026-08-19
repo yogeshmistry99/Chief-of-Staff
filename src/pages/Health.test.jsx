@@ -23,6 +23,13 @@ vi.mock('../lib/healthClient', async (importOriginal) => ({
 
 vi.mock('../lib/haptic', () => ({ haptic: { light: vi.fn() } }))
 
+// A ring tap now leaves the page, so the navigation itself is the assertion.
+const mockNavigate = vi.fn()
+vi.mock('react-router-dom', async (importOriginal) => ({
+  ...(await importOriginal()),
+  useNavigate: () => mockNavigate,
+}))
+
 const good = () => ({
   ok: true,
   date: '2026-08-16',
@@ -143,14 +150,18 @@ describe('the front screen', () => {
     expect(await screen.findByText(/ring shows where it sits in your own last 30 days/i)).toBeInTheDocument()
   })
 
-  it('keeps the detail one level down until a ring is tapped', async () => {
+  it('keeps the detail off the front screen and opens its own screen on a ring tap', async () => {
     renderHealth()
     await screen.findByText('Sleep')
-    // Resting heart rate is deliberately NOT on the front screen.
+    // Resting heart rate is deliberately NOT on the front screen — and no longer
+    // expands in place either: the ring now has a screen of its own.
     expect(screen.queryByText('Resting heart rate')).not.toBeInTheDocument()
     fireEvent.click(screen.getByText('HRV'))
-    expect(await screen.findByText('Resting heart rate')).toBeInTheDocument()
-    expect(screen.getByText('54 bpm')).toBeInTheDocument()
+    expect(screen.queryByText('Resting heart rate')).not.toBeInTheDocument()
+    expect(mockNavigate).toHaveBeenCalledWith(
+      '/health/ring/hrv',
+      expect.objectContaining({ state: expect.objectContaining({ health: expect.anything() }) }),
+    )
   })
 
   it('shows the Update button and the time it last read', async () => {

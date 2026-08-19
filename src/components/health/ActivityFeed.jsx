@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { haptic } from '../../lib/haptic'
 import { sessionTime, sessionSummary, sessionDetail } from '../../lib/healthClient'
 
@@ -18,19 +19,16 @@ import { sessionTime, sessionSummary, sessionDetail } from '../../lib/healthClie
 // gradients — a session is identified by its name, which the API already
 // localises for us.
 
-function SessionRow({ session, open, onToggle }) {
+function SessionRow({ session, open, onToggle, onOpen }) {
   const time = sessionTime(session.start)
   const summary = sessionSummary(session)
   const detail = sessionDetail(session)
-  const expandable = detail.length > 0
-
   return (
     <div className="border-b border-[#F3EDF7] last:border-0">
       <button
         type="button"
-        onClick={expandable ? onToggle : undefined}
-        // A row with nothing behind it must not pretend to be tappable.
-        className={`w-full flex items-start gap-2.5 py-2.5 text-left ${expandable ? '' : 'cursor-default'}`}
+        onClick={onToggle}
+        className="w-full flex items-start gap-2.5 py-2.5 text-left"
       >
         {/* Session marker. Sleep takes the muted outline colour rather than the
             brand purple: it is something that happened to the body, not
@@ -55,7 +53,7 @@ function SessionRow({ session, open, onToggle }) {
         </div>
       </button>
 
-      {open && detail.length > 0 && (
+      {open && (
         <div className="pl-3 pb-2.5">
           {detail.map((row) => (
             <div key={row.label} className="flex items-baseline justify-between gap-3 py-1">
@@ -63,14 +61,25 @@ function SessionRow({ session, open, onToggle }) {
               <span className="text-[11px] text-[#1C1B1F] tabular-nums">{row.value}</span>
             </div>
           ))}
+          {/* The drop-down stays the quick answer; this is the way to everything
+              the API returned for the session. A separate control rather than a
+              second meaning for the row tap — one target, one outcome. */}
+          <button
+            type="button"
+            onClick={onOpen}
+            className="mt-1.5 text-[11px] text-[#6750A4] underline"
+          >
+            Full detail →
+          </button>
         </div>
       )}
     </div>
   )
 }
 
-export default function ActivityFeed({ sessions }) {
+export default function ActivityFeed({ sessions, from = '/buckets/Health' }) {
   const [open, setOpen] = useState(null)
+  const navigate = useNavigate()
 
   // An empty day says so. Never an empty card, and never a zero standing in for
   // "nothing was recorded".
@@ -90,6 +99,14 @@ export default function ActivityFeed({ sessions }) {
           session={s}
           open={open === s.id}
           onToggle={() => { haptic.light(); setOpen(open === s.id ? null : s.id) }}
+          onOpen={() => {
+            haptic.light()
+            // The session travels with the navigation, so the detail screen costs
+            // no Google call.
+            navigate(`/health/session?id=${encodeURIComponent(s.id)}`, {
+              state: { session: s, from },
+            })
+          }}
         />
       ))}
     </div>
