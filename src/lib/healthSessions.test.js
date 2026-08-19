@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   parseSleepSessions, parseExerciseSessions, dedupeSessions, buildFeed,
   parseDuration, shapeMetric, buildCache, cacheIsToday, cacheableRings, ABSENT,
+  shouldCacheReading,
 } from '../../api/_lib/health.js'
 
 // Fixtures copied from REAL API responses (2026-08-19, direct calls), not invented.
@@ -211,5 +212,31 @@ describe('the last-reading cache', () => {
     expect(cacheIsToday(buildCache('2026-08-19', now.toISOString(), metrics), 'Europe/London', now)).toBe(true)
     expect(cacheIsToday(buildCache('2026-08-18', now.toISOString(), metrics), 'Europe/London', now)).toBe(false)
     expect(cacheIsToday(null, 'Europe/London', now)).toBe(false)
+  })
+})
+
+describe('shouldCacheReading — only a full read of today becomes "the last reading"', () => {
+  const now = new Date('2026-08-19T08:00:00Z')
+  const all = ['sleep', 'hrv', 'cardio', 'rhr', 'spo2', 'breathing', 'skinTemp', 'steps']
+
+  it('caches a full read of today', () => {
+    expect(shouldCacheReading('2026-08-19', all, 'Europe/London', now)).toBe(true)
+  })
+
+  it('does NOT cache a historical query', () => {
+    // Found in production: ?date=2026-08-14 overwrote the home screen's reading
+    // with that day's rings.
+    expect(shouldCacheReading('2026-08-14', all, 'Europe/London', now)).toBe(false)
+  })
+
+  it('does NOT cache a narrowed query missing a ring', () => {
+    // ?metrics=sleep,cardio cached two rings, which the home screen would then
+    // render as two rings instead of three.
+    expect(shouldCacheReading('2026-08-19', ['sleep', 'cardio'], 'Europe/London', now)).toBe(false)
+    expect(shouldCacheReading('2026-08-19', ['sleep'], 'Europe/London', now)).toBe(false)
+  })
+
+  it('caches when every ring is present even if other metrics are not', () => {
+    expect(shouldCacheReading('2026-08-19', ['sleep', 'hrv', 'cardio'], 'Europe/London', now)).toBe(true)
   })
 })

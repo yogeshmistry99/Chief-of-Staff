@@ -633,3 +633,18 @@ export function buildCache(date, fetchedAt, metrics) {
 export function cacheIsToday(cache, timeZone = 'Europe/London', now = new Date()) {
   return !!cache?.date && cache.date === civilToday(timeZone, now)
 }
+
+// Whether this read is the one worth remembering as "the last reading".
+//
+// Found by verifying against production, not by reasoning: querying a past day
+// (`?date=2026-08-14`) overwrote the cache with that day's rings, and a narrowed
+// call (`?metrics=sleep,cardio`) cached a partial set the home screen would then
+// render as two rings instead of three. Neither is "the current reading".
+//
+// So the cache is written only for a full read of TODAY. A historical or narrowed
+// fetch is a legitimate query and still returns its data — it simply is not what
+// the front page should be showing.
+export function shouldCacheReading(date, wanted, timeZone = 'Europe/London', now = new Date()) {
+  if (date !== civilToday(timeZone, now)) return false
+  return RING_METRICS.every((k) => wanted.includes(k))
+}

@@ -9,6 +9,7 @@ import {
   METRIC_KEYS, RING_METRICS, listRequest, shapeMetric, baselineValues,
   trailingRange, rangePosition, civilToday, addDays, isValidDate, absence, ABSENT,
   EXERCISE, buildFeed, HEALTH_CACHE_KEY, buildCache, dataTypePath, buildFilter,
+  shouldCacheReading,
 } from './_lib/health.js'
 
 // Google OAuth: start, disconnect, and status.
@@ -171,7 +172,9 @@ async function health(req, res) {
     // calling Google. Never blocks or fails the response — a missed cache write
     // shows an older timestamp, which is honest; a thrown one would lose a
     // reading the user already waited for.
-    try {
+    //
+    // Only a FULL read of TODAY updates it: see shouldCacheReading.
+    if (shouldCacheReading(date, wanted, tz)) try {
       await sb.from('app_data').upsert({
         key: HEALTH_CACHE_KEY,
         value: buildCache(date, fetchedAt, metrics),
