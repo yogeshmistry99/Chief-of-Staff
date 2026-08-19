@@ -129,6 +129,25 @@ purged, `api/*.js` at **11/12**, chat prompt caching 90% cheaper, refresh path t
 
 ## Recent significant changes (newest first)
 
+- **2026-08-19 (cont.) — Health rings graded by level; card and tab order moved.**
+  The home health card sits **above** the four count blocks now, directly under the quote — "how am
+  I today" is one glance rather than a list to read. It still never calls the Health API.
+  The **Health bucket opens on Today** and lists it first in the tab strip; tasks in that bucket are
+  ordinary tasks one tap away. The home card's tap names that tab explicitly. Tab order and default
+  live in `src/lib/bucketTabs.js` so both are testable without mounting BucketDetail, which needs the
+  task store, calendar, head config and a router before it will render.
+  **Ring colour now tracks level** (`src/lib/ringBands.js`). The hue encodes the same `position` the
+  arc length already does — where today sits in the wearer's own trailing 30 days — so it is a second
+  reading of one number, not a new judgement, and no score is invented. **Deliberately not Whoop's
+  red/yellow/green: there is no alarm colour in the scale at all.** A short night is not a failure,
+  and this codebase also holds a symptom diary where shame mechanics are explicitly avoided. Three
+  bands, all from hues already in the app: `#00639B` blue low in range, `#6750A4` brand purple for a
+  typical day (so an ordinary reading looks exactly as the rings always have), `#0ca30c` journal
+  status-green high in range. Each band is a two-stop gradient, drawn per band so the hue never
+  drifts mid-sweep. No baseline still means no band and no arc.
+  **All three ring metrics run the same direction**, so one scale serves them; a metric where lower
+  is better (resting heart rate) must not be given a ring without inverting first.
+
 - **2026-08-19 — Health tab: activity feed, an honest cardio ring, and the three rings on the home
   screen.**
   **The cardio finding — it was neither suspected cause.** The ring read "—" and the question was
@@ -1187,6 +1206,14 @@ purged, `api/*.js` at **11/12**, chat prompt caching 90% cheaper, refresh path t
   a frozen fallback, refreshed weekly from live rows.
 - **All task reads must filter `deleted_at is null`.** `tasksRepo` does this; hand-rolled SQL or a
   raw `.from('tasks')` call will resurrect deleted tasks.
+- **The ring colour scale has no alarm colour, and that is deliberate.** It grades blue → purple →
+  green by where the reading sits in the wearer's own 30 days. Do not "complete" it with red at the
+  bottom: a short night is not a failure and this codebase also holds a symptom diary that avoids
+  shame mechanics. Colour is never the only signal — the arc length encodes the same `position`, and
+  each ring names its band in an accessible label.
+- **All three ring metrics run the same direction (more is better).** One low-to-high colour scale
+  serves them for that reason. Giving a ring to a metric where LOWER is better — resting heart rate —
+  requires inverting the position first, or the colour will say the opposite of the truth.
 - **Every exercise session is recorded TWICE, by the band and by the phone.** Only the band's copy
   carries calories, heart rate and active zone minutes. Any surface listing sessions must dedupe on
   *overlapping interval + activity type* and keep the richer record — the two copies differ by a
