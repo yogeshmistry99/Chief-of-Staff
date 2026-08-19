@@ -432,7 +432,12 @@ export function shapeMetric(key, payload) {
 export function baselineValues(key, payload) {
   const rows = Array.isArray(payload?.dataPoints) ? payload.dataPoints : []
   if (key === 'sleep') {
-    return rows.map((p) => num(p.sleep?.summary?.minutesAsleep)).filter((v) => v != null)
+    // Naps excluded here too, and for the same reason: the ring placed today's
+    // 332 minutes inside a range whose floor was a 15-minute afternoon nap.
+    return rows
+      .filter((p) => !isNap(p.sleep))
+      .map((p) => num(p.sleep?.summary?.minutesAsleep))
+      .filter((v) => v != null)
   }
   const pick = PICK[key]
   if (!pick) return []
@@ -723,6 +728,12 @@ export function shouldCacheReading(date, wanted, timeZone = 'Europe/London', now
 
 export const SLEEP_STAGE_TYPES = ['DEEP', 'REM', 'LIGHT', 'ASLEEP', 'RESTLESS', 'AWAKE']
 
+// A nap is a real sleep session and belongs in the feed — but it is not a night,
+// and it must never be averaged into one. The API flags it directly.
+export function isNap(sleep) {
+  return sleep?.metadata?.nap === true
+}
+
 export function parseStageSegments(sleep) {
   const raw = Array.isArray(sleep?.stages) ? sleep.stages : []
   const segments = raw
@@ -759,6 +770,11 @@ export function countShortAwakenings(sleep) {
 export function stageBaseline(payload) {
   const nights = []
   for (const p of (Array.isArray(payload?.dataPoints) ? payload.dataPoints : [])) {
+    // NAPS ARE NOT NIGHTS. Six of the fifteen sessions in the real 30-day window
+    // were naps of 15–57 minutes; none had REM and half had no deep sleep, so
+    // counting them dragged the deep mean to 31 and put the REM and deep minima
+    // at 0 — a "typical range" that started at zero because of an afternoon nap.
+    if (isNap(p.sleep)) continue
     const rows = p.sleep?.summary?.stagesSummary
     if (!Array.isArray(rows) || !rows.length) continue
     const night = {}

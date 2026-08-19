@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   parseSleepSessions, parseExerciseSessions, dedupeSessions, buildFeed,
   parseDuration, shapeMetric, buildCache, cacheIsToday, cacheableRings, ABSENT,
-  shouldCacheReading,
+  shouldCacheReading, stageBaseline, baselineValues, isNap,
 } from '../../api/_lib/health.js'
 
 // Fixtures copied from REAL API responses (2026-08-19, direct calls), not invented.
@@ -238,5 +238,75 @@ describe('shouldCacheReading — only a full read of today becomes "the last rea
 
   it('caches when every ring is present even if other metrics are not', () => {
     expect(shouldCacheReading('2026-08-19', ['sleep', 'hrv', 'cardio'], 'Europe/London', now)).toBe(true)
+  })
+})
+
+describe('naps are not nights', () => {
+  // Found against the real 30-day window: six of fifteen sessions were naps of
+  // 15–57 minutes. None had REM and half had no deep sleep, so averaging them in
+  // put the REM and deep minima at 0 and dragged every mean down. A "typical
+  // range" that starts at zero because of an afternoon nap is not typical of
+  // anything.
+  const night = (deep, rem, light) => ({
+    sleep: {
+      metadata: { nap: false, mainSleep: true },
+      summary: {
+        minutesAsleep: String(deep + rem + light),
+        stagesSummary: [
+          { type: 'DEEP', minutes: String(deep) },
+          { type: 'REM', minutes: String(rem) },
+          { type: 'LIGHT', minutes: String(light) },
+        ],
+      },
+    },
+  })
+  const napPoint = (light) => ({
+    sleep: {
+      metadata: { nap: true },
+      summary: {
+        minutesAsleep: String(light),
+        stagesSummary: [{ type: 'LIGHT', minutes: String(light) }],
+      },
+    },
+  })
+
+  const payload = {
+    dataPoints: [night(48, 69, 214), night(26, 54, 177), napPoint(21), napPoint(15), napPoint(41)],
+  }
+
+  it('excludes naps from the stage baseline', () => {
+    const base = stageBaseline(payload)
+    expect(base.DEEP.nights).toBe(2)
+    expect(base.REM.nights).toBe(2)
+  })
+
+  it('does not let a nap put the REM or deep minimum at zero', () => {
+    const base = stageBaseline(payload)
+    // A nap has no REM. Counting it would make the floor 0.
+    expect(base.REM.min).toBe(54)
+    expect(base.DEEP.min).toBe(26)
+  })
+
+  it('does not let naps drag the means down', () => {
+    const base = stageBaseline(payload)
+    expect(base.DEEP.mean).toBe(37)    // (48+26)/2, not (48+26+0+0+0)/5
+    expect(base.REM.mean).toBe(62)     // (69+54)/2
+  })
+
+  it('excludes naps from the sleep ring\'s trailing range too', () => {
+    // The ring placed a full night inside a range whose floor was a 15-minute nap.
+    const values = baselineValues('sleep', payload)
+    expect(values).toHaveLength(2)
+    expect(Math.min(...values)).toBe(257)
+  })
+
+  it('still returns naps in the feed — a nap is a real session', () => {
+    const sessions = parseSleepSessions(payload)
+    expect(sessions).toHaveLength(5)
+    expect(sessions.filter((s) => s.nap)).toHaveLength(3)
+  })
+
+  it('has no baseline at all when every session in the window is a nap', () => {
+    expect(stageBaseline({ dataPoints: [napPoint(21), napPoint(15)] })).toBeNull()
   })
 })
