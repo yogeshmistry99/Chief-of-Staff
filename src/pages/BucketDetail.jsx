@@ -21,6 +21,7 @@ import { archiveTask, restoreTask } from '../lib/taskCache'
 import { closeTask } from '../lib/todoist'
 import { BUCKET_META } from '../lib/bucketConfig'
 import { safeSetItem, capRecent } from '../lib/safeStorage'
+import { bucketTabs, defaultTab } from '../lib/bucketTabs'
 
 function extractJSON(text) {
   // Try clean parse first
@@ -901,7 +902,11 @@ export default function BucketDetail() {
   const { bucket } = useParams()
   const navigate = useNavigate()
   const location = useLocation()
-  const [tab, setTab] = useState(location.state?.tab ?? 'tasks')
+  // Health opens on Today. Wearable readings are what that bucket is for —
+  // the tasks in it are ordinary tasks and are still one tap away, whereas the
+  // day's readings are the thing being checked. Every other bucket opens on
+  // Tasks, unchanged.
+  const [tab, setTab] = useState(location.state?.tab ?? defaultTab(bucket))
   // Deep-link target from a search result (scroll-to + highlight on arrival).
   const focusTaskId = location.state?.focusTaskId ?? null
   const [tasks, setTasks] = useState([])
@@ -1068,14 +1073,7 @@ export default function BucketDetail() {
           const bucketNotifCount = getNotifications().filter((n) => n.source === bucket && n.status === 'pending').length
           return (
             <div className="flex gap-0">
-              {[
-                { id: 'tasks', label: 'Tasks' },
-                // Today's wearable data, in the bucket it belongs to rather than
-                // as its own place in the bottom nav. Health only.
-                ...(bucket === 'Health' ? [{ id: 'health', label: 'Today' }] : []),
-                { id: 'head', label: 'Head' },
-                { id: 'discussions', label: 'Discuss' },
-              ].map(({ id, label }) => (
+              {bucketTabs(bucket).map(({ id, label }) => (
                 <button key={id} onClick={() => { haptic.light(); setTab(id) }}
                   className={`relative flex-1 py-2 text-sm font-medium border-b-2 transition-colors ${
                     tab === id ? 'border-current opacity-100' : 'border-transparent opacity-50'

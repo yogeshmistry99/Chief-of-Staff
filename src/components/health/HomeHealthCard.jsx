@@ -53,7 +53,10 @@ export default function HomeHealthCard() {
 
   const openHealth = () => {
     haptic.light()
-    navigate('/buckets/Health', { state: { from: '/' } })
+    // Explicitly the Today tab. The Health bucket now defaults there anyway, but
+    // naming it means this tap keeps landing on the readings even if that default
+    // ever changes.
+    navigate('/buckets/Health', { state: { from: '/', tab: 'health' } })
   }
 
   return (

@@ -2,8 +2,9 @@
 //
 // Life OS has no circular progress indicator anywhere, so this is designed from
 // the app's own tokens rather than borrowed: track in #F3EDF7 (the same subtle
-// fill used behind rows elsewhere), arc in the app's primary purple, value in
-// the standard on-surface colour at the app's largest existing type size.
+// fill used behind rows elsewhere), arc graded across three of the app's own
+// hues (see ringBands.js), value in the standard on-surface colour at the app's
+// largest existing type size.
 // Deliberately NOT Whoop's gradient gauge — no gradients, no glow, no branding.
 //
 // WHAT THE ARC MEANS, and why it is captioned: the API returns no scores (there
@@ -14,7 +15,15 @@
 // says so. It is not a score and it is not advice.
 //
 // With no baseline the ring renders as a bare track. That is the honest state —
-// better than an arc at an invented fraction.
+// better than an arc at an invented fraction, and it is also why no colour is
+// chosen in that case: there is no "how am I doing" to grade.
+//
+// COLOUR BY LEVEL, added 19 Aug 2026. The arc's hue tracks the same `position`
+// its length already does — see src/lib/ringBands.js for the palette and for why
+// it is not Whoop's red/yellow/green. Graded with a two-stop gradient per band so
+// the arc has depth without the hue drifting mid-sweep.
+
+import { ringBand } from '../../lib/ringBands'
 
 const SIZE = 116
 const STROKE = 9
@@ -32,6 +41,10 @@ export default function ScoreRing({
 }) {
   const filled = typeof position === 'number' && value != null
   const dash = filled ? C * position : 0
+  const band = filled ? ringBand(position) : null
+  // Unique per ring: two of these render side by side and a shared gradient id
+  // would make the second one inherit the first one's colours.
+  const gradientId = `ring-${label}-${band?.key ?? 'none'}`.replace(/\s+/g, '-')
 
   const Wrap = onClick ? 'button' : 'div'
 
@@ -42,6 +55,14 @@ export default function ScoreRing({
     >
       <div className="relative" style={{ width: SIZE, height: SIZE }}>
         <svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`} aria-hidden="true">
+          {band && (
+            <defs>
+              <linearGradient id={gradientId} x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stopColor={band.from} />
+                <stop offset="100%" stopColor={band.to} />
+              </linearGradient>
+            </defs>
+          )}
           {/* Track. Always drawn, so an absent reading still shows the shape. */}
           <circle
             cx={SIZE / 2} cy={SIZE / 2} r={R}
@@ -50,7 +71,7 @@ export default function ScoreRing({
           {filled && (
             <circle
               cx={SIZE / 2} cy={SIZE / 2} r={R}
-              fill="none" stroke="#6750A4" strokeWidth={STROKE} strokeLinecap="round"
+              fill="none" stroke={`url(#${gradientId})`} strokeWidth={STROKE} strokeLinecap="round"
               strokeDasharray={`${dash} ${C - dash}`}
               // Start at 12 o'clock rather than 3, which is what a reader expects.
               transform={`rotate(-90 ${SIZE / 2} ${SIZE / 2})`}
@@ -76,6 +97,12 @@ export default function ScoreRing({
       </div>
 
       <span className="text-[#1C1B1F] text-xs font-medium">{label}</span>
+      {/* The band in words, for anyone who cannot read the hue. The arc length
+          already carries the same number, so this is the second redundancy
+          rather than the only one. */}
+      {band && (
+        <span className="sr-only">{`${label} is ${band.label}`}</span>
+      )}
       {caption && (
         <span className="text-[#79747E] text-[10px] leading-tight text-center px-1">{caption}</span>
       )}

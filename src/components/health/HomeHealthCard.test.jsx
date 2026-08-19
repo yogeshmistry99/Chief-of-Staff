@@ -79,10 +79,10 @@ describe('HomeHealthCard', () => {
     expect(screen.getByText(/no active zone minutes yet today/i)).toBeInTheDocument()
   })
 
-  it('taps through to the Health tab', async () => {
+  it('taps through to the Health bucket\'s Today tab', async () => {
     draw()
     await waitFor(() => expect(screen.getByText('Health')).toBeInTheDocument())
     fireEvent.click(screen.getByText('Health'))
-    expect(mockNavigate).toHaveBeenCalledWith('/buckets/Health', { state: { from: '/' } })
+    expect(mockNavigate).toHaveBeenCalledWith('/buckets/Health', { state: { from: '/', tab: 'health' } })
   })
 })

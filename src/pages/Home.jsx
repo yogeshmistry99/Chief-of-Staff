@@ -900,6 +900,13 @@ export default function Home() {
         {/* Quote of the day */}
         <DailyQuote />
 
+        {/* Today's body, above the counts. "How am I today" is the first thing
+            worth knowing on opening the app, and it is one glance rather than a
+            list to read. Renders the LAST-FETCHED values only: it never calls the
+            Health API, so opening the app does not fire a Google request. Tapping
+            through opens the Health bucket's Today tab, which is what refreshes. */}
+        <HomeHealthCard />
+
         {/* Primary navigation blocks. Tapping one filters the list below in place;
             Events is the one that leaves, to the Calendar. "P1" was retired here —
             a raw count of the legacy priority label, superseded by the scoring
@@ -933,13 +940,6 @@ export default function Home() {
             )
           })}
         </div>
-
-        {/* Today's body, at a glance. Sits directly under the counts row so it is
-            visible without scrolling, but below them — the counts are what this
-            screen is for, and health is context. Renders the LAST-FETCHED values
-            only: it never calls the Health API, so opening the app does not fire a
-            Google request. Tapping through to the Health tab is what refreshes. */}
-        <HomeHealthCard />
 
         {/* Task list — Priorities / Today / Overdue. Hidden under Events, which
             shows the upcoming-events card below in its place. */}
