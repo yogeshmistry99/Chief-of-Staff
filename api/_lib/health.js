@@ -192,6 +192,7 @@ export const ABSENT = {
   API_DISABLED:  'api_disabled',   // not enabled on the Cloud project
   NO_DATA:       'no_data',        // API returned nothing for the day
   NO_STAGES:     'no_stages',      // classic-type sleep: a real night, no stage breakdown
+  NO_ACTIVITY:   'no_activity',    // band worn and reporting, nothing vigorous enough logged
   ERROR:         'error',
 }
 
@@ -200,6 +201,7 @@ export const ABSENT_TEXT = {
   [ABSENT.API_DISABLED]: 'The Google Health API is not enabled on your Cloud project.',
   [ABSENT.NO_DATA]:      'Nothing recorded — the band may not have been worn, or has not synced yet.',
   [ABSENT.NO_STAGES]:    'This night was recorded without stage detail.',
+  [ABSENT.NO_ACTIVITY]:  'No active zone minutes yet today.',
   [ABSENT.ERROR]:        'Could not be read.',
 }
 
@@ -365,13 +367,29 @@ export function formatSigned(n, digits = 1) {
 // than in the endpoint so the two cannot drift.
 export const RING_METRICS = ['sleep', 'hrv', 'cardio']
 
+// Which metrics mean something OTHER than "not recorded" when they come back
+// empty.
+//
+// Active zone minutes are earned, not measured: a quiet day legitimately has
+// none, and the generic NO_DATA sentence ("band not worn, or not synced yet")
+// then states something false. On 19 Aug 2026 cardio was empty while the same
+// fetch returned 332 minutes of staged sleep and 643 steps — the band was
+// plainly worn and syncing. Verified by direct API call that the mapping is
+// correct and the device does produce these: 13, 34, 4 and 6 AZM on 14–17 Aug.
+// The ring is blank because the day is quiet, and it must say so.
+export const EMPTY_REASON = {
+  cardio: ABSENT.NO_ACTIVITY,
+}
+
 export function shapeMetric(key, payload) {
   if (key === 'sleep') return parseSleep(payload)
   const m = metricByKey(key)
   if (!m) return absence(ABSENT.ERROR, `Unknown metric ${key}`)
   const pick = PICK[key]
   if (!pick) return absence(ABSENT.ERROR, `No parser for ${key}`)
-  return m.kind === KIND.INTERVAL ? sumInterval(payload, pick) : parseDaily(payload, pick)
+  const shaped = m.kind === KIND.INTERVAL ? sumInterval(payload, pick) : parseDaily(payload, pick)
+  if (shaped.absent === ABSENT.NO_DATA && EMPTY_REASON[key]) return absence(EMPTY_REASON[key])
+  return shaped
 }
 
 // Every value in a baseline window, for the ring arc.
@@ -412,4 +430,206 @@ export function baselineValues(key, payload) {
       return body ? pick(body) : null
     })
     .filter((v) => v != null)
+}
+
+// ─── Sessions: the day's activity feed ────────────────────────────────────────
+//
+// One chronological list of everything the band actually recorded — exercise
+// sessions and EVERY sleep session, naps included. The ring metrics answer "how
+// am I today"; this answers "what did I do".
+//
+// Two things about the real data shape this every design decision here, both
+// confirmed by direct API calls on 2026-08-19:
+//
+// 1. EVERY EXERCISE IS RECORDED TWICE. The band
+//    (`dataSource.device.formFactor: FITNESS_BAND`) and the phone
+//    (`dataSource.application.packageName: com.google.android.…`) both log the
+//    same walk. 15 sessions over 7 days were really ~8 walks. Only the band's
+//    copy carries calories, heart rate and active zone minutes; the phone's
+//    carries none of them. Undeduplicated, the feed shows every walk twice with
+//    one copy blank — see dedupeSessions.
+//
+// 2. NAPS ARE ORDINARY SESSIONS. `metadata.nap` is a real boolean and naps are
+//    frequent (4 in 7 days, 21–57 min). parseSleep deliberately returns only the
+//    main sleep for the ring; this returns all of them, and a nap is not a
+//    special case grafted on — it is a row like any other.
+//
+// PEAK HEART RATE DOES NOT EXIST in this API. MetricsSummary carries
+// `averageHeartRateBeatsPerMinute` and `heartRateZoneDurations` and no peak-bpm
+// field anywhere in the discovery document. Average is shown; peak is omitted
+// rather than derived from zone durations, which would be an invented number.
+
+export const EXERCISE = {
+  dataType: 'exercise',
+  kind: KIND.SESSION,
+  scope: 'activity',
+  pageSize: 25,   // sessions cap at 25, same as sleep
+}
+
+// Protobuf Duration arrives as a string: "2023.200s". Seconds, not minutes.
+//
+// Goes through `num` rather than Number() for the reason stated at the top of the
+// parsing section: Number('') is 0, and a zero-second session is a fabricated
+// reading, not a short walk.
+export function parseDuration(value) {
+  if (typeof value !== 'string') return null
+  return num(value.replace(/s$/, ''))
+}
+
+function minutesBetween(startTime, endTime) {
+  if (!startTime || !endTime) return null
+  const a = Date.parse(startTime), b = Date.parse(endTime)
+  if (Number.isNaN(a) || Number.isNaN(b) || b < a) return null
+  return Math.round((b - a) / 60000)
+}
+
+// How many of the fields worth showing this record actually carries. The tie
+// breaker when the same session arrives from two sources: the copy that can
+// answer more questions wins, which is always the band's.
+function richness(session) {
+  return [session.calories, session.averageHeartRate, session.activeZoneMinutes,
+    session.distanceKm, session.steps].filter((v) => v != null).length
+}
+
+function overlaps(a, b) {
+  if (!a.start || !a.end || !b.start || !b.end) return false
+  return Date.parse(a.start) < Date.parse(b.end) && Date.parse(b.start) < Date.parse(a.end)
+}
+
+// Collapse the same real-world session recorded by more than one source.
+//
+// Matches on OVERLAPPING TIME plus the same activity type rather than on exact
+// start times — the two sources disagree by seconds (21:20 vs 21:21) and by
+// duration (920s vs 939s), so an equality test would never fire.
+export function dedupeSessions(sessions) {
+  const kept = []
+  for (const s of sessions) {
+    const i = kept.findIndex((k) => k.kind === s.kind && k.activityType === s.activityType && overlaps(k, s))
+    if (i === -1) { kept.push(s); continue }
+    if (richness(s) > richness(kept[i])) kept[i] = s
+  }
+  return kept
+}
+
+// Every sleep session for the day, naps included.
+export function parseSleepSessions(payload) {
+  return points(payload).map((p) => {
+    const s = p.sleep
+    if (!s) return null
+    const sum = s.summary ?? {}
+    const isNap = s.metadata?.nap === true
+    const asleep = num(sum.minutesAsleep)
+    const stages = {}
+    for (const st of (sum.stagesSummary ?? [])) {
+      const t = st.stage ?? st.type
+      const mins = num(st.totalMinutes ?? st.minutes ?? st.durationMinutes)
+      if (t && mins != null) stages[t] = (stages[t] ?? 0) + mins
+    }
+    const inPeriod = num(sum.minutesInSleepPeriod)
+    return {
+      id: p.name ?? `sleep-${s.interval?.startTime}`,
+      kind: 'sleep',
+      // A nap is named a nap. The main sleep is "Sleep"; a non-main, non-nap
+      // session is still just sleep rather than being forced into one of the two.
+      activityType: isNap ? 'NAP' : 'SLEEP',
+      name: isNap ? 'Nap' : 'Sleep',
+      nap: isNap,
+      start: s.interval?.startTime ?? null,
+      end: s.interval?.endTime ?? null,
+      durationMinutes: asleep ?? minutesBetween(s.interval?.startTime, s.interval?.endTime),
+      // Sleep sessions carry neither of these, and the API offers no equivalent.
+      calories: null,
+      averageHeartRate: null,
+      // Detail, revealed on tap.
+      minutesAsleep: asleep,
+      minutesAwake: num(sum.minutesAwake),
+      minutesInSleepPeriod: inPeriod,
+      minutesToFallAsleep: num(sum.minutesToFallAsleep),
+      efficiency: (asleep != null && inPeriod) ? asleep / inPeriod : null,
+      sleepType: s.type ?? null,
+      stages: Object.keys(stages).length ? stages : null,
+    }
+  }).filter(Boolean)
+}
+
+// Every exercise session for the day.
+export function parseExerciseSessions(payload) {
+  return points(payload).map((p) => {
+    const e = p.exercise
+    if (!e) return null
+    const m = e.metricsSummary ?? {}
+    const seconds = parseDuration(e.activeDuration)
+    const distanceMm = num(m.distanceMillimeters)
+    return {
+      id: p.name ?? `exercise-${e.interval?.startTime}`,
+      kind: 'exercise',
+      activityType: e.exerciseType ?? 'UNKNOWN',
+      // The API's own localised label — "Walk", "Run". Not a lookup table here,
+      // which would drift from whatever the band starts recording next.
+      name: e.displayName ?? 'Activity',
+      nap: false,
+      start: e.interval?.startTime ?? null,
+      end: e.interval?.endTime ?? null,
+      durationMinutes: seconds != null
+        ? Math.round(seconds / 60)
+        : minutesBetween(e.interval?.startTime, e.interval?.endTime),
+      // Entry-level, and null wherever the source did not record it.
+      calories: num(m.caloriesKcal),
+      averageHeartRate: num(m.averageHeartRateBeatsPerMinute),
+      // Detail, revealed on tap.
+      steps: num(m.steps),
+      distanceKm: distanceMm != null ? distanceMm / 1_000_000 : null,
+      activeZoneMinutes: num(m.activeZoneMinutes),
+    }
+  }).filter(Boolean)
+}
+
+// The finished feed: both kinds, deduplicated, most recent first.
+export function buildFeed(sleepPayload, exercisePayload) {
+  const all = [...parseSleepSessions(sleepPayload), ...parseExerciseSessions(exercisePayload)]
+  return dedupeSessions(all)
+    .sort((a, b) => (Date.parse(b.start ?? 0) || 0) - (Date.parse(a.start ?? 0) || 0))
+}
+
+// ─── Last-reading cache ───────────────────────────────────────────────────────
+//
+// The home screen shows the three rings without calling Google. That is the
+// whole point: a fetch on the front page would hit the Health API on every
+// glance at the phone. So the endpoint records what it last actually read, and
+// Home renders that with an honest "as of" — refresh stays the Health tab's job.
+//
+// Only the three ring values, and only what it takes to DRAW them. Not the whole
+// payload: this is a display cache, not a second copy of the data. Anything that
+// wants real numbers fetches them.
+//
+// The shape lives here so the writer (the endpoint) and the reader (the browser)
+// cannot drift apart.
+
+export const HEALTH_CACHE_KEY = 'health_last_reading'
+
+export function cacheableRings(metrics) {
+  const rings = {}
+  for (const key of RING_METRICS) {
+    const m = metrics?.[key]
+    if (!m) continue
+    rings[key] = {
+      value: m.value ?? null,
+      absent: m.absent ?? null,
+      detail: m.detail ?? null,
+      position: m.position ?? null,
+      hasRange: !!m.range,
+    }
+  }
+  return rings
+}
+
+export function buildCache(date, fetchedAt, metrics) {
+  return { date, fetchedAt, rings: cacheableRings(metrics) }
+}
+
+// A cached reading is only "today's" if it was taken on today's civil date. Any
+// older and the UI must say which day it belongs to rather than implying it is
+// current — a stale value shown honestly is fine, shown as current is not.
+export function cacheIsToday(cache, timeZone = 'Europe/London', now = new Date()) {
+  return !!cache?.date && cache.date === civilToday(timeZone, now)
 }

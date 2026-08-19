@@ -1,6 +1,9 @@
-import { METRIC_KEYS, formatMinutes, formatSigned } from '../../api/_lib/health.js'
+import {
+  METRIC_KEYS, formatMinutes, formatSigned, HEALTH_CACHE_KEY, cacheIsToday,
+} from '../../api/_lib/health.js'
+import { readFromSupabase } from './sync'
 
-export { METRIC_KEYS, formatMinutes, formatSigned }
+export { METRIC_KEYS, formatMinutes, formatSigned, HEALTH_CACHE_KEY, cacheIsToday }
 
 // Browser access to the Health tab's data.
 //
@@ -126,3 +129,66 @@ export const DETAIL_GROUPS = [
     ],
   },
 ]
+
+// ─── Activity feed ────────────────────────────────────────────────────────────
+
+// What sits ON a feed row versus behind a tap.
+//
+// The restraint test is whether a number changes what you would do next. Type,
+// time and duration answer "what did I do"; calories and average heart rate say
+// how hard it was. Everything else — distance, steps, zone minutes, the sleep
+// stage split — is reference, and reference belongs one level down. A crowded
+// row is a Fitbit dashboard.
+//
+// Nothing is invented to fill a gap: a field the API did not return for that
+// session type is simply absent from the row, never a dash and never a zero.
+
+export function sessionTime(iso) {
+  if (!iso) return null
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return null
+  return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+}
+
+// The one-line summary under a row's title. Only what the session actually has.
+export function sessionSummary(s) {
+  const parts = []
+  if (s.durationMinutes != null) parts.push(formatMinutes(s.durationMinutes))
+  if (s.calories != null) parts.push(`${Math.round(s.calories)} kcal`)
+  if (s.averageHeartRate != null) parts.push(`${Math.round(s.averageHeartRate)} bpm avg`)
+  return parts
+}
+
+// The rows revealed by tapping a session. Built by filtering, so a session type
+// that carries none of them expands to nothing rather than to a list of dashes.
+export function sessionDetail(s) {
+  const rows = []
+  const add = (label, value) => { if (value != null) rows.push({ label, value }) }
+
+  if (s.kind === 'sleep') {
+    add('Time in bed', formatMinutes(s.minutesInSleepPeriod))
+    add('Sleep efficiency', s.efficiency != null ? `${Math.round(s.efficiency * 100)}%` : null)
+    add('Time to fall asleep', formatMinutes(s.minutesToFallAsleep))
+    add('Awake', formatMinutes(s.minutesAwake))
+  } else {
+    add('Distance', s.distanceKm != null ? `${s.distanceKm.toFixed(2)} km` : null)
+    add('Steps', s.steps != null ? Math.round(s.steps).toLocaleString('en-GB') : null)
+    add('Active zone minutes', s.activeZoneMinutes != null ? String(Math.round(s.activeZoneMinutes)) : null)
+  }
+  return rows
+}
+
+// ─── Last-reading cache ───────────────────────────────────────────────────────
+//
+// Read-only, and deliberately NOT a fetch: the home screen must never call the
+// Health API. It renders whatever the Health tab last really read, stamped with
+// when that was.
+export async function readCachedRings() {
+  try {
+    const value = await readFromSupabase(HEALTH_CACHE_KEY)
+    if (!value?.fetchedAt) return null
+    return value
+  } catch {
+    return null
+  }
+}

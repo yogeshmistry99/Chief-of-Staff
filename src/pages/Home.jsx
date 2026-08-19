@@ -23,6 +23,7 @@ import { onSyncChange } from '../lib/sync'
 import { sendMessageStream, SYSTEM_PROMPTS, onCalendarChange, rankPriorities, historyForModel } from '../lib/claude'
 import { loadHeadConfig } from '../lib/headConfig'
 import Markdown from '../components/Markdown'
+import HomeHealthCard from '../components/health/HomeHealthCard'
 
 async function fetchCalendarRange(days) {
   const now = new Date()
@@ -932,6 +933,13 @@ export default function Home() {
             )
           })}
         </div>
+
+        {/* Today's body, at a glance. Sits directly under the counts row so it is
+            visible without scrolling, but below them — the counts are what this
+            screen is for, and health is context. Renders the LAST-FETCHED values
+            only: it never calls the Health API, so opening the app does not fire a
+            Google request. Tapping through to the Health tab is what refreshes. */}
+        <HomeHealthCard />
 
         {/* Task list — Priorities / Today / Overdue. Hidden under Events, which
             shows the upcoming-events card below in its place. */}

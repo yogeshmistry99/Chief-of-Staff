@@ -7,6 +7,7 @@ import {
 } from '../lib/healthClient'
 import ScoreRing from '../components/health/ScoreRing'
 import StageBar from '../components/health/StageBar'
+import ActivityFeed from '../components/health/ActivityFeed'
 
 // Today's health, read from the Google Health API.
 //
@@ -26,6 +27,10 @@ const ABSENT_COPY = {
   api_disabled: 'The Google Health API is not enabled.',
   no_data:      'Not recorded — band not worn, or not synced yet.',
   no_stages:    'This night was recorded without stage detail.',
+  // NOT "band not worn": active zone minutes are earned, not measured, so an
+  // empty reading on a worn band means a quiet day. Saying otherwise blames the
+  // hardware for something it recorded correctly.
+  no_activity:  'No active zone minutes yet today.',
   error:        'Could not be read.',
 }
 
@@ -244,6 +249,12 @@ export default function Health({ active, embedded = false }) {
                     : null
                 }
               />
+            </Card>
+
+            {/* The day's record, beneath the rings. Chronological, one line of
+                meaning per entry, naps included as ordinary rows. */}
+            <Card title="Today's activity">
+              <ActivityFeed sessions={state.sessions} />
             </Card>
 
             {/* Everything else sits one level down, revealed by tapping a ring —

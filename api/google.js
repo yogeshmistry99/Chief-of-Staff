@@ -8,6 +8,7 @@ import { parseSheet } from './_lib/sheetTable.js'
 import {
   METRIC_KEYS, RING_METRICS, listRequest, shapeMetric, baselineValues,
   trailingRange, rangePosition, civilToday, addDays, isValidDate, absence, ABSENT,
+  EXERCISE, buildFeed, HEALTH_CACHE_KEY, buildCache, dataTypePath, buildFilter,
 } from './_lib/health.js'
 
 // Google OAuth: start, disconnect, and status.
@@ -118,6 +119,23 @@ async function health(req, res) {
       }
     }))
 
+    // The feed is for the Health tab's full load. A narrowed `?metrics=` call —
+    // the journal's sleep reuse — should not pay for an exercise fetch it will
+    // not read, so sessions are opt-in there.
+    const wantSessions = !asked.length || req.query.sessions === '1'
+    let exercisePayload = null
+    if (wantSessions) {
+      try {
+        exercisePayload = await healthFetch(token, {
+          path: `users/me/dataTypes/${dataTypePath(EXERCISE.dataType)}/dataPoints`,
+          query: new URLSearchParams({
+            filter: buildFilter(EXERCISE, date, tomorrow),
+            pageSize: String(EXERCISE.pageSize),
+          }).toString(),
+        })
+      } catch { /* no sessions is an empty feed, not a failed load */ }
+    }
+
     const metrics = {}
     const missing = []
     let needsReconsent = false
@@ -141,9 +159,31 @@ async function health(req, res) {
       if (shaped.absent) missing.push({ metric: key, reason: shaped.absent })
     }
 
+    // Sleep is REUSED, not refetched: the metric call already returned every
+    // session ending today, naps included, so the feed costs one extra API call
+    // rather than two.
+    const sleepPayload = results.find(([k]) => k === 'sleep')?.[1]?.payload ?? null
+    const sessions = wantSessions ? buildFeed(sleepPayload, exercisePayload) : null
+
+    const fetchedAt = new Date().toISOString()
+
+    // Record what was actually read, for the home screen to render without
+    // calling Google. Never blocks or fails the response — a missed cache write
+    // shows an older timestamp, which is honest; a thrown one would lose a
+    // reading the user already waited for.
+    try {
+      await sb.from('app_data').upsert({
+        key: HEALTH_CACHE_KEY,
+        value: buildCache(date, fetchedAt, metrics),
+        updated_at: fetchedAt,
+      })
+    } catch (e) {
+      console.warn('[health] cache write failed:', e.message)
+    }
+
     return res.status(200).json({
-      ok: true, date, timeZone: tz, fetchedAt: new Date().toISOString(),
-      metrics, missing, needsReconsent, serviceDisabled,
+      ok: true, date, timeZone: tz, fetchedAt,
+      metrics, missing, sessions, needsReconsent, serviceDisabled,
     })
   } catch (e) {
     if (e.isRevoked) {
