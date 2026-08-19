@@ -66,24 +66,13 @@ export function displayUnit(key) {
   return FORMAT[key]?.unit ?? null
 }
 
-// Sleep stages in the order they are worth reading, with colours taken from the
-// journal chart's palette so the two health surfaces agree. AWAKE last because
-// it is the absence of sleep rather than a kind of it.
-export const STAGE_ORDER = ['DEEP', 'REM', 'LIGHT', 'ASLEEP', 'RESTLESS', 'AWAKE']
-
-export const STAGE_COLOR = {
-  DEEP:     '#4A3AA7',
-  REM:      '#0B57D0',
-  LIGHT:    '#00639B',
-  ASLEEP:   '#006C51',
-  RESTLESS: '#8A5000',
-  AWAKE:    '#CAC4D0',
-}
-
-export const STAGE_LABEL = {
-  DEEP: 'Deep', REM: 'REM', LIGHT: 'Light',
-  ASLEEP: 'Asleep', RESTLESS: 'Restless', AWAKE: 'Awake',
-}
+// The stage palette moved to its own import-free module so the hypnogram's pure
+// layout does not have to pull a Supabase client in to find out what colour REM
+// is. Re-exported here, where every existing caller already looks for it.
+// Imported as well as re-exported: `export … from` re-exports without binding
+// the names locally, and stageSegments/stageSummary below both use them.
+import { STAGE_ORDER, STAGE_COLOR, STAGE_LABEL } from './stagePalette'
+export { STAGE_ORDER, STAGE_COLOR, STAGE_LABEL }
 
 // Stage totals as drawable segments. Returns [] when there are no stages, which
 // is the CLASSIC-sleep case and must render as a stated absence rather than an

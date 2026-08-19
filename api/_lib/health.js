@@ -270,6 +270,9 @@ export function parseSleep(payload) {
     stagesAbsent: Object.keys(stages).length ? null : ABSENT.NO_STAGES,
     start: main.interval?.startTime ?? null,
     end: main.interval?.endTime ?? null,
+    // When each stage happened, not just how much of it there was.
+    segments: parseStageSegments(main),
+    shortAwakenings: countShortAwakenings(main),
   }
 }
 
@@ -598,6 +601,8 @@ export function parseSleepSessions(payload) {
       efficiency: (asleep != null && inPeriod) ? asleep / inPeriod : null,
       sleepType: s.type ?? null,
       stages: Object.keys(stages).length ? stages : null,
+      segments: parseStageSegments(s),
+      shortAwakenings: countShortAwakenings(s),
     }
   }).filter(Boolean)
 }
@@ -703,4 +708,75 @@ export function cacheIsToday(cache, timeZone = 'Europe/London', now = new Date()
 export function shouldCacheReading(date, wanted, timeZone = 'Europe/London', now = new Date()) {
   if (date !== civilToday(timeZone, now)) return false
   return RING_METRICS.every((k) => wanted.includes(k))
+}
+
+// ─── Sleep stage segments and their baseline ──────────────────────────────────
+//
+// `sleep.stages` is a list of non-overlapping contiguous segments, each with a
+// type and a real start and end time — 14 of them for a typical night here. That
+// is what makes a hypnogram possible: the stage totals answer "how much", the
+// segments answer "when", and only the second shows a night broken into pieces
+// versus a night slept through.
+//
+// Separate from stagesSummary, which stays the source for totals. A night can
+// have one and not the other, and neither is derived from the other here.
+
+export const SLEEP_STAGE_TYPES = ['DEEP', 'REM', 'LIGHT', 'ASLEEP', 'RESTLESS', 'AWAKE']
+
+export function parseStageSegments(sleep) {
+  const raw = Array.isArray(sleep?.stages) ? sleep.stages : []
+  const segments = raw
+    .map((s) => {
+      const start = s.startTime, end = s.endTime, type = s.type
+      if (!start || !end || !type || type === 'SLEEP_STAGE_TYPE_UNSPECIFIED') return null
+      const minutes = Math.round((Date.parse(end) - Date.parse(start)) / 60000)
+      if (!Number.isFinite(minutes) || minutes < 0) return null
+      return { type, start, end, minutes }
+    })
+    .filter(Boolean)
+    .sort((a, b) => Date.parse(a.start) - Date.parse(b.start))
+  return segments.length ? segments : null
+}
+
+// How many times the night was briefly interrupted.
+//
+// A COUNT, not a drawing. The API returns each short awakening as its own
+// segment (15 last night) and plotting them would turn the hypnogram into
+// confetti — but "how broken was it" is exactly what someone wants to know from
+// one, so the number is kept and the marks are not.
+export function countShortAwakenings(sleep) {
+  const list = sleep?.shortAwakenings
+  return Array.isArray(list) ? list.length : null
+}
+
+// Mean minutes per stage across the nights in the baseline window.
+//
+// "Usual for you", and nothing more: an average of what was actually recorded.
+// A night with stage data but no REM segment genuinely had no REM, so it counts
+// as zero rather than being skipped — dropping it would quietly inflate the
+// average. Nights with no stage data at all are excluded entirely, because they
+// say nothing about stage distribution.
+export function stageBaseline(payload) {
+  const nights = []
+  for (const p of (Array.isArray(payload?.dataPoints) ? payload.dataPoints : [])) {
+    const rows = p.sleep?.summary?.stagesSummary
+    if (!Array.isArray(rows) || !rows.length) continue
+    const night = {}
+    for (const r of rows) {
+      const type = r.stage ?? r.type
+      const mins = num(r.totalMinutes ?? r.minutes ?? r.durationMinutes)
+      if (type && mins != null) night[type] = (night[type] ?? 0) + mins
+    }
+    if (Object.keys(night).length) nights.push(night)
+  }
+  if (nights.length < 2) return null   // one night is not a "usual"
+
+  const out = {}
+  for (const type of SLEEP_STAGE_TYPES) {
+    const seen = nights.some((n) => n[type] != null)
+    if (!seen) continue
+    const total = nights.reduce((sum, n) => sum + (n[type] ?? 0), 0)
+    out[type] = { mean: Math.round(total / nights.length), nights: nights.length }
+  }
+  return Object.keys(out).length ? out : null
 }

@@ -8,7 +8,7 @@ import { parseSheet } from './_lib/sheetTable.js'
 import {
   METRIC_KEYS, RING_METRICS, listRequest, shapeMetric, baselineValues,
   trailingRange, rangePosition, civilToday, addDays, isValidDate, absence, ABSENT,
-  EXERCISE, buildFeed, HEALTH_CACHE_KEY, buildCache, dataTypePath, buildFilter,
+  EXERCISE, buildFeed, HEALTH_CACHE_KEY, buildCache, dataTypePath, buildFilter, stageBaseline,
   shouldCacheReading,
 } from './_lib/health.js'
 
@@ -110,11 +110,15 @@ async function health(req, res) {
         // Baseline is the 29 days BEFORE today, so today is never compared
         // against itself.
         let baseline = []
+        let stages = null
         try {
           const prior = await healthFetch(token, listRequest(key, from30, date))
           baseline = baselineValues(key, prior)
+          // The same 30-day window also answers "what is usual for each stage",
+          // so the hypnogram's comparison costs no extra call.
+          if (key === 'sleep') stages = stageBaseline(prior)
         } catch { /* no baseline is a missing arc, not a failed metric */ }
-        return [key, { payload, baseline }]
+        return [key, { payload, baseline, stages }]
       } catch (e) {
         return [key, { error: e }]
       }
@@ -157,6 +161,7 @@ async function health(req, res) {
       // so the UI can caption what the arc is relative to.
       const range = out.baseline ? trailingRange(out.baseline) : null
       metrics[key] = { ...shaped, range, position: rangePosition(shaped.value, range) }
+      if (out.stages) metrics[key].stageBaseline = out.stages
       if (shaped.absent) missing.push({ metric: key, reason: shaped.absent })
     }
 

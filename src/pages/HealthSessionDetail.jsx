@@ -3,8 +3,7 @@ import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { haptic } from '../lib/haptic'
 import { formatMinutes } from '../../api/_lib/health.js'
 import { fetchHealth, sessionTime, STAGE_LABEL, readSessionHealth, writeSessionHealth } from '../lib/healthClient'
-import StageBar from '../components/health/StageBar'
-import { stageSegments } from '../lib/healthClient'
+import SleepHypnogram from '../components/health/SleepHypnogram'
 import { Card, DetailRow } from '../components/health/HealthCard'
 
 // One session, opened out.
@@ -62,7 +61,6 @@ export default function HealthSessionDetail() {
   const back = () => { haptic.light(); navigate(state?.from ?? '/buckets/Health', { state: { tab: 'health' } }) }
 
   const isSleep = session?.kind === 'sleep'
-  const segments = isSleep ? stageSegments(session?.stages) : []
 
   return (
     <div className="flex flex-col h-full bg-[#F3EDF7]">
@@ -96,9 +94,14 @@ export default function HealthSessionDetail() {
             {isSleep ? (
               <>
                 {(session.stages || session.sleepType) && (
-                  <Card title="Sleep stages">
-                    <StageBar
-                      segments={segments}
+                  <Card title="The session">
+                    <SleepHypnogram
+                      segments={session.segments}
+                      start={session.start}
+                      end={session.end}
+                      stages={session.stages}
+                      stageBaseline={null}
+                      shortAwakenings={session.shortAwakenings}
                       absent={session.stages ? null : 'This session was recorded without stage detail.'}
                     />
                   </Card>

@@ -4,10 +4,10 @@ import { haptic } from '../lib/haptic'
 import { formatMinutes, CARDIO_ZONE_LABEL } from '../../api/_lib/health.js'
 import {
   fetchHealth, RINGS, DETAIL_GROUPS, displayValue, displayUnit,
-  stageSegments, STAGE_LABEL, absentCopy, readSessionHealth, writeSessionHealth,
+  STAGE_LABEL, absentCopy, readSessionHealth, writeSessionHealth,
 } from '../lib/healthClient'
 import ScoreRing from '../components/health/ScoreRing'
-import StageBar from '../components/health/StageBar'
+import SleepHypnogram from '../components/health/SleepHypnogram'
 import { Card, DetailRow } from '../components/health/HealthCard'
 
 // One ring, opened out.
@@ -65,7 +65,6 @@ export default function HealthRingDetail() {
   }
 
   const sleep = health?.metrics?.sleep
-  const segments = stageSegments(sleep?.stages)
   const group = DETAIL_GROUPS.find((g) => g.ring === key)
 
   return (
@@ -118,9 +117,14 @@ export default function HealthRingDetail() {
 
             {key === 'sleep' && (
               <>
-                <Card title="Sleep stages">
-                  <StageBar
-                    segments={segments}
+                <Card title="The night">
+                  <SleepHypnogram
+                    segments={sleep?.segments}
+                    start={sleep?.start}
+                    end={sleep?.end}
+                    stages={sleep?.stages}
+                    stageBaseline={sleep?.stageBaseline}
+                    shortAwakenings={sleep?.shortAwakenings}
                     absent={sleep?.absent ? absentCopy(sleep) : sleep?.stagesAbsent ? 'This night was recorded without stage detail.' : null}
                   />
                 </Card>
