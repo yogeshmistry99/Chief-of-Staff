@@ -100,8 +100,59 @@ describe('HealthRingDetail', () => {
 
   it('brings the ring\'s existing rows with it', async () => {
     draw('recovery')
-    expect(await screen.findByText('Resting heart rate')).toBeInTheDocument()
-    expect(screen.getByText('65 bpm')).toBeInTheDocument()
+    // Resting heart rate names both a reading and one of the score's inputs, so
+    // scope to the card of readings.
+    const card = (await screen.findByText('Overnight body signals')).closest('div').parentElement
+    expect(within(card).getByText('Resting heart rate')).toBeInTheDocument()
+    expect(within(card).getByText('65 bpm')).toBeInTheDocument()
+  })
+
+  it('shows the score\'s workings rather than the number alone', async () => {
+    // The terms of adding a computed number to an app of measurements: it argues
+    // its own case. Each input's reading, the wearer's usual, and what it did to
+    // the score in points.
+    draw('recovery')
+    const card = (await screen.findByText('How it was worked out')).closest('div').parentElement
+    expect(within(card).getByText('Heart rate variability')).toBeInTheDocument()
+    expect(within(card).getByText(/33 ms today · usually 36 ms/)).toBeInTheDocument()
+    expect(within(card).getByText('−7')).toBeInTheDocument()
+    expect(within(card).getByText('50% weight')).toBeInTheDocument()
+  })
+
+  it('says the number is an estimate, on the screen, not only in a comment', async () => {
+    draw('recovery')
+    // Said twice on purpose — once at the top and once under the workings — so
+    // the count is not the assertion.
+    expect((await screen.findAllByText(/estimate/i)).length).toBeGreaterThan(0)
+    expect(screen.getByText('About normal for you')).toBeInTheDocument()
+  })
+
+  it('names the signals it could not use instead of quietly dropping them', async () => {
+    draw('recovery')
+    const card = (await screen.findByText('Left out')).closest('div').parentElement
+    expect(within(card).getByText('Skin temperature')).toBeInTheDocument()
+    expect(within(card).getByText('not recorded')).toBeInTheDocument()
+  })
+
+  it('does NOT offer recovery a 30-day range — its scale is not a trailing window', async () => {
+    // 0 and 100 are the ends of a scale, not the lowest and highest the wearer
+    // has recorded. Showing them as "lowest in 30 days" would state a fact that
+    // was never measured.
+    draw('recovery')
+    await screen.findByText('How it was worked out')
+    expect(screen.queryByText('Lowest in 30 days')).not.toBeInTheDocument()
+  })
+
+  it('states the learning period plainly instead of showing a provisional score', async () => {
+    draw('recovery', {
+      health: { ...health, metrics: { ...health.metrics, recovery: {
+        value: null, score: null, absent: 'learning', computed: true, nights: 3, weightUsed: 0.81,
+        detail: 'Still learning your baseline — 3 of 7 nights.',
+        position: null, range: null, contributions: health.metrics.recovery.contributions, missing: [],
+      } } },
+    })
+    // Once as the ring's caption, once under the workings.
+    expect((await screen.findAllByText(/still learning your baseline — 3 of 7 nights/i)).length).toBeGreaterThan(0)
   })
 
   it('surfaces the extra fields the API returns alongside HRV', async () => {
