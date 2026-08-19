@@ -775,8 +775,17 @@ export function stageBaseline(payload) {
   for (const type of SLEEP_STAGE_TYPES) {
     const seen = nights.some((n) => n[type] != null)
     if (!seen) continue
-    const total = nights.reduce((sum, n) => sum + (n[type] ?? 0), 0)
-    out[type] = { mean: Math.round(total / nights.length), nights: nights.length }
+    const values = nights.map((n) => n[type] ?? 0)
+    const total = values.reduce((sum, v) => sum + v, 0)
+    out[type] = {
+      mean: Math.round(total / values.length),
+      // The spread, for the "typical range" bracket. Min and max of what was
+      // actually recorded — not a percentile or a standard deviation, which
+      // would be a model rather than a reading.
+      min: Math.min(...values),
+      max: Math.max(...values),
+      nights: values.length,
+    }
   }
   return Object.keys(out).length ? out : null
 }

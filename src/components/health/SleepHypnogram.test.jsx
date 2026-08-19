@@ -16,7 +16,11 @@ const props = {
   start: '2026-08-18T23:32:00Z',
   end: '2026-08-19T05:45:00Z',
   stages: { AWAKE: 41, LIGHT: 214, DEEP: 48, REM: 69 },
-  stageBaseline: { DEEP: { mean: 60, nights: 14 }, REM: { mean: 65, nights: 14 }, AWAKE: { mean: 38, nights: 14 } },
+  stageBaseline: {
+    DEEP: { mean: 60, min: 41, max: 78, nights: 14 },
+    REM: { mean: 65, min: 44, max: 91, nights: 14 },
+    AWAKE: { mean: 38, min: 20, max: 55, nights: 14 },
+  },
   shortAwakenings: 15,
 }
 
@@ -42,35 +46,73 @@ describe('SleepHypnogram — the night against the clock', () => {
     expect(container.textContent).toMatch(/\d{2}:\d{2}/)
   })
 
+  it('states the night\'s duration', () => {
+    draw()
+    expect(screen.getByText(/Duration 6h 13m/)).toBeInTheDocument()
+  })
+
   it('reports brief awakenings as a count, not as marks', () => {
     draw()
     expect(screen.getByText(/15 brief awakenings/)).toBeInTheDocument()
   })
 
-  it('turns into a comparison when a stage is tapped', () => {
-    draw()
-    expect(screen.queryByText('Usual for you')).toBeNull()
+  it('KEEPS ALL FOUR LANES when tapped — nothing is replaced', () => {
+    const { container } = draw()
+    const before = container.querySelectorAll('[title]').length
+    fireEvent.click(screen.getByText('Deep'))
+    for (const label of ['Awake', 'REM', 'Light', 'Deep']) {
+      expect(screen.getByText(label)).toBeInTheDocument()
+    }
+    // The same blocks, still on screen: compiling moves them, it does not redraw.
+    expect(container.querySelectorAll('[title]').length).toBe(before)
+  })
+
+  it('slides every lane\'s pieces left to pack from zero', () => {
+    const { container } = draw()
+    const lefts = () => [...container.querySelectorAll('[title]')].map((el) => el.style.left)
+    expect(lefts().every((l) => l === '0%')).toBe(false)
 
     fireEvent.click(screen.getByText('Deep'))
 
-    expect(screen.getByText('Last night')).toBeInTheDocument()
-    expect(screen.getByText('Usual for you')).toBeInTheDocument()
-    expect(screen.getByText('1h 0m')).toBeInTheDocument()          // usual 60m
-    expect(screen.getByText(/12m less than your usual, across 14 nights/)).toBeInTheDocument()
+    // Each lane's first block now starts at the left edge.
+    const zeroed = lefts().filter((l) => l === '0%')
+    expect(zeroed.length).toBe(4)   // one per lane
   })
 
-  it('goes back to the night', () => {
+  it('compiles ALL lanes together, not just the one tapped', () => {
+    draw()
+    fireEvent.click(screen.getByText('Light'))
+    // Every stage with a baseline shows its typical range, not only Light.
+    expect(screen.getAllByText(/over 14 nights$/).length).toBe(3)   // DEEP, REM, AWAKE
+  })
+
+  it('shows the typical range in real minutes, over the nights it came from', () => {
     draw()
     fireEvent.click(screen.getByText('Deep'))
-    fireEvent.click(screen.getByText(/back to the night/i))
-    expect(screen.getByText(/tap a stage to compare/i)).toBeInTheDocument()
+    expect(screen.getByText(/Typical 41m–1h 18m over 14 nights/)).toBeInTheDocument()
   })
 
-  it('says when there is no usual to compare against, rather than a bar against nothing', () => {
+  it('draws no range for a stage with no baseline', () => {
     draw()
-    fireEvent.click(screen.getByText('Light'))   // no LIGHT in the baseline
-    expect(screen.getByText(/not enough recent nights/i)).toBeInTheDocument()
-    expect(screen.queryByText('Usual for you')).toBeNull()
+    fireEvent.click(screen.getByText('Deep'))
+    // LIGHT has no baseline here, so it gets a compiled bar and no bracket —
+    // three captions for four lanes.
+    expect(screen.getAllByText(/over 14 nights$/).length).toBe(3)
+    expect(screen.getAllByText(/^(Awake|REM|Light|Deep)$/).length).toBe(4)
+  })
+
+  it('lays the night back out on a second tap', () => {
+    draw()
+    fireEvent.click(screen.getByText('Deep'))
+    expect(screen.getByText(/lay the night back out/i)).toBeInTheDocument()
+    fireEvent.click(screen.getByText('Deep'))
+    expect(screen.getByText(/compile each stage/i)).toBeInTheDocument()
+  })
+
+  it('shows each stage as a percentage of the night', () => {
+    draw()
+    expect(screen.getByText('58%')).toBeInTheDocument()   // Light, 214 of 372
+    expect(screen.getByText('13%')).toBeInTheDocument()   // Deep
   })
 
   it('says a night with no stage timings has none, rather than drawing an empty axis', () => {

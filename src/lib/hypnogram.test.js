@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { layoutSegments, lanesFor, hourTicks, stageComparison, LANE_ORDER } from './hypnogram'
+import {
+  layoutSegments, lanesFor, hourTicks, stageComparison, LANE_ORDER,
+  compileLane, stagePercent, typicalRange,
+} from './hypnogram'
 
 // Real segments from 19 Aug 2026 — the night the hypnogram was built against.
 const night = { start: '2026-08-18T23:32:00Z', end: '2026-08-19T05:45:00Z' }
@@ -112,5 +115,87 @@ describe('stageComparison — tonight against the usual', () => {
 
   it('carries how many nights the usual is drawn from', () => {
     expect(stageComparison('DEEP', stages, baseline).nights).toBe(14)
+  })
+})
+
+describe('compileLane — the pieces slide left and pack together', () => {
+  const blocks = layoutSegments(segments, night.start, night.end)
+  const light = blocks.filter((b) => b.type === 'LIGHT')
+
+  it('keeps every block\'s width — only the offset moves', () => {
+    const packed = compileLane(light)
+    expect(packed.map((b) => b.width)).toEqual(light.map((b) => b.width))
+  })
+
+  it('packs them contiguously from zero', () => {
+    const packed = compileLane(light)
+    expect(packed[0].compiledOffset).toBe(0)
+    for (let i = 1; i < packed.length; i += 1) {
+      expect(packed[i].compiledOffset).toBeCloseTo(packed[i - 1].compiledOffset + packed[i - 1].width, 6)
+    }
+  })
+
+  it('makes a run as long as the stage total', () => {
+    const packed = compileLane(light)
+    const last = packed[packed.length - 1]
+    const run = last.compiledOffset + last.width
+    const totalMinutes = light.reduce((n, b) => n + b.minutes, 0)
+    expect(run).toBeCloseTo(totalMinutes / 373, 2)
+  })
+
+  it('leaves the original offsets untouched, so the two views are the same blocks', () => {
+    const before = light.map((b) => b.offset)
+    compileLane(light)
+    expect(light.map((b) => b.offset)).toEqual(before)
+  })
+
+  it('is empty for an empty lane rather than throwing', () => {
+    expect(compileLane([])).toEqual([])
+  })
+})
+
+describe('stagePercent', () => {
+  const stages = { AWAKE: 41, LIGHT: 214, DEEP: 48, REM: 69 }
+
+  it('is the share of the recorded stages, so the four add to 100', () => {
+    const total = ['AWAKE', 'LIGHT', 'DEEP', 'REM'].reduce((n, t) => n + stagePercent(t, stages), 0)
+    expect(total).toBeGreaterThanOrEqual(99)
+    expect(total).toBeLessThanOrEqual(101)
+  })
+
+  it('reads the same way as the night', () => {
+    expect(stagePercent('LIGHT', stages)).toBe(58)   // 214 of 372
+    expect(stagePercent('DEEP', stages)).toBe(13)
+  })
+
+  it('is null, never 0%, when the stage was not recorded', () => {
+    expect(stagePercent('RESTLESS', stages)).toBeNull()
+    expect(stagePercent('DEEP', null)).toBeNull()
+  })
+})
+
+describe('typicalRange', () => {
+  const baseline = { DEEP: { mean: 50, min: 40, max: 62, nights: 14 } }
+
+  it('sits on the same scale as the bar, so the bracket lands where the comparison is', () => {
+    const r = typicalRange('DEEP', baseline, 373)
+    expect(r.from).toBeCloseTo(40 / 373, 4)
+    expect(r.to).toBeCloseTo(62 / 373, 4)
+    // Fractions position the bracket; minutes are what the label prints.
+    expect(r.meanFraction).toBeCloseTo(50 / 373, 4)
+    expect(r.mean).toBe(50)
+    expect(r.min).toBe(40)
+    expect(r.max).toBe(62)
+    expect(r.nights).toBe(14)
+  })
+
+  it('is null without a baseline — a bracket from one night is not a range', () => {
+    expect(typicalRange('DEEP', null, 373)).toBeNull()
+    expect(typicalRange('REM', baseline, 373)).toBeNull()
+    expect(typicalRange('DEEP', baseline, null)).toBeNull()
+  })
+
+  it('is null when min and max collapse to the same value', () => {
+    expect(typicalRange('DEEP', { DEEP: { mean: 40, min: 40, max: 40, nights: 3 } }, 373)).toBeNull()
   })
 })

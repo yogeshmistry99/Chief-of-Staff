@@ -87,6 +87,61 @@ export function hourTicks(start, end) {
   return ticks
 }
 
+// The same blocks, packed left into one contiguous run.
+//
+// THIS IS THE WHOLE TRICK. Compiling a stage does not rebuild the lane — every
+// block keeps its width and only its offset changes, from where it happened to
+// where it lands when the pieces are pushed together. The lane stays in place,
+// the run reads as that stage's total, and because only `left` moves it can be
+// a CSS transition rather than a redraw. The scattered view and the compiled
+// view are the same fourteen pieces of the same night.
+export function compileLane(blocks) {
+  let cursor = 0
+  return blocks.map((b) => {
+    const compiledOffset = cursor
+    cursor += b.width
+    return { ...b, compiledOffset }
+  })
+}
+
+// The share of the night a stage took, as a percentage of the stages recorded.
+//
+// Denominated on the stage totals rather than the sleep period, so the four
+// percentages add to 100 and can be read against each other. Null when there is
+// nothing to divide by — never 0%, which would claim the stage was measured.
+export function stagePercent(type, stages) {
+  const total = Object.values(stages ?? {}).reduce((sum, v) => sum + (typeof v === 'number' ? v : 0), 0)
+  const value = stages?.[type]
+  if (!total || value == null) return null
+  return Math.round((value / total) * 100)
+}
+
+// Where the typical range sits on a lane's track, as 0..1 offsets.
+//
+// The track spans the whole night, so a stage's bar and its typical range are
+// measured in the same units and the bracket lands where the comparison actually
+// is. Null without a baseline — a bracket drawn from one night is not a range.
+export function typicalRange(type, baseline, spanMinutes) {
+  const b = baseline?.[type]
+  if (!b || !spanMinutes || b.min == null || b.max == null) return null
+  const from = Math.max(0, Math.min(1, b.min / spanMinutes))
+  const to = Math.max(0, Math.min(1, b.max / spanMinutes))
+  if (to <= from) return null
+  // Fractions and minutes are both wanted here and must not be confused: `from`
+  // and `to` position the bracket, `min`/`max`/`mean` are the real minutes the
+  // label prints. Spreading the baseline last used to overwrite the computed
+  // fraction with raw minutes, which put the bracket off the end of the track.
+  return {
+    from,
+    to,
+    meanFraction: Math.max(0, Math.min(1, b.mean / spanMinutes)),
+    min: b.min,
+    max: b.max,
+    mean: b.mean,
+    nights: b.nights,
+  }
+}
+
 // Tonight against the usual, for one stage.
 //
 // Both bars are scaled to whichever is larger, so the comparison is read from
