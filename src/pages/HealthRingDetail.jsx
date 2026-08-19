@@ -4,7 +4,7 @@ import { haptic } from '../lib/haptic'
 import { formatMinutes, CARDIO_ZONE_LABEL } from '../../api/_lib/health.js'
 import {
   fetchHealth, RINGS, DETAIL_GROUPS, displayValue, displayUnit,
-  stageSegments, STAGE_LABEL, absentCopy,
+  stageSegments, STAGE_LABEL, absentCopy, readSessionHealth, writeSessionHealth,
 } from '../lib/healthClient'
 import ScoreRing from '../components/health/ScoreRing'
 import StageBar from '../components/health/StageBar'
@@ -29,8 +29,11 @@ export default function HealthRingDetail() {
   const { state } = useLocation()
   const navigate = useNavigate()
 
-  const [health, setHealth] = useState(state?.health ?? null)
-  const [loading, setLoading] = useState(!state?.health)
+  // Router state first, then whatever the session already holds. Only a genuinely
+  // cold open — a refresh, a direct link — reaches the fetch.
+  const seeded = state?.health ?? readSessionHealth()
+  const [health, setHealth] = useState(seeded)
+  const [loading, setLoading] = useState(!seeded)
 
   // Below the state it sets, deliberately: a dependency array is evaluated during
   // render, and a hook above the values it depends on white-screens the app while
@@ -41,6 +44,7 @@ export default function HealthRingDetail() {
     ;(async () => {
       const data = await fetchHealth()
       if (cancelled) return
+      writeSessionHealth(data)
       setHealth(data)
       setLoading(false)
     })()

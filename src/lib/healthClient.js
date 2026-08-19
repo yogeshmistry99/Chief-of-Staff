@@ -239,3 +239,45 @@ export function absentCopy(metric) {
   if (metric.absent === 'error') return metric.detail ?? ABSENT_COPY.error
   return ABSENT_COPY[metric.absent] ?? metric.detail ?? 'Not available.'
 }
+
+// ─── Session hold ─────────────────────────────────────────────────────────────
+//
+// The last reading, kept IN MEMORY for as long as the app is open.
+//
+// Not a cache in the sense this file rules out elsewhere, and specifically not
+// persistence: it lives in a module variable, dies on reload, and is never
+// written anywhere. What it prevents is re-fetching a reading the app already
+// has — opening the Health tab, going into a ring's screen, coming back, and
+// switching tabs each unmount and remount the page, and every one of those was
+// calling Google again for data that had not changed.
+//
+// THE SAME-DAY GUARD IS THE HONEST PART. An app left open overnight would
+// otherwise hold last night's reading and present it as this morning's, which is
+// the exact failure the no-cache rule exists to prevent. A held reading is only
+// reused while it is still the civil day it was taken on; after that it is
+// dropped and the next open fetches. The tab also always shows the time it was
+// read, so a held reading is never passed off as a fresh one.
+let sessionHealth = null
+
+export function readSessionHealth(now = new Date()) {
+  if (!sessionHealth?.date) return null
+  const today = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/London', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(now)
+  if (sessionHealth.date !== today) {
+    sessionHealth = null
+    return null
+  }
+  return sessionHealth
+}
+
+export function writeSessionHealth(data) {
+  // Only a good reading is worth holding. An error response must not stick
+  // around and suppress the retry that would fix it.
+  sessionHealth = data?.ok ? data : sessionHealth
+  return sessionHealth
+}
+
+export function clearSessionHealth() {
+  sessionHealth = null
+}

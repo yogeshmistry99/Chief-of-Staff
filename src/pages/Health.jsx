@@ -3,7 +3,9 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { haptic } from '../lib/haptic'
 import {
   fetchHealth, RINGS, displayValue, displayUnit, absentCopy,
+  readSessionHealth, writeSessionHealth,
 } from '../lib/healthClient'
+import { usePullToRefresh } from '../lib/usePullToRefresh'
 import ScoreRing from '../components/health/ScoreRing'
 import ActivityFeed from '../components/health/ActivityFeed'
 import { Card } from '../components/health/HealthCard'
@@ -27,29 +29,44 @@ export default function Health({ active, embedded = false }) {
   const { pathname } = useLocation()
   const navigate = useNavigate()
   const visible = active ?? pathname === '/health'
-  const [state, setState] = useState({ loading: true })
-  const fetched = useRef(false)
+  // Starts from whatever the session already holds, so re-entering the tab shows
+  // the reading immediately rather than a spinner.
+  const [state, setState] = useState(() => {
+    const held = readSessionHealth()
+    return held ? { ...held, loading: false } : { loading: true }
+  })
+  const scrollRef = useRef(null)
 
   const load = useCallback(async () => {
     setState((s) => ({ ...s, loading: true }))
     const data = await fetchHealth()
+    writeSessionHealth(data)
     setState({ ...data, loading: false })
   }, [])
 
-  // App.jsx's tab strip MOUNTS EVERY TAB AT ONCE so a swipe is instant, which
-  // means mounting is not the same as being looked at. Fetching on mount would
-  // call Google on every single app load, for a screen the user may never open.
+  // FETCHES ONCE PER SESSION, AND THEN ONLY WHEN ASKED.
   //
-  // So the trigger is the route actually being /health, and it fires once —
-  // after that, refreshing is the Update button's job. `load` is declared above
-  // this effect deliberately: a dependency array is evaluated DURING render, and
-  // referencing a `const` declared below it white-screens the app while building
-  // perfectly clean. That has happened here before.
+  // Two separate reasons not to fetch on open. First, App.jsx's tab strip mounts
+  // every tab at once so a swipe is instant, which means mounting is not the same
+  // as being looked at — hence keying off `visible` rather than mount.
+  //
+  // Second, and what changed on 19 Aug: this page unmounts constantly in normal
+  // use. Opening a ring's screen, coming back, switching bucket tabs — each one
+  // remounted it and fired another Google call for a reading that had not moved.
+  // The reading is now held for the session, so a remount reuses it and a fetch
+  // happens only when there is nothing to reuse. Pulling down is how you ask for
+  // a new one.
+  //
+  // `load` is declared above this effect deliberately: a dependency array is
+  // evaluated DURING render, and referencing a `const` declared below it
+  // white-screens the app while building perfectly clean. That has happened here.
   useEffect(() => {
-    if (!visible || fetched.current) return
-    fetched.current = true
+    if (!visible || readSessionHealth()) return
     load()
   }, [visible, load])
+
+  // Pull down to refresh. Declared below `load`, for the same reason.
+  const { pull, refreshing, ready } = usePullToRefresh(scrollRef, load)
 
   const metrics = state.metrics ?? {}
   const sleep = metrics.sleep
@@ -95,7 +112,18 @@ export default function Health({ active, embedded = false }) {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-3 pb-6">
+      {/* Pull-to-refresh indicator. Occupies the space the content is dragged
+          down by, so nothing is covered and nothing jumps. */}
+      <div
+        className="flex-shrink-0 overflow-hidden flex items-end justify-center"
+        style={{ height: refreshing ? 28 : pull, transition: pull ? 'none' : 'height 0.2s ease' }}
+      >
+        <span className="text-[10px] text-[#79747E] pb-1.5">
+          {refreshing ? 'Updating…' : ready ? 'Release to update' : 'Pull to update'}
+        </span>
+      </div>
+
+      <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 pb-6">
         {state.loading && !state.metrics && (
           <p className="py-8 text-center text-sm text-[#79747E]">Reading from Google Health…</p>
         )}

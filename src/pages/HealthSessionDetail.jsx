@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { haptic } from '../lib/haptic'
 import { formatMinutes } from '../../api/_lib/health.js'
-import { fetchHealth, sessionTime, STAGE_LABEL } from '../lib/healthClient'
+import { fetchHealth, sessionTime, STAGE_LABEL, readSessionHealth, writeSessionHealth } from '../lib/healthClient'
 import StageBar from '../components/health/StageBar'
 import { stageSegments } from '../lib/healthClient'
 import { Card, DetailRow } from '../components/health/HealthCard'
@@ -36,8 +36,11 @@ export default function HealthSessionDetail() {
   const navigate = useNavigate()
   const id = state?.session?.id ?? params.get('id')
 
-  const [session, setSession] = useState(state?.session ?? null)
-  const [loading, setLoading] = useState(!state?.session)
+  // Router state first, then the session hold — arriving from the feed carries
+  // the session with it, and a cold open reuses whatever the app already read.
+  const seeded = state?.session ?? (id ? (readSessionHealth()?.sessions ?? []).find((s) => s.id === id) : null)
+  const [session, setSession] = useState(seeded ?? null)
+  const [loading, setLoading] = useState(!seeded)
   const [missing, setMissing] = useState(false)
 
   // Declared below the state it sets — see the hook-order trap.
@@ -47,6 +50,7 @@ export default function HealthSessionDetail() {
     ;(async () => {
       const data = await fetchHealth()
       if (cancelled) return
+      writeSessionHealth(data)
       const found = (data?.sessions ?? []).find((s) => s.id === id)
       if (found) setSession(found)
       else setMissing(true)

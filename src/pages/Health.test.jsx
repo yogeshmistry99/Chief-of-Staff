@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { clearSessionHealth } from '../lib/healthClient'
 
 // A RENDER test, and that is the point of it.
 //
@@ -68,6 +69,12 @@ const { default: Health } = await import('./Health')
 beforeEach(() => {
   mockFetchHealth.mockReset()
   mockFetchHealth.mockResolvedValue(good())
+  // The session hold survives unmounts by design, so it must be cleared between
+  // tests or one test's reading suppresses the next test's fetch.
+  clearSessionHealth()
+  // Pinned to the fixture's own day. Without this the hold's same-day guard
+  // drops every reading and the hold is never actually exercised.
+  vi.setSystemTime(new Date('2026-08-16T10:00:00Z'))
 })
 
 describe('it does not call Google unless the tab is being looked at', () => {
@@ -162,6 +169,29 @@ describe('the front screen', () => {
       '/health/ring/hrv',
       expect.objectContaining({ state: expect.objectContaining({ health: expect.anything() }) }),
     )
+  })
+
+  it('fetches once, then NOT again when the page is remounted', async () => {
+    // This page unmounts constantly in normal use — opening a ring's screen and
+    // coming back, switching bucket tabs. Each of those used to fire another
+    // Google call for a reading that had not moved.
+    const first = renderHealth()
+    await screen.findByText('Sleep')
+    expect(mockFetchHealth).toHaveBeenCalledTimes(1)
+
+    first.unmount()
+    renderHealth()
+    await screen.findByText('Sleep')
+    expect(mockFetchHealth).toHaveBeenCalledTimes(1)
+  })
+
+  it('fetches again once the held reading is from a previous day', async () => {
+    renderHealth().unmount()
+    await waitFor(() => expect(mockFetchHealth).toHaveBeenCalledTimes(1))
+    // Overnight. A held reading from yesterday must never be shown as today's.
+    vi.setSystemTime(new Date('2026-08-17T08:00:00Z'))
+    renderHealth()
+    await waitFor(() => expect(mockFetchHealth).toHaveBeenCalledTimes(2))
   })
 
   it('shows the Update button and the time it last read', async () => {
