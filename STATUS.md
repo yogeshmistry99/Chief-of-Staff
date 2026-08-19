@@ -129,6 +129,16 @@ purged, `api/*.js` at **11/12**, chat prompt caching 90% cheaper, refresh path t
 
 ## Recent significant changes (newest first)
 
+- **2026-08-19 (cont. 3) — Detail screens made reachable; stage detail off Today.**
+  The ring and session screens from cont. 2 **shipped unreachable**: `isSubRoute()` in App.jsx
+  matched `pathname === '/health'` exactly, so both fell through the full-screen route gate to the
+  tab view. Fixed to `startsWith('/health')`, and `isSubRoute` is now exported and tested by path.
+  **The stage breakdown left the today screen.** Today answers "how am I" and lists what happened;
+  the shape of the night is reference. The full split lives on the sleep ring's screen, and the
+  feed's sleep drop-down carries a one-line summary ("Deep 48m · REM 1h 9m · Light 3h 34m") — AWAKE
+  excluded, being the absence of sleep rather than a kind of it, and already its own row. The
+  classic-night assertion moved to the ring screen's tests with the bar it guards.
+
 - **2026-08-19 (cont. 2) — A screen per ring, and a screen per session.**
   Tapping a ring opens `/health/ring/:key` rather than expanding a card underneath. The ring stays
   at the top, then what the arc is relative to in numbers (30-day low / high / days measured), then
@@ -1224,6 +1234,13 @@ purged, `api/*.js` at **11/12**, chat prompt caching 90% cheaper, refresh path t
   a frozen fallback, refreshed weekly from live rows.
 - **All task reads must filter `deleted_at is null`.** `tasksRepo` does this; hand-rolled SQL or a
   raw `.from('tasks')` call will resurrect deleted tasks.
+- **A new full-screen route needs `isSubRoute()` in App.jsx updated, or it silently never renders.**
+  That predicate gates the entire full-screen `<Routes>` block; a path it does not match falls
+  through to the tab view, so the screen simply does not exist. It does NOT 404 and it does NOT
+  error. `/health/ring/:key` and `/health/session` shipped unreachable this way because the check
+  was `pathname === '/health'` — build clean, every render test passing, because those tests mount
+  the page component directly in their own MemoryRouter and never exercise the gate. `isSubRoute` is
+  exported and tested by path now; add any new screen to that test.
 - **The ring colour scale has no alarm colour, and that is deliberate.** It grades blue → purple →
   green by where the reading sits in the wearer's own 30 days. Do not "complete" it with red at the
   bottom: a short night is not a failure and this codebase also holds a symptom diary that avoids
