@@ -44,6 +44,14 @@ const good = () => ({
       range: { min: 300, max: 500, n: 20 }, position: 0.51,
     },
     hrv:    { value: 42, absent: null, range: { min: 30, max: 60, n: 20 }, position: 0.4 },
+    recovery: {
+      value: 62, absent: null, computed: true, band: 'typical', bandLabel: 'About normal for you',
+      range: { min: 0, max: 100, n: 9 }, position: 0.62, nights: 9, weightUsed: 1,
+      contributions: [
+        { key: 'hrv', label: 'Heart rate variability', weight: 0.5, value: 42, mean: 38, sd: 4, nights: 9, z: 1, score: 0.5, points: 12, mode: 'directional' },
+      ],
+      missing: [],
+    },
     cardio: { value: 23, absent: null, range: { min: 0, max: 60, n: 20 }, position: 0.38 },
     rhr:       { value: 54, absent: null },
     spo2:      { value: 96.4, absent: null },
@@ -141,14 +149,14 @@ describe('the front screen', () => {
   it('renders without throwing and shows the three rings', async () => {
     renderHealth()
     expect(await screen.findByText('Sleep')).toBeInTheDocument()
-    expect(screen.getByText('HRV')).toBeInTheDocument()
+    expect(screen.getByText('Recovery')).toBeInTheDocument()
     expect(screen.getByText('Cardio')).toBeInTheDocument()
   })
 
   it('shows the measured values, sleep as hours and minutes', async () => {
     renderHealth()
     expect(await screen.findByText('6h 42m')).toBeInTheDocument()
-    expect(screen.getByText('42')).toBeInTheDocument()
+    expect(screen.getByText('62')).toBeInTheDocument()
     expect(screen.getByText('23')).toBeInTheDocument()
   })
 
@@ -163,10 +171,10 @@ describe('the front screen', () => {
     // Resting heart rate is deliberately NOT on the front screen — and no longer
     // expands in place either: the ring now has a screen of its own.
     expect(screen.queryByText('Resting heart rate')).not.toBeInTheDocument()
-    fireEvent.click(screen.getByText('HRV'))
+    fireEvent.click(screen.getByText('Recovery'))
     expect(screen.queryByText('Resting heart rate')).not.toBeInTheDocument()
     expect(mockNavigate).toHaveBeenCalledWith(
-      '/health/ring/hrv',
+      '/health/ring/recovery',
       expect.objectContaining({ state: expect.objectContaining({ health: expect.anything() }) }),
     )
   })
@@ -206,7 +214,7 @@ describe('absence is rendered as a reason, never as a number', () => {
   it('shows an em dash and the cause when a metric was not recorded', async () => {
     mockFetchHealth.mockResolvedValue({
       ...good(),
-      metrics: { ...good().metrics, hrv: { value: null, absent: 'no_data', detail: null, position: null } },
+      metrics: { ...good().metrics, cardio: { value: null, absent: 'no_data', detail: null, position: null } },
     })
     renderHealth()
     expect(await screen.findByText(/band not worn, or not synced/i)).toBeInTheDocument()
@@ -246,7 +254,7 @@ describe('absence is rendered as a reason, never as a number', () => {
     const g = good()
     mockFetchHealth.mockResolvedValue({
       ...g,
-      metrics: { ...g.metrics, hrv: { value: null, absent: 'error', detail: 'Request contains disallowed OAuth scope(s).' } },
+      metrics: { ...g.metrics, cardio: { value: null, absent: 'error', detail: 'Request contains disallowed OAuth scope(s).' } },
     })
     renderHealth()
     expect(await screen.findByText(/disallowed OAuth scope/i)).toBeInTheDocument()

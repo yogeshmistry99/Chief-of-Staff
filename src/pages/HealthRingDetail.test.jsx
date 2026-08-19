@@ -29,6 +29,19 @@ const health = {
       raw: { nonRemHeartRateBeatsPerMinute: '62', entropy: 2.974, deepSleepRootMeanSquareOfSuccessiveDifferencesMilliseconds: 32.6 },
     },
     rhr: { value: 65, absent: null },
+    breathing: { value: 12.6, absent: null },
+    // The real 19 Aug reading, weights and all — see api/_lib/recovery.js.
+    recovery: {
+      value: 40, score: 40, absent: null, computed: true,
+      band: 'typical', bandLabel: 'About normal for you',
+      range: { min: 0, max: 100, n: 9 }, position: 0.4, nights: 9, weightUsed: 1, complete: true,
+      contributions: [
+        { key: 'hrv', label: 'Heart rate variability', weight: 0.5, value: 33.35, mean: 36.3, sd: 5.2, nights: 9, z: -0.57, score: -0.28, points: -7, mode: 'directional', higherIsBetter: true },
+        { key: 'rhr', label: 'Resting heart rate', weight: 0.25, value: 65, mean: 65.3, sd: 1.9, nights: 9, z: -0.16, score: 0.08, points: 1, mode: 'directional', higherIsBetter: false },
+        { key: 'breathing', label: 'Breathing rate', weight: 0.06, value: 12.6, mean: 13.2, sd: 0.6, nights: 9, z: -1, score: -0.5, points: -2, mode: 'deviation', higherIsBetter: null },
+      ],
+      missing: [{ key: 'skinTemp', label: 'Skin temperature', reason: 'no_reading' }],
+    },
     cardio: { value: 3, absent: null, position: 0, range: { min: 4, max: 34, n: 4 }, zones: { FAT_BURN: 2, CARDIO: 1 } },
   },
 }
@@ -86,13 +99,15 @@ describe('HealthRingDetail', () => {
   })
 
   it('brings the ring\'s existing rows with it', async () => {
-    draw('hrv')
+    draw('recovery')
     expect(await screen.findByText('Resting heart rate')).toBeInTheDocument()
     expect(screen.getByText('65 bpm')).toBeInTheDocument()
   })
 
   it('surfaces the extra fields the API returns alongside HRV', async () => {
-    draw('hrv')
+    // They followed HRV onto the Recovery screen when it took the ring; without
+    // that move the only route to them was a ring that no longer exists.
+    draw('recovery')
     expect(await screen.findByText('Non-REM heart rate')).toBeInTheDocument()
     expect(screen.getByText('62 bpm')).toBeInTheDocument()
   })

@@ -6,11 +6,12 @@ import {
 } from './_lib/google.js'
 import { parseSheet } from './_lib/sheetTable.js'
 import {
-  METRIC_KEYS, RING_METRICS, listRequest, shapeMetric, baselineValues,
+  METRIC_KEYS, BASELINE_METRICS, listRequest, shapeMetric, baselineValues,
   trailingRange, rangePosition, civilToday, addDays, isValidDate, absence, ABSENT,
   EXERCISE, buildFeed, HEALTH_CACHE_KEY, buildCache, dataTypePath, buildFilter, stageBaseline,
   shouldCacheReading,
 } from './_lib/health.js'
+import { recoveryScore, recoveryBaselines, recoveryBand, MIN_BASELINE_NIGHTS } from './_lib/recovery.js'
 
 // Google OAuth: start, disconnect, and status.
 //
@@ -102,11 +103,11 @@ async function health(req, res) {
     // SEPARATELY rather than split out of one 30-day payload: that way each
     // point's day is decided by the API's own civil filter, and nothing here
     // has to infer a local date from a UTC timestamp.
-    const rings = new Set(RING_METRICS)
+    const needsBaseline = new Set(BASELINE_METRICS)
     const results = await Promise.all(wanted.map(async (key) => {
       try {
         const payload = await healthFetch(token, listRequest(key, date, tomorrow))
-        if (!rings.has(key)) return [key, { payload }]
+        if (!needsBaseline.has(key)) return [key, { payload }]
         // Baseline is the 29 days BEFORE today, so today is never compared
         // against itself.
         let baseline = []
@@ -168,6 +169,45 @@ async function health(req, res) {
     // Sleep is REUSED, not refetched: the metric call already returned every
     // session ending today, naps included, so the feed costs one extra API call
     // rather than two.
+    // The recovery score, assembled from readings already in hand.
+    //
+    // Every input is a z-score against this wearer's own trailing window, so the
+    // baseline arrays gathered above are exactly what it needs and it costs no
+    // further API call. It is an ESTIMATE and the only computed number in this
+    // response — see api/_lib/recovery.js for the weights and the reasoning.
+    if (wanted.includes('hrv')) {
+      const values = {}
+      for (const [key, out] of results) {
+        if (out.baseline) values[key] = out.baseline
+      }
+      const baselines = recoveryBaselines(values)
+      const today = {}
+      for (const key of Object.keys(baselines)) today[key] = metrics[key]?.value ?? null
+
+      const recovery = recoveryScore(today, baselines)
+      metrics.recovery = {
+        ...recovery,
+        // `value` as well as `score`: every other metric in this response is read
+        // through `metrics[key].value`, and the cache and the rings both look
+        // there. Naming it twice keeps the score legible on its own terms while
+        // still travelling through the same machinery as a reading.
+        value: recovery.score,
+        // Marked so no surface can mistake it for a measurement.
+        computed: true,
+        band: recoveryBand(recovery.score)?.key ?? null,
+        bandLabel: recoveryBand(recovery.score)?.label ?? null,
+        // The score IS its own scale, so the arc needs no trailing range.
+        range: recovery.score == null ? null : { min: 0, max: 100, n: recovery.nights ?? 0 },
+        position: recovery.score == null ? null : recovery.score / 100,
+        detail: recovery.absent === 'learning'
+          ? `Still learning your baseline — ${recovery.nights ?? 0} of ${MIN_BASELINE_NIGHTS} nights.`
+          : recovery.absent === 'no_hrv'
+            ? 'No heart-rate variability reading, which this score is mostly built from.'
+            : null,
+      }
+      if (recovery.absent) missing.push({ metric: 'recovery', reason: recovery.absent })
+    }
+
     const sleepPayload = results.find(([k]) => k === 'sleep')?.[1]?.payload ?? null
     const sessions = wantSessions ? buildFeed(sleepPayload, exercisePayload) : null
 

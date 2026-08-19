@@ -19,10 +19,16 @@
 // (https://health.googleapis.com/$discovery/rest?version=v4) on 2026-08-16.
 //
 // NOT AVAILABLE, and do not go looking again: `readiness`, `cardio load`,
-// `strain`, and any field named *score*. Zero occurrences across all 44
-// DataPoint types and every schema. Those are scores the Fitbit app computes;
-// this API exposes the underlying physiology only. Deriving them here would be
-// interpretation, which this feature explicitly does not do.
+// `strain`, and any field named *score*. Zero occurrences across all 44 DataPoint
+// types and all 31 rollup schemas — re-verified against a fresh discovery document
+// (revision 20260817) on 19 Aug 2026, and Fitbit's own legacy Web API never
+// exposed readiness either. Those are scores the Fitbit app computes and publishes
+// nowhere.
+//
+// THIS MODULE STILL NEVER INVENTS A NUMBER. A recovery score is now computed, at
+// the owner's explicit request, but it lives in api/_lib/recovery.js precisely so
+// that the line stays visible: everything here is a reading, that one thing is an
+// estimate, and the UI labels it as such.
 
 // How a data type is filtered by time. Getting this wrong returns an EMPTY LIST
 // rather than an error, so a mistake here looks exactly like "no data yet".
@@ -393,7 +399,16 @@ export function formatSigned(n, digits = 1) {
 
 // Which metrics get a ring, and therefore a trailing baseline. Kept here rather
 // than in the endpoint so the two cannot drift.
-export const RING_METRICS = ['sleep', 'hrv', 'cardio']
+// Sleep, Recovery, Cardio — the trio Whoop uses, in this app's terms. RECOVERY IS
+// COMPUTED, not fetched: it has no entry in METRICS and is assembled by
+// api/_lib/recovery.js from the other readings. HRV keeps its place as the largest
+// contribution inside it, and as a row on its detail screen.
+export const RING_METRICS = ['sleep', 'recovery', 'cardio']
+
+// The metrics that ARE fetched and get a trailing baseline. Recovery is excluded
+// because there is nothing to fetch for it; sleep and cardio need one for their
+// own arcs, and the rest are the recovery score's inputs.
+export const BASELINE_METRICS = ['sleep', 'hrv', 'cardio', 'rhr', 'breathing', 'skinTemp']
 
 // Which metrics mean something OTHER than "not recorded" when they come back
 // empty.
@@ -712,7 +727,10 @@ export function cacheIsToday(cache, timeZone = 'Europe/London', now = new Date()
 // the front page should be showing.
 export function shouldCacheReading(date, wanted, timeZone = 'Europe/London', now = new Date()) {
   if (date !== civilToday(timeZone, now)) return false
-  return RING_METRICS.every((k) => wanted.includes(k))
+  // BASELINE_METRICS, not RING_METRICS: `recovery` is computed and never appears in
+  // `wanted`, so checking the ring list would make this permanently false and the
+  // home screen would never get a reading again.
+  return BASELINE_METRICS.every((k) => wanted.includes(k))
 }
 
 // ─── Sleep stage segments and their baseline ──────────────────────────────────
@@ -804,4 +822,22 @@ export function stageBaseline(payload) {
     }
   }
   return Object.keys(out).length ? out : null
+}
+
+// Mean and spread of a baseline window.
+//
+// `trailingRange` gives min/max, which is right for placing a value on an arc.
+// A composite score needs to know how UNUSUAL a value is, not just where it sits,
+// and that needs the mean and the standard deviation.
+//
+// Population SD, not sample: this is the wearer's own recorded distribution, not
+// a sample drawn from a larger one. Null below three points — a spread computed
+// from two nights is noise wearing a number's clothes.
+export function baselineStats(values) {
+  const nums = (values ?? []).filter((v) => typeof v === 'number' && Number.isFinite(v))
+  if (nums.length < 3) return null
+  const mean = nums.reduce((s, v) => s + v, 0) / nums.length
+  const variance = nums.reduce((s, v) => s + (v - mean) ** 2, 0) / nums.length
+  const sd = Math.sqrt(variance)
+  return { mean, sd, n: nums.length }
 }

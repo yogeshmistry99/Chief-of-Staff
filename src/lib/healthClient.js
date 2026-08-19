@@ -38,16 +38,25 @@ export async function fetchHealth({ metrics = null, date = null } = {}) {
 
 // The three rings, in reading order. Each names the measured quantity — none is
 // a score, and the labels avoid implying one.
+// Sleep, Recovery, Cardio — the trio Whoop uses, in this app's terms.
+//
+// RECOVERY IS THE ONLY COMPUTED ONE, and its caption says so on the front screen
+// rather than only on its detail page. Sleep and cardio are measurements; this is
+// an estimate assembled from the others, and a reader glancing at three identical
+// rings would have no way to tell without being told.
 export const RINGS = [
-  { key: 'sleep',  label: 'Sleep',  caption: 'asleep last night' },
-  { key: 'hrv',    label: 'HRV',    caption: 'overnight average' },
-  { key: 'cardio', label: 'Cardio', caption: 'active zone minutes' },
+  { key: 'sleep',    label: 'Sleep',    caption: 'asleep last night' },
+  { key: 'recovery', label: 'Recovery', caption: 'estimated, out of 100' },
+  { key: 'cardio',   label: 'Cardio',   caption: 'active zone minutes' },
 ]
 
 // How each metric renders. `value` returns the display string or null; null
 // always means "no reading", never "zero".
 export const FORMAT = {
   sleep:     { value: (m) => formatMinutes(m.value), unit: null },
+  // No unit: a score out of 100 with "100" written next to it reads as a
+  // measurement in some unit, which is exactly the wrong impression.
+  recovery:  { value: (m) => (m.value == null ? null : String(Math.round(m.value))), unit: null },
   hrv:       { value: (m) => (m.value == null ? null : String(Math.round(m.value))), unit: 'ms' },
   cardio:    { value: (m) => (m.value == null ? null : String(Math.round(m.value))), unit: 'min' },
   rhr:       { value: (m) => (m.value == null ? null : String(Math.round(m.value))), unit: 'bpm' },
@@ -101,9 +110,12 @@ export const DETAIL_GROUPS = [
     ],
   },
   {
-    ring: 'hrv',
+    // Moved from the HRV ring when Recovery replaced it. These are the readings
+    // the score is built from, so they belong on its screen.
+    ring: 'recovery',
     title: 'Overnight body signals',
     rows: [
+      { key: 'hrv',       label: 'Heart rate variability' },
       { key: 'rhr',       label: 'Resting heart rate' },
       { key: 'spo2',      label: 'Blood oxygen' },
       { key: 'breathing', label: 'Breathing rate' },

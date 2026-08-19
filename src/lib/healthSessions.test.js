@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   parseSleepSessions, parseExerciseSessions, dedupeSessions, buildFeed,
   parseDuration, shapeMetric, buildCache, cacheIsToday, cacheableRings, ABSENT,
-  shouldCacheReading, stageBaseline, baselineValues, isNap,
+  shouldCacheReading, stageBaseline, baselineValues, isNap, BASELINE_METRICS,
 } from '../../api/_lib/health.js'
 
 // Fixtures copied from REAL API responses (2026-08-19, direct calls), not invented.
@@ -183,16 +183,19 @@ describe('the last-reading cache', () => {
   const metrics = {
     sleep:  { value: 332, absent: null, position: 0.6, range: { min: 15, max: 543, n: 15 } },
     hrv:    { value: 33.35, absent: null, position: 0.43, range: { min: 24, max: 45, n: 24 } },
+    recovery: { value: 40, absent: null, position: 0.4, range: { min: 0, max: 100, n: 9 }, computed: true,
+                contributions: [{ key: 'hrv', points: -7 }] },
     cardio: { value: null, absent: 'no_activity', detail: 'No active zone minutes yet today.', position: null, range: null },
     rhr:    { value: 65, absent: null },
   }
 
   it('stores only what it takes to draw the three rings', () => {
     const rings = cacheableRings(metrics)
-    expect(Object.keys(rings).sort()).toEqual(['cardio', 'hrv', 'sleep'])
-    // Not a second copy of the data: no raw payloads ride along.
-    expect(rings.hrv).not.toHaveProperty('raw')
+    expect(Object.keys(rings).sort()).toEqual(['cardio', 'recovery', 'sleep'])
+    // Not a second copy of the data: no raw payloads ride along, and recovery's
+    // workings stay on its own screen rather than in the home screen's cache.
     expect(rings.sleep).not.toHaveProperty('stages')
+    expect(rings.recovery).not.toHaveProperty('contributions')
   })
 
   it('keeps an absence as an absence, so a blank ring stays blank', () => {
@@ -236,8 +239,12 @@ describe('shouldCacheReading — only a full read of today becomes "the last rea
     expect(shouldCacheReading('2026-08-19', ['sleep'], 'Europe/London', now)).toBe(false)
   })
 
-  it('caches when every ring is present even if other metrics are not', () => {
-    expect(shouldCacheReading('2026-08-19', ['sleep', 'hrv', 'cardio'], 'Europe/London', now)).toBe(true)
+  it('caches on the baselined metrics, not the ring list', () => {
+    // The gate has to name what is FETCHED. `recovery` is computed and never
+    // appears in `wanted`, so checking the ring list would make this permanently
+    // false and the home screen would never get a reading again.
+    expect(shouldCacheReading('2026-08-19', BASELINE_METRICS, 'Europe/London', now)).toBe(true)
+    expect(shouldCacheReading('2026-08-19', ['sleep', 'hrv', 'cardio'], 'Europe/London', now)).toBe(false)
   })
 })
 

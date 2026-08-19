@@ -6,8 +6,9 @@ import {
   civilToday, addDays, isValidDate,
   parseSleep, parseDaily, sumInterval, PICK, num,
   trailingRange, rangePosition, formatMinutes, formatSigned,
-  ABSENT, absence, civilDateKey, shapeMetric, baselineValues, RING_METRICS,
+  ABSENT, absence, civilDateKey, shapeMetric, baselineValues, RING_METRICS, BASELINE_METRICS,
 } from '../../api/_lib/health.js'
+import { RECOVERY_METRIC_KEYS } from '../../api/_lib/recovery.js'
 
 // The failure mode this file exists for: a wrong filter field returns an EMPTY
 // LIST, not an error. That is indistinguishable from "the band wasn't worn", so
@@ -339,7 +340,15 @@ describe('baselineValues', () => {
   })
 
   it('covers exactly the metrics that carry a ring', () => {
-    expect(RING_METRICS).toEqual(['sleep', 'hrv', 'cardio'])
+    expect(RING_METRICS).toEqual(['sleep', 'recovery', 'cardio'])
+  })
+
+  it('asks for a baseline for every metric that is actually fetched, recovery aside', () => {
+    // Recovery has no baseline of its own because there is nothing to fetch for
+    // it — it is computed from the others. Its INPUTS all need one, so the two
+    // lists have to stay in step or the score silently loses a signal.
+    expect(BASELINE_METRICS).not.toContain('recovery')
+    for (const key of RECOVERY_METRIC_KEYS) expect(BASELINE_METRICS).toContain(key)
   })
 })
 

@@ -7,6 +7,7 @@ import {
   STAGE_LABEL, absentCopy, readSessionHealth, writeSessionHealth,
 } from '../lib/healthClient'
 import ScoreRing from '../components/health/ScoreRing'
+import RecoveryBreakdown from '../components/health/RecoveryBreakdown'
 import SleepHypnogram from '../components/health/SleepHypnogram'
 import { Card, DetailRow } from '../components/health/HealthCard'
 
@@ -65,6 +66,7 @@ export default function HealthRingDetail() {
   }
 
   const sleep = health?.metrics?.sleep
+  const hrv = health?.metrics?.hrv
   const group = DETAIL_GROUPS.find((g) => g.ring === key)
 
   return (
@@ -100,20 +102,27 @@ export default function HealthRingDetail() {
               />
             </div>
 
-            {/* What the arc is relative to, in numbers rather than implied. */}
-            <Card title="Your own range">
-              {metric?.range ? (
-                <>
-                  <DetailRow label="Lowest in 30 days" value={displayValue(key, { value: metric.range.min })} />
-                  <DetailRow label="Highest in 30 days" value={displayValue(key, { value: metric.range.max })} />
-                  <DetailRow label="Days measured" value={String(metric.range.n)} />
-                </>
-              ) : (
-                <p className="text-[#79747E] text-xs leading-relaxed py-1">
-                  Not enough recent days to place today in a range yet.
-                </p>
-              )}
-            </Card>
+            {/* What the arc is relative to, in numbers rather than implied.
+                Recovery is excluded: its arc is a 0–100 scale, not a trailing
+                window, and "lowest in 30 days: 0" would be a fabricated fact. Its
+                own workings take this slot instead. */}
+            {key === 'recovery' ? (
+              <RecoveryBreakdown metric={metric} />
+            ) : (
+              <Card title="Your own range">
+                {metric?.range ? (
+                  <>
+                    <DetailRow label="Lowest in 30 days" value={displayValue(key, { value: metric.range.min })} />
+                    <DetailRow label="Highest in 30 days" value={displayValue(key, { value: metric.range.max })} />
+                    <DetailRow label="Days measured" value={String(metric.range.n)} />
+                  </>
+                ) : (
+                  <p className="text-[#79747E] text-xs leading-relaxed py-1">
+                    Not enough recent days to place today in a range yet.
+                  </p>
+                )}
+              </Card>
+            )}
 
             {key === 'sleep' && (
               <>
@@ -183,27 +192,31 @@ export default function HealthRingDetail() {
             )}
 
             {/* HRV's own extras: fields the API returns alongside the average and
-                which have nowhere else to go. Not derived, not interpreted. */}
-            {key === 'hrv' && metric?.raw && (
+                which have nowhere else to go. Not derived, not interpreted.
+                They followed HRV onto the Recovery screen when it took the ring —
+                otherwise the only route to them was a ring that no longer exists. */}
+            {key === 'recovery' && hrv?.raw && (
               <Card title="Also measured overnight">
                 <DetailRow
                   label="Non-REM heart rate"
-                  value={metric.raw.nonRemHeartRateBeatsPerMinute ? `${Math.round(Number(metric.raw.nonRemHeartRateBeatsPerMinute))} bpm` : null}
+                  value={hrv.raw.nonRemHeartRateBeatsPerMinute ? `${Math.round(Number(hrv.raw.nonRemHeartRateBeatsPerMinute))} bpm` : null}
                 />
                 <DetailRow
                   label="Deep-sleep RMSSD"
-                  value={metric.raw.deepSleepRootMeanSquareOfSuccessiveDifferencesMilliseconds != null
-                    ? `${Math.round(metric.raw.deepSleepRootMeanSquareOfSuccessiveDifferencesMilliseconds)} ms` : null}
+                  value={hrv.raw.deepSleepRootMeanSquareOfSuccessiveDifferencesMilliseconds != null
+                    ? `${Math.round(hrv.raw.deepSleepRootMeanSquareOfSuccessiveDifferencesMilliseconds)} ms` : null}
                 />
                 <DetailRow
                   label="Entropy"
-                  value={metric.raw.entropy != null ? metric.raw.entropy.toFixed(2) : null}
+                  value={hrv.raw.entropy != null ? hrv.raw.entropy.toFixed(2) : null}
                 />
               </Card>
             )}
 
             <p className="text-[10px] text-[#79747E] text-center leading-relaxed px-4 pt-2">
-              The number is your reading. The ring shows where it sits in your own last 30 days.
+              {key === 'recovery'
+                ? 'The number is an estimate worked out from the readings above. Everything else on this screen is measured.'
+                : 'The number is your reading. The ring shows where it sits in your own last 30 days.'}
             </p>
           </>
         )}

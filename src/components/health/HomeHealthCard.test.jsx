@@ -30,7 +30,7 @@ vi.mock('react-router-dom', async (importOriginal) => ({
 
 const rings = {
   sleep:  { value: 332, absent: null, position: 0.6, hasRange: true },
-  hrv:    { value: 33.35, absent: null, position: 0.43, hasRange: true },
+  recovery: { value: 40, absent: null, position: 0.4, hasRange: true },
   cardio: { value: null, absent: 'no_activity', detail: 'No active zone minutes yet today.', position: null, hasRange: false },
 }
 
@@ -52,7 +52,7 @@ describe('HomeHealthCard', () => {
   it('renders the cached ring values', async () => {
     draw()
     await waitFor(() => expect(screen.getByText('5h 32m')).toBeInTheDocument())
-    expect(screen.getByText('33')).toBeInTheDocument()
+    expect(screen.getByText('40')).toBeInTheDocument()
   })
 
   it('stamps a same-day reading with the time it was taken', async () => {
@@ -77,6 +77,15 @@ describe('HomeHealthCard', () => {
     draw()
     await waitFor(() => expect(screen.getByText('Cardio')).toBeInTheDocument())
     expect(screen.getByText(/no active zone minutes yet today/i)).toBeInTheDocument()
+  })
+
+  it('says on the front screen that recovery is estimated, not measured', async () => {
+    // The three rings look identical. Two are readings and one is worked out
+    // here, and a glance at the home screen is exactly where that distinction is
+    // easiest to lose.
+    draw()
+    await waitFor(() => expect(screen.getByText('Recovery')).toBeInTheDocument())
+    expect(screen.getByText(/estimated/i)).toBeInTheDocument()
   })
 
   it('taps through to the Health bucket\'s Today tab', async () => {
