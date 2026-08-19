@@ -129,6 +129,47 @@ purged, `api/*.js` at **11/12**, chat prompt caching 90% cheaper, refresh path t
 
 ## Recent significant changes (newest first)
 
+- **2026-08-19 — Health tab: activity feed, an honest cardio ring, and the three rings on the home
+  screen.**
+  **The cardio finding — it was neither suspected cause.** The ring read "—" and the question was
+  whether the Fitbit Air cannot produce a cardio metric or whether the field was mis-mapped.
+  Diagnosed by direct API calls: the mapping is correct on every axis (kebab path / snake filter /
+  `DataPoint.activeZoneMinutes` / `ActiveZoneMinutes.activeZoneMinutes`, all checked against the
+  discovery document), **and the device produces it readily** — 50 data points in 7 days, 13/34/4/6
+  AZM on 14–17 Aug. Today's own response proved the parser works while reporting no data: it
+  returned `range {min 4, max 34, n 4}` from the *same* PICK and `sumInterval`.
+  **The defect was the copy.** An empty reading claimed "band not worn, or not synced yet" while the
+  same fetch recorded 332 min of staged sleep and 643 steps. Active zone minutes are *earned, not
+  measured*, so a quiet day legitimately has none. Cardio now has its own sentence — "No active zone
+  minutes yet today." The ring keeps its place: it is not permanently blank (it read 3 by 07:13 the
+  same morning, and 23 on 14 Aug) and it carries a real 30-day range.
+  **Activity feed** beneath the rings: every exercise session and EVERY sleep session, naps
+  included, most recent first. Two live-data findings shaped it:
+  **(a) Every exercise is recorded TWICE** — the band (`dataSource.device.formFactor:
+  FITNESS_BAND`) and the phone (`application.packageName: com.google.android…`) both log the same
+  walk. 15 sessions over 7 days were really ~8 walks, and only the band's copy carries calories,
+  heart rate and AZM. `dedupeSessions` matches on *overlapping interval + activity type* — the
+  copies differ by a minute and by duration, so an equality test never fires — and keeps whichever
+  record answers more questions. Verified in production: 8 raw points on 14 Aug → 4 rows, each with
+  calories and average HR.
+  **(b) Naps are ordinary rows**, not a special case. `metadata.nap` is a real boolean and naps are
+  frequent (4 in 7 days, 21–57 min); they were invisible because `parseSleep` returns only
+  `metadata.mainSleep`. Sleep is **reused, not refetched** — the metric call already returns every
+  session ending today — so the feed costs one extra API call, for exercise.
+  Row carries type, start, duration, and calories + average HR where that session type has them;
+  distance, steps and zone minutes sit behind a tap. **Peak heart rate does not exist in this API**
+  (`averageHeartRateBeatsPerMinute` and `heartRateZoneDurations` only) and is omitted rather than
+  derived.
+  **Home-screen rings** read the last-fetched values from `app_data.health_last_reading` and **never
+  call the Health API** — the front page is opened dozens of times a day. Refresh stays the Health
+  tab's Update button or opening the tab. Same-day readings show "as of HH:MM"; an older one names
+  its day rather than passing as this morning; nothing cached says so and still links through.
+  **Only a full read of TODAY writes that cache** (`shouldCacheReading`) — found in production, where
+  `?date=2026-08-14` overwrote the home rings with a past day and `?metrics=sleep,cardio` cached two
+  rings instead of three.
+  No new serverless function (still 11/12): this extends `action=health` in `api/google.js`, with the
+  parsing in `api/_lib/health.js`, which is excluded from the count. 39 new tests (299 total).
+
 - **2026-08-18 — Journal reminder now fires on UNPUBLISHED days, and has an editable time.**
   The job skipped whenever a row existed for the day, so a day started in the morning and left as
   a draft was never mentioned — the day most worth a nudge. Confirmed against live rows: 16, 17 and
@@ -1146,6 +1187,22 @@ purged, `api/*.js` at **11/12**, chat prompt caching 90% cheaper, refresh path t
   a frozen fallback, refreshed weekly from live rows.
 - **All task reads must filter `deleted_at is null`.** `tasksRepo` does this; hand-rolled SQL or a
   raw `.from('tasks')` call will resurrect deleted tasks.
+- **Every exercise session is recorded TWICE, by the band and by the phone.** Only the band's copy
+  carries calories, heart rate and active zone minutes. Any surface listing sessions must dedupe on
+  *overlapping interval + activity type* and keep the richer record — the two copies differ by a
+  minute and by duration, so matching on equal start times silently never fires and the list shows
+  every walk twice with one copy blank. `dedupeSessions` in `api/_lib/health.js` is the one
+  implementation.
+- **An empty cardio ring does NOT mean the band was not worn.** Active zone minutes are earned, not
+  measured: a quiet day has none while sleep and steps record perfectly. The mapping is correct and
+  the device does produce them — verified by direct API call, so do not go looking again. Cardio has
+  its own absence sentence for this reason; do not collapse it back into the generic one.
+- **The home-screen health card must never fetch.** It renders `app_data.health_last_reading` only.
+  A fetch there would call the Google Health API on every app open, which is dozens of times a day
+  for a screen that is not the Health tab. Refresh belongs to the Health tab alone.
+- **Only a full read of today may write the last-reading cache.** A historical `?date=` query or a
+  narrowed `?metrics=` query is a legitimate call but is not "the current reading" — one overwrote
+  the home rings with a past day, the other cached two rings out of three. See `shouldCacheReading`.
 - **The journal reminder skips on PUBLISHED, not on "an entry exists".** A saved-but-unfiled draft
   is the state most worth nudging, and treating a row's existence as "done" silenced the reminder on
   every day that was started in the morning. `needsReminder` in `api/_lib/journalPublish.js` is the
