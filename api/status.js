@@ -20,26 +20,37 @@ const ANTHROPIC_BASE = 'https://api.anthropic.com/v1/organizations'
 // One GET against the Admin API, following pagination up to a small cap. Returns
 // the merged payload, or null on any failure (non-200, network, timeout, bad
 // JSON) — a null tells the summariser to mark that section unavailable, never 0.
-async function safeGet(path, params, headers) {
+//
+// TEMP DIAGNOSTIC (2026-08-20): logs the raw status + body of each request under
+// the `[cost-debug]` prefix, and — when `debug` is passed — collects the first
+// page's status/body so the caller can return it. Remove once the live beta
+// schema is confirmed and the field mapping is corrected.
+async function safeGet(path, params, headers, debug) {
   const merged = { data: [] }
   let page = null
   for (let i = 0; i < 6; i += 1) {
     const qs = new URLSearchParams(params)
     if (page) qs.set('page', page)
+    const url = `${ANTHROPIC_BASE}/${path}?${qs.toString()}`
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), 8000)
-    let json
+    let res
+    let bodyText
     try {
-      const res = await fetch(`${ANTHROPIC_BASE}/${path}?${qs.toString()}`, {
-        headers, signal: controller.signal,
-      })
-      if (!res.ok) return null
-      json = await res.json()
-    } catch {
+      res = await fetch(url, { headers, signal: controller.signal })
+      bodyText = await res.text()
+    } catch (e) {
+      console.error('[cost-debug]', path, 'fetch-threw', e?.message ?? e)
+      if (debug) debug.push({ path, error: String(e?.message ?? e) })
       return null
     } finally {
       clearTimeout(timer)
     }
+    console.log('[cost-debug]', path, 'status', res.status, 'body', bodyText.slice(0, 2000))
+    if (i === 0 && debug) debug.push({ path, status: res.status, body: bodyText.slice(0, 6000) })
+    if (!res.ok) return null
+    let json
+    try { json = JSON.parse(bodyText) } catch { return null }
     if (Array.isArray(json?.data)) merged.data.push(...json.data)
     else return json // unfamiliar envelope — hand it to the summariser to judge
     if (!json.has_more || !json.next_page) break
@@ -58,21 +69,25 @@ async function costReport(req, res) {
   const headers = {
     'x-api-key': adminKey,
     'anthropic-version': '2023-06-01',
-    'content-type': 'application/json',
   }
 
+  // Diagnostic pass: minimal params (no group_by yet) so the base shape and any
+  // 4xx reason come back clean. `?debug=1` echoes the raw first-page bodies.
+  const debug = req.query.debug === '1' ? [] : null
   const [cost, usage] = await Promise.all([
-    safeGet('cost_report', { starting_at: startingAt, 'group_by[]': 'description', limit: '31' }, headers),
-    safeGet('usage_report/messages', { starting_at: startingAt, bucket_width: '1d', 'group_by[]': 'model', limit: '31' }, headers),
+    safeGet('cost_report', { starting_at: startingAt, limit: '31' }, headers, debug),
+    safeGet('usage_report/messages', { starting_at: startingAt, bucket_width: '1d', limit: '31' }, headers, debug),
   ])
 
   const body = summarise({ cost, usage }, new Date())
-  return res.status(200).json({
+  const out = {
     available: true,
     currency: 'USD',
     fetchedAt: new Date().toISOString(),
     ...body,
-  })
+  }
+  if (debug) out._debug = debug
+  return res.status(200).json(out)
 }
 
 export default async function handler(req, res) {
