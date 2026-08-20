@@ -69,6 +69,13 @@ describe('ApiSpendCard (Meter 2)', () => {
     expect(screen.queryByText('$14.00')).not.toBeInTheDocument()
   })
 
+  it('says the key was rejected (401), distinct from a missing key', async () => {
+    stubFetch({ available: false, reason: 'admin-key-rejected' })
+    render(<SpendCards spendLimitUsd={25} localEstimateUsd={9} />)
+    expect(await screen.findByText(/rejected the Admin key \(401\)/)).toBeInTheDocument()
+    expect(screen.getByText(/not billed/)).toBeInTheDocument()
+  })
+
   it('keeps the token breakdown when only the spend figure drifts', async () => {
     stubFetch({
       ...fullReport,

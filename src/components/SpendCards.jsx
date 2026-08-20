@@ -105,7 +105,9 @@ export function ApiSpendCard({ spendLimitUsd = 20, localEstimateUsd = null }) {
           <Unavailable>
             {report.reason === 'admin-key-missing'
               ? 'Billed figures need an Anthropic Admin key. Add ANTHROPIC_ADMIN_KEY as a server-side Vercel environment variable (never a VITE_ variable), then tap Update.'
-              : 'Anthropic billing data is unavailable right now.'}
+              : report.reason === 'admin-key-rejected'
+                ? 'Anthropic rejected the Admin key (401). Check ANTHROPIC_ADMIN_KEY in Vercel: it must be an Admin key (sk-ant-admin…), with no surrounding spaces, quotes or newline, set for the Production environment — then redeploy and tap Update.'
+                : 'Anthropic billing data is unavailable right now.'}
           </Unavailable>
           <LocalEstimate usd={localEstimateUsd} />
         </div>

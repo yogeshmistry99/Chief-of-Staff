@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  monthWindow, sumCost, aggregateUsage, summarise,
+  monthWindow, sumCost, aggregateUsage, summarise, httpFailureReason,
 } from '../../api/_lib/spendReport.js'
 
 // The beta-schema contract: a recognisable payload parses; an empty month is a
@@ -35,6 +35,21 @@ describe('monthWindow', () => {
     expect(w.month).toBe('2026-08')
     expect(w.daysInMonth).toBe(31)
     expect(w.dayOfMonth).toBe(20)
+  })
+})
+
+describe('httpFailureReason', () => {
+  it('flags a rejected key on 401 or 403 — never as a schema problem', () => {
+    expect(httpFailureReason([{ path: 'cost_report', status: 401 }, { path: 'usage', status: 401 }])).toBe('admin-key-rejected')
+    expect(httpFailureReason([{ path: 'cost_report', status: 200 }, { path: 'usage', status: 403 }])).toBe('admin-key-rejected')
+  })
+  it('reports other non-2xx by status, and a thrown request as network', () => {
+    expect(httpFailureReason([{ status: 500 }])).toBe('http-500')
+    expect(httpFailureReason([{ path: 'x', error: 'aborted' }])).toBe('network')
+  })
+  it('is null when every request was a 2xx', () => {
+    expect(httpFailureReason([{ status: 200 }, { status: 200 }])).toBeNull()
+    expect(httpFailureReason([])).toBeNull()
   })
 })
 

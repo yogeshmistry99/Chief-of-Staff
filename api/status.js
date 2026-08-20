@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-import { monthWindow, summarise } from './_lib/spendReport.js'
+import { monthWindow, summarise, httpFailureReason } from './_lib/spendReport.js'
 
 // ─── Admin Usage & Cost report ──────────────────────────────────────────────
 //
@@ -25,7 +25,7 @@ const ANTHROPIC_BASE = 'https://api.anthropic.com/v1/organizations'
 // the `[cost-debug]` prefix, and — when `debug` is passed — collects the first
 // page's status/body so the caller can return it. Remove once the live beta
 // schema is confirmed and the field mapping is corrected.
-async function safeGet(path, params, headers, debug) {
+async function safeGet(path, params, headers, debug, outcomes) {
   const merged = { data: [] }
   let page = null
   for (let i = 0; i < 6; i += 1) {
@@ -42,12 +42,16 @@ async function safeGet(path, params, headers, debug) {
     } catch (e) {
       console.error('[cost-debug]', path, 'fetch-threw', e?.message ?? e)
       if (debug) debug.push({ path, error: String(e?.message ?? e) })
+      if (i === 0) outcomes?.push({ path, error: String(e?.message ?? e) })
       return null
     } finally {
       clearTimeout(timer)
     }
     console.log('[cost-debug]', path, 'status', res.status, 'body', bodyText.slice(0, 2000))
-    if (i === 0 && debug) debug.push({ path, status: res.status, body: bodyText.slice(0, 6000) })
+    if (i === 0) {
+      outcomes?.push({ path, status: res.status })
+      if (debug) debug.push({ path, status: res.status, body: bodyText.slice(0, 6000) })
+    }
     if (!res.ok) return null
     let json
     try { json = JSON.parse(bodyText) } catch { return null }
@@ -74,16 +78,28 @@ async function costReport(req, res) {
   // Diagnostic pass: minimal params (no group_by yet) so the base shape and any
   // 4xx reason come back clean. `?debug=1` echoes the raw first-page bodies.
   const debug = req.query.debug === '1' ? [] : null
+  const outcomes = []
   const [cost, usage] = await Promise.all([
-    safeGet('cost_report', { starting_at: startingAt, limit: '31' }, headers, debug),
-    safeGet('usage_report/messages', { starting_at: startingAt, bucket_width: '1d', limit: '31' }, headers, debug),
+    safeGet('cost_report', { starting_at: startingAt, limit: '31' }, headers, debug, outcomes),
+    safeGet('usage_report/messages', { starting_at: startingAt, bucket_width: '1d', limit: '31' }, headers, debug, outcomes),
   ])
+
+  // An auth or HTTP failure must read as exactly that — not as "unexpected
+  // shape". When the key is reached but rejected (401/403), the whole card says
+  // so and how to fix it, rather than degrading section by section.
+  const failure = httpFailureReason(outcomes)
+  if (failure === 'admin-key-rejected') {
+    const out = { available: false, reason: 'admin-key-rejected' }
+    if (debug) out._debug = debug
+    return res.status(200).json(out)
+  }
 
   const body = summarise({ cost, usage }, new Date())
   const out = {
     available: true,
     currency: 'USD',
     fetchedAt: new Date().toISOString(),
+    httpReason: failure, // null when both calls were 2xx
     ...body,
   }
   if (debug) out._debug = debug
