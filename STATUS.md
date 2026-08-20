@@ -147,6 +147,29 @@ cron that also runs the backup on Sundays. Plus: Health tab, three rings, six ta
 
 ## Recent significant changes (newest first)
 
+- **2026-08-20 — AI Spend became a two-meter cost dashboard.**
+  The Settings "AI Spend" section now separates the two meters that were being confused: **Meter 1 — Claude
+  subscription** (this chat / Claude Code / mobile app; rolling 5-hour + weekly cap; **no public API**, so it's a
+  labelled explainer card that links to the Claude app and shows **no number, never a %**), and **Meter 2 — Anthropic
+  API spend** (what Life OS costs to run), pulled from the **Admin Usage & Cost API**.
+  **New endpoint action, no new function:** `api/status.js?report=cost` (still **11/12**). It reads the Admin key from
+  **`ANTHROPIC_ADMIN_KEY`** — a **new server-side Vercel env var** the user must set (distinct from the standard key).
+  **The user must create the Admin key and set it in Vercel** for billed figures to appear; until then the card shows
+  "unavailable" (correct absence handling, not a zero).
+  **Security:** the Admin key is server-only, **never `VITE_`-prefixed**, so Vite can't inline it. Verified against the
+  built bundle: the secret value `sk-ant-admin…` appears **0 times**; the only occurrence of `ANTHROPIC_ADMIN_KEY` is the
+  variable *name* in on-screen setup guidance.
+  **Beta-schema defensiveness:** `api/_lib/spendReport.js` (pure, tested) parses both reports and **degrades any
+  unrecognised shape to "unavailable", never a wrong number** — an empty month is a real zero, but rows it can't read
+  become unavailable. Each section (spend / tokens / cache / by-model) carries its own availability.
+  **What it shows:** month-to-date USD vs budget with days elapsed; the **cache-saving headline kept at the top** (the
+  6× mis-set-breakpoint regression, made visible); tap-through by-model breakdown + token dimensions. **USD is
+  authoritative; GBP sits beside it as a labelled estimate** at a visible constant rate (no FX fetch, no hidden
+  conversion). **Per-surface attribution is not possible** (one API key + one workspace — the only dimensions Anthropic
+  separates; `recordUsage` carries no surface id) and the card says so rather than inventing a split.
+  The old local `ai_usage_${month}` store is **demoted to a labelled fallback** ("our own estimate, not billed") shown
+  only when the billed figure can't be read. 20 new tests (481 total), build clean, no service-worker change.
+
 - **2026-08-19 (cont. 6) — Morning brief: the last Phase 1 "Notifications" item.**
   A daily push each morning naming what is **overdue or due today**, ordered the same way the Home priority list is. It
   closes the one remaining Foundation subtask ("Notifications — smart reminders from AI-spotted urgency", 7/8 → 8/8).
