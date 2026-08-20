@@ -1,23 +1,35 @@
 import { createClient } from '@supabase/supabase-js'
-import { snapshotTasks } from './_lib/tasksRepo.js'
+import { snapshotTasks, listTasks } from './_lib/tasksRepo.js'
 import { getEntryByDate } from './_lib/journalRepo.js'
 import {
   listSubscriptions, getSubscription, toSubscription, recordSendResult,
 } from './_lib/pushRepo.js'
 import {
-  londonDate, reminderBody, isDue, readReminderTime, readLastSentDate, recordSentDate,
+  londonDate, londonWeekday, reminderBody, isDue,
+  readReminderTime, readLastSentDate, recordSentDate,
 } from './_lib/reminder.js'
 import { publishState, needsReminder } from './_lib/journalPublish.js'
+import {
+  selectUrgent, urgencyPayload,
+  readBriefEnabled, readBriefTime, readBriefSentDate, recordBriefSentDate,
+} from './_lib/urgency.js'
 
-// Both scheduled jobs, in one function.
+// All scheduled jobs, in one function.
 //
-// This merges the former api/cron-weekly-backup.js and adds the journal
-// reminder. Vercel's Hobby plan caps the project at 12 serverless functions and
-// api/*.js was at exactly 12, so the reminder had no slot of its own — Vercel
-// cron paths accept query strings, so one function serves both schedules.
+// This merges the former api/cron-weekly-backup.js, the journal reminder, and
+// the morning brief. Vercel's Hobby plan caps the project at 12 serverless
+// functions and api/*.js is at that cap, so none of these can have a file of its
+// own — Vercel cron paths accept query strings, so one function serves them all.
 //
-// Hobby also allows only 2 cron jobs, each firing at most once per day. After
-// this, both are used.
+// Hobby also allows only 2 cron jobs, each firing at most once per day, and both
+// are used. To add the morning brief WITHOUT a third slot, the weekly backup no
+// longer owns a cron: the two scheduled paths are now
+//   ?job=morning          daily  07:00 UTC  — the urgency brief, plus the weekly
+//                                              backup on Sundays only
+//   ?job=journal-reminder  daily 20:00 UTC  — the evening journal nudge
+// The backup's own weekly dedupe makes riding a daily fire safe (a second run in
+// the same week is a no-op), so folding it in changed its trigger, not its
+// behaviour.
 //
 // Auth is unchanged from the weekly-backup original: EITHER the Vercel-injected
 // `Authorization: Bearer <CRON_SECRET>` (automated runs) OR
@@ -67,6 +79,8 @@ export default async function handler(req, res) {
 
   if (job === 'journal-reminder') return journalReminder(req, res, sb)
   if (job === 'weekly-backup') return weeklyBackup(req, res, sb)
+  if (job === 'morning') return morning(req, res, sb)
+  if (job === 'urgency') return urgencyJob(req, res, sb)
   return res.status(400).json({ error: `Unknown job: ${job}` })
 }
 
@@ -238,10 +252,133 @@ async function journalReminder(req, res, sb) {
   return res.status(200).json({ ok: true, date: today, state, time: setTime, devices: subs.length, ...outcomes })
 }
 
+// ─── Morning urgency brief ────────────────────────────────────────────────────
+//
+// A single push each morning naming what is overdue or due today, ordered the
+// same way the Home priority list is. Sends nothing on a day with nothing urgent
+// — that quiet is deliberate, not a failure. Shares the journal reminder's push
+// transport (push_subscriptions) but has its own on/off flag and its own
+// once-a-day marker, so a device can want one and not the other.
+//
+// Returns { statusCode, payload } rather than writing the response, so the
+// `morning` handler can run this and the weekly backup and answer once.
+async function runUrgencyBrief(sb, { force = false } = {}) {
+  const today = londonDate()
+
+  if (!force && !(await readBriefEnabled(sb))) {
+    return { statusCode: 200, payload: { ok: true, date: today, skipped: 'morning brief disabled' } }
+  }
+
+  // Hold until the set time. Harmless under the single daily fire (which is at
+  // the default) and what keeps the job correct if it is ever polled more often.
+  const briefTime = await readBriefTime(sb)
+  if (!force && !isDue(briefTime)) {
+    return { statusCode: 200, payload: { ok: true, date: today, skipped: 'before brief time', time: briefTime } }
+  }
+
+  // One brief a day, however many times this is called.
+  if (!force && (await readBriefSentDate(sb)) === today) {
+    return { statusCode: 200, payload: { ok: true, date: today, skipped: 'already sent today' } }
+  }
+
+  let tasks
+  try {
+    tasks = await listTasks(sb, { includeCompleted: false })
+  } catch (e) {
+    return { statusCode: 500, payload: { error: `Task read failed: ${e.message}` } }
+  }
+
+  const urgent = selectUrgent(tasks, today)
+  const payload = urgencyPayload(urgent)
+  // Nothing urgent → send nothing, and do NOT record a send, so the day stays
+  // open in case something becomes due later and a manual/forced run is wanted.
+  if (!payload) {
+    return { statusCode: 200, payload: { ok: true, date: today, urgent: 0, note: 'nothing urgent today' } }
+  }
+
+  const { VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT } = process.env
+  if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {
+    return { statusCode: 500, payload: { error: 'VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY must be set' } }
+  }
+
+  const subs = await listSubscriptions(sb)
+  if (!subs.length) {
+    return { statusCode: 200, payload: { ok: true, date: today, urgent: urgent.length, sent: 0, note: 'no devices subscribed' } }
+  }
+
+  const webpush = (await import('web-push')).default
+  webpush.setVapidDetails(
+    VAPID_SUBJECT || 'mailto:yogeshmistry99@gmail.com',
+    VAPID_PUBLIC_KEY,
+    VAPID_PRIVATE_KEY,
+  )
+
+  const body = JSON.stringify(payload)
+  const outcomes = { sent: 0, removed: 0, failed: 0 }
+  // Sequential, same as the journal reminder: a handful of devices, and one push
+  // service rejecting must not abort the others.
+  for (const row of subs) {
+    let result
+    try {
+      await webpush.sendNotification(toSubscription(row), body, { TTL: 6 * 60 * 60 })
+      result = await recordSendResult(sb, row.endpoint, { ok: true })
+    } catch (err) {
+      const statusCode = err?.statusCode
+      console.warn('[cron] morning-brief push failed', row.endpoint, statusCode, err?.message)
+      result = await recordSendResult(sb, row.endpoint, { ok: false, error: err?.message, statusCode })
+    }
+    outcomes[result] = (outcomes[result] ?? 0) + 1
+  }
+
+  // Only a brief that actually reached a device counts as sent today.
+  if (outcomes.sent > 0) await recordBriefSentDate(sb, today)
+
+  return {
+    statusCode: 200,
+    payload: { ok: true, date: today, urgent: urgent.length, title: payload.title, devices: subs.length, ...outcomes },
+  }
+}
+
+// The daily morning cron. Always runs the urgency brief; also runs the weekly
+// backup, but only on Sundays (London) — the backup's own dedupe makes that gate
+// belt-and-braces rather than load-bearing. `?backup=1` forces the backup arm
+// for manual verification without waiting for Sunday.
+async function morning(req, res, sb) {
+  const force = req.query.force === '1' || req.query.force === 'true'
+  const today = londonDate()
+
+  const brief = await runUrgencyBrief(sb, { force })
+
+  let backup = null
+  if (force || londonWeekday() === 0 || req.query.backup === '1') {
+    backup = await runWeeklyBackup(sb, { force })
+  }
+
+  return res.status(200).json({ ok: true, date: today, brief: brief.payload, backup: backup?.payload ?? null })
+}
+
+// Manual trigger for the brief alone (auth-gated), so the whole path can be
+// proved without waiting for 07:00 or for a task to be due. `?force=1` bypasses
+// the enabled/time/already-sent gates.
+async function urgencyJob(req, res, sb) {
+  const force = req.query.force === '1' || req.query.force === 'true'
+  const r = await runUrgencyBrief(sb, { force })
+  return res.status(r.statusCode).json(r.payload)
+}
+
 // ─── Weekly task-store backup ─────────────────────────────────────────────────
-// Moved verbatim from api/cron-weekly-backup.js. Behaviour must not change.
+// Behaviour moved verbatim from api/cron-weekly-backup.js; only the shape
+// changed — the core returns { statusCode, payload } so `morning` can run it and
+// still answer once, and the thin `weeklyBackup` wrapper below serves the manual
+// ?job=weekly-backup path.
 async function weeklyBackup(req, res, sb) {
-  const isForced = req.query.force === '1' || req.query.force === 'true'
+  const force = req.query.force === '1' || req.query.force === 'true'
+  const r = await runWeeklyBackup(sb, { force })
+  return res.status(r.statusCode).json(r.payload)
+}
+
+async function runWeeklyBackup(sb, { force = false } = {}) {
+  const isForced = force
 
   // Dedupe: never store two weekly snapshots in the same week. The browser
   // Sunday backup and this cron can both fire on a Sunday; whichever runs first
@@ -253,7 +390,7 @@ async function weeklyBackup(req, res, sb) {
       .from('task_backups').select('id, label, created_at')
       .ilike('label', 'Weekly backup%').gte('created_at', weekAgo).limit(1)
     if (recent && recent.length) {
-      return res.status(200).json({ ok: true, skipped: true, reason: 'weekly snapshot already exists this week', existing: recent[0] })
+      return { statusCode: 200, payload: { ok: true, skipped: true, reason: 'weekly snapshot already exists this week', existing: recent[0] } }
     }
   }
 
@@ -265,12 +402,12 @@ async function weeklyBackup(req, res, sb) {
   try {
     tasks = await snapshotTasks(sb)
   } catch (e) {
-    return res.status(500).json({ error: `Task read failed: ${e.message}` })
+    return { statusCode: 500, payload: { error: `Task read failed: ${e.message}` } }
   }
   // Never write an empty or absurdly small snapshot over the rotation — that
   // would burn a slot and could push a good backup out of the 12 kept.
   if (!tasks.length) {
-    return res.status(500).json({ error: 'Refusing to back up: task read returned 0 rows' })
+    return { statusCode: 500, payload: { error: 'Refusing to back up: task read returned 0 rows' } }
   }
 
   const now = new Date().toISOString()
@@ -278,7 +415,7 @@ async function weeklyBackup(req, res, sb) {
   const { error: insErr } = await sb
     .from('task_backups')
     .insert({ label, tasks, task_count: tasks.length, created_at: now })
-  if (insErr) return res.status(500).json({ error: `Insert failed: ${insErr.message}` })
+  if (insErr) return { statusCode: 500, payload: { error: `Insert failed: ${insErr.message}` } }
 
   // Prune to the most recent MAX_SNAPSHOTS
   const { data: all } = await sb
@@ -302,5 +439,5 @@ async function weeklyBackup(req, res, sb) {
   if (fbErr) console.warn('fallback blob refresh failed', fbErr.message)
   else fallbackRefreshed = true
 
-  return res.status(200).json({ ok: true, label, task_count: tasks.length, pruned, kept: MAX_SNAPSHOTS, fallbackRefreshed })
+  return { statusCode: 200, payload: { ok: true, label, task_count: tasks.length, pruned, kept: MAX_SNAPSHOTS, fallbackRefreshed } }
 }

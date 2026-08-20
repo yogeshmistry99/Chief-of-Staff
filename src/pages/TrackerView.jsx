@@ -6,7 +6,7 @@ import {
   fetchTracker, allRows, sections, indexTab, scatterPoints, summaryStats,
   cellByHeader, textByHeader, toNumber, formatGbp, matchIndexKey,
 } from '../lib/sheets'
-import { filterOptions, applyFilters, activeFilterCount } from '../lib/trackerFilters'
+import { filterOptions, applyFilters, applySearch, activeFilterCount } from '../lib/trackerFilters'
 import { toggleSort, sortRows, describeSort } from '../lib/trackerSort'
 import { buildColorScale } from '../lib/trackerColor'
 import TrackerTable from '../components/tracker/TrackerTable'
@@ -31,11 +31,16 @@ export default function TrackerView() {
   const [state, setState] = useState({ loading: true })
   const [selected, setSelected] = useState(null)
   const [filters, setFilters] = useState({})
+  // Free-text search, ANDed with the filters. Empty string = no search.
+  const [query, setQuery] = useState('')
   // Ordered: tap order is precedence. See src/lib/trackerSort.js.
   const [sort, setSort] = useState([])
   // One column at a time — two colour encodings on one scatter cannot both be read.
   const [colorBy, setColorBy] = useState(null)
   const [tableOpen, setTableOpen] = useState(!tracker?.tableCollapsed)
+  // Chart axis mode. Fitted (default) reframes to the visible subset; pinned holds
+  // the full-dataset extent. A secondary control — default is the reframing view.
+  const [pinnedAxes, setPinnedAxes] = useState(false)
 
   const load = useCallback(async () => {
     if (!tracker) return
@@ -53,9 +58,12 @@ export default function TrackerView() {
     () => (tracker && state.tabs ? allRows(tracker, state.tabs) : []),
     [tracker, state.tabs],
   )
+  // FILTER, then SEARCH — both narrow the one row set everything derives from, so
+  // an active area filter plus a search term lands on the intersection, and the
+  // chart, table, stats and detail card stay describing the same properties.
   const rows = useMemo(
-    () => (tracker ? applyFilters(tracker, allTrackerRows, filters) : []),
-    [tracker, allTrackerRows, filters],
+    () => (tracker ? applySearch(tracker, applyFilters(tracker, allTrackerRows, filters), query) : []),
+    [tracker, allTrackerRows, filters, query],
   )
   const options = useMemo(
     () => (tracker ? filterOptions(tracker, allTrackerRows) : []),
@@ -239,10 +247,33 @@ export default function TrackerView() {
             )}
 
             {tracker.view === 'scatter' && (
-              <div className="rounded-2xl bg-white border border-[#CAC4D0] p-3">
+              <div className="relative rounded-2xl bg-white border border-[#CAC4D0] p-3">
+                {/* Axis mode. Small and tucked in the corner — a secondary option,
+                    not a headline. Absolutely positioned so it adds nothing to the
+                    pinned block's height. Fitted (default) reframes to the visible
+                    rows; pinned holds the whole-market extent. */}
+                <div className="absolute top-2 right-2 z-10 flex rounded-full border border-[#CAC4D0] overflow-hidden bg-white/90 backdrop-blur-sm">
+                  <button
+                    onClick={() => { haptic.light(); setPinnedAxes(false) }}
+                    aria-pressed={!pinnedAxes}
+                    aria-label="Fit axes to the visible records"
+                    className={`text-[9px] px-2 py-0.5 ${!pinnedAxes ? 'bg-[#6750A4] text-white font-medium' : 'text-[#6750A4]'}`}
+                  >
+                    Fit
+                  </button>
+                  <button
+                    onClick={() => { haptic.light(); setPinnedAxes(true) }}
+                    aria-pressed={pinnedAxes}
+                    aria-label="Pin axes to the full dataset extent"
+                    className={`text-[9px] px-2 py-0.5 ${pinnedAxes ? 'bg-[#6750A4] text-white font-medium' : 'text-[#6750A4]'}`}
+                  >
+                    Full
+                  </button>
+                </div>
                 <TrackerScatter
                   points={points}
                   domainPoints={domainPoints}
+                  pinned={pinnedAxes}
                   config={tracker.scatter}
                   selected={selected}
                   onSelect={(row) => { haptic.light(); setSelected(row) }}
@@ -268,6 +299,33 @@ export default function TrackerView() {
           />
         )}
 
+        {/* Search narrows the same row set as the filters and reframes the chart
+            above. Filters as you type — no submit. Matches the app's rounded input
+            pattern; the clear affordance appears only when there is something to
+            clear. */}
+        {state.ok && tracker.search && (
+          <div className="mt-3 relative">
+            <input
+              type="search"
+              inputMode="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={tracker.search.placeholder ?? 'Search'}
+              aria-label={tracker.search.placeholder ?? 'Search records'}
+              className="w-full text-[13px] rounded-2xl border border-[#CAC4D0] bg-white pl-3 pr-9 py-2.5 text-[#1C1B1F] placeholder:text-[#79747E] outline-none focus:border-[#6750A4]"
+            />
+            {query && (
+              <button
+                onClick={() => { haptic.light(); setQuery('') }}
+                aria-label="Clear search"
+                className="absolute right-2 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full flex items-center justify-center text-[#79747E]"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+        )}
+
         {state.ok && (
           <div className="mt-3">
             <TrackerFilters
@@ -284,9 +342,13 @@ export default function TrackerView() {
           </div>
         )}
 
-        {state.ok && activeCount > 0 && rows.length === 0 && tracker.view !== 'scatter' && (
+        {/* A plain empty state when a filter OR a search hits nothing, rather than
+            a silent empty list. The wording names whichever is responsible. */}
+        {state.ok && rows.length === 0 && (activeCount > 0 || query.trim()) && (
           <p className="py-6 text-center text-xs text-[#79747E]">
-            No records match these filters.
+            {query.trim()
+              ? `No matches for “${query.trim()}”${activeCount > 0 ? ' with these filters' : ''}.`
+              : 'No records match these filters.'}
           </p>
         )}
 

@@ -26,18 +26,30 @@ function short(n) {
   return String(Math.round(n))
 }
 
-export default function TrackerScatter({ points, domainPoints, config, selected, onSelect, colorFor }) {
-  // THE AXES ARE SCALED TO THE WHOLE DATASET, NOT TO WHAT IS CURRENTLY SHOWN.
+export default function TrackerScatter({ points, domainPoints, pinned = false, config, selected, onSelect, colorFor }) {
+  // TWO DOMAIN MODES, chosen by `pinned` — default fitted.
   //
-  // Rescaling on every filter change makes the chart jump: the same property
-  // moves to a different place on screen depending on what else is in view, and
-  // a filtered subset always fills the frame, so a narrow band looks identical
-  // to the whole market. Fixing the domain means filtering removes points
-  // without moving the survivors, and you can see where a subset actually sits
-  // within the full picture — which is the comparison this tracker is for.
-  const domain = domainPoints?.length ? domainPoints : points
+  // FITTED (default): the axes derive from whatever is currently visible, so
+  // filtering or searching to a subset reframes the chart to that subset and the
+  // points spread out to fill the frame. The filtering does the zooming; there is
+  // no pan or pinch. Answers "how do these compare to each other".
+  //
+  // PINNED: the axes stay fixed to the whole plottable dataset (domainPoints), so
+  // filtering removes points without moving the survivors and you can read where a
+  // subset sits inside the full market. Answers "where does this sit in the whole".
+  //
+  // Either way the axis LABELS are computed from the domain actually in use below,
+  // so a shifted domain always carries its own real values — never a rescaled axis
+  // with stale numbers.
+  const total = domainPoints?.length ? domainPoints.length : points.length
+  // When the current set is empty (filters/search exclude everything), fall back
+  // to the full extent so the frame stays drawn rather than collapsing — the
+  // "no records" overlay is shown over it. Pinned always uses the full extent.
+  const basis = pinned
+    ? (domainPoints?.length ? domainPoints : points)
+    : (points.length ? points : (domainPoints?.length ? domainPoints : points))
 
-  if (!domain.length) {
+  if (!basis.length) {
     return (
       <div className="py-10 text-center text-xs text-[#79747E]">
         Nothing to plot — no rows have both {config.xLabel ?? config.x} and {config.yLabel ?? config.y}.
@@ -45,8 +57,8 @@ export default function TrackerScatter({ points, domainPoints, config, selected,
     )
   }
 
-  const xs = domain.map((p) => p.x)
-  const ys = domain.map((p) => p.y)
+  const xs = basis.map((p) => p.x)
+  const ys = basis.map((p) => p.y)
   // Pad the range by 5% so points never sit on the axis line.
   const pad = (lo, hi) => { const d = (hi - lo) || Math.abs(hi) || 1; return [lo - d * 0.05, hi + d * 0.05] }
   const [x0, x1] = pad(Math.min(...xs), Math.max(...xs))
@@ -55,9 +67,15 @@ export default function TrackerScatter({ points, domainPoints, config, selected,
   const sx = (v) => PAD.left + ((v - x0) / (x1 - x0)) * PLOT_W
   const sy = (v) => PAD.top + (1 - (v - y0) / (y1 - y0)) * PLOT_H
 
+  // Radius scales inversely with how many points are on screen: a handful show as
+  // large, clearly separated dots; the full ~120-point set stays legible at the
+  // small end. Clamped both ways so it never balloons or vanishes.
+  const n = points.length || 1
+  const baseR = Math.max(3.5, Math.min(8, 26 / Math.sqrt(n)))
+
   return (
     <svg viewBox={`0 0 ${VB_W} ${VB_H}`} width="100%" role="img"
-      aria-label={`${config.yLabel ?? config.y} against ${config.xLabel ?? config.x}, ${points.length} of ${domain.length} points shown`}
+      aria-label={`${config.yLabel ?? config.y} against ${config.xLabel ?? config.x}, ${points.length} of ${total} points shown`}
       className="block">
       {niceTicks(y0, y1).map((v, i) => (
         <g key={`y${i}`}>
@@ -78,13 +96,17 @@ export default function TrackerScatter({ points, domainPoints, config, selected,
         return (
           <circle
             key={i}
-            cx={sx(p.x)} cy={sy(p.y)} r={on ? 5 : 4}
+            cx={sx(p.x)} cy={sy(p.y)} r={on ? baseR + 1.5 : baseR}
             fill={fill}
             // A surface-coloured ring separates overlapping marks. On a dense
             // scatter this is what stops two adjacent points reading as one
             // larger blob of an in-between colour.
             stroke="#fff" strokeWidth={on ? 1.5 : 0.6}
-            style={{ cursor: 'pointer' }}
+            // Ease between domains rather than snapping when the frame reflows.
+            // Chromium (the Android target) transitions these SVG geometry
+            // properties via CSS; where it isn't supported the points simply jump,
+            // which is the current behaviour, so nothing is lost.
+            style={{ cursor: 'pointer', transition: 'cx .35s ease, cy .35s ease, r .2s ease' }}
             onClick={() => onSelect(p.row)}
           >
             <title>{p.label}</title>

@@ -21,19 +21,48 @@ describe('TrackerScatter', () => {
     expect(screen.getByText('Asking price')).toBeInTheDocument()
   })
 
-  it('scales to domainPoints, so a filtered point keeps its position', () => {
-    const posOf = (c) =>
-      [...c.querySelectorAll('circle')].map((el) => `${el.getAttribute('cx')},${el.getAttribute('cy')}`)
+  const posOf = (c) =>
+    [...c.querySelectorAll('circle')].map((el) => `${el.getAttribute('cx')},${el.getAttribute('cy')}`)
 
+  it('pins to domainPoints when pinned, so a filtered point keeps its position', () => {
     const full = render(
-      <TrackerScatter points={all} domainPoints={all} config={cfg} selected={null} onSelect={vi.fn()} />,
+      <TrackerScatter points={all} domainPoints={all} pinned config={cfg} selected={null} onSelect={vi.fn()} />,
     )
     const middleWhenFull = posOf(full.container)[1]
 
     const oneLeft = render(
-      <TrackerScatter points={[all[1]]} domainPoints={all} config={cfg} selected={null} onSelect={vi.fn()} />,
+      <TrackerScatter points={[all[1]]} domainPoints={all} pinned config={cfg} selected={null} onSelect={vi.fn()} />,
     )
+    // Pinned axes: the survivor holds the exact spot it had in the full frame.
     expect(posOf(oneLeft.container)[0]).toBe(middleWhenFull)
+  })
+
+  it('fits to the visible points by default, so a subset reframes', () => {
+    const full = render(
+      <TrackerScatter points={all} domainPoints={all} config={cfg} selected={null} onSelect={vi.fn()} />,
+    )
+    const cornerWhenFull = posOf(full.container)[0]
+
+    const oneOnly = render(
+      <TrackerScatter points={[all[0]]} domainPoints={all} config={cfg} selected={null} onSelect={vi.fn()} />,
+    )
+    // Fitted (default): a single visible point reframes to the centre of the plot,
+    // so it does NOT keep its full-frame corner position.
+    expect(posOf(oneOnly.container)[0]).not.toBe(cornerWhenFull)
+  })
+
+  it('grows the dots as the visible set shrinks', () => {
+    const rOf = (c) => Number(c.querySelector('circle').getAttribute('r'))
+    // A dense set (like the full ~120-point register) so the inverse scaling is
+    // actually in range rather than clamped at both ends.
+    const dense = Array.from({ length: 80 }, (_, i) => pt(`D${i}`, 700 + i * 12, 300_000 + i * 6_000))
+    const many = render(
+      <TrackerScatter points={dense} domainPoints={dense} config={cfg} selected={null} onSelect={vi.fn()} />,
+    )
+    const one = render(
+      <TrackerScatter points={[dense[0]]} domainPoints={dense} config={cfg} selected={null} onSelect={vi.fn()} />,
+    )
+    expect(rOf(one.container)).toBeGreaterThan(rOf(many.container))
   })
 
   it('falls back to its own points when no domain is given', () => {

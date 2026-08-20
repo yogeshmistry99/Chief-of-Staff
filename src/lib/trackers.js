@@ -65,6 +65,13 @@ export const TRACKERS = [
       { column: '£/sq ft', label: '£ per sq ft', type: 'range', format: 'gbp', step: 50 },
     ],
 
+    // Free-text search across the three columns that identify a property. Runs
+    // with the filters (both narrow) and reframes the chart to whatever matches.
+    search: {
+      columns: ['ID', 'Address / listing location', 'Area group'],
+      placeholder: 'Search address, area or ID',
+    },
+
     // 184 rows is a lot to scroll past to reach anything else, and the chart is
     // the point of this tracker. The table opens on demand.
     tableCollapsed: true,
