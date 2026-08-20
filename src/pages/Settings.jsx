@@ -8,6 +8,8 @@ import { supabase } from '../lib/supabase'
 import { onSyncChange } from '../lib/sync'
 import { listBackups, createBackup, restoreBackup, fmtBackupDate, fmtLabel } from '../lib/backups'
 import MorningBriefToggle from '../components/MorningBriefToggle'
+import SpendCards from '../components/SpendCards'
+import { fmtGbpEstimate, GBP_RATE_NOTE } from '../lib/spend'
 
 // Cost is computed and stored server-side (api/_lib/pricing.js + usage.js) from
 // every AI call's real token usage, incl. cache tokens, at current Anthropic
@@ -147,12 +149,16 @@ function RoadmapSection({ roadmap }) {
   )
 }
 
-function CollapsibleSection({ title, subtitle, children, defaultOpen = false }) {
+function CollapsibleSection({ title, subtitle, children, defaultOpen = false, lazy = false }) {
   const [open, setOpen] = useState(defaultOpen)
+  // `lazy` sections don't mount their children until first opened — so a card
+  // that fetches on mount fetches on OPEN, not on every Settings visit. Once
+  // opened they stay mounted, keeping their state across collapses.
+  const [hasOpened, setHasOpened] = useState(defaultOpen)
   return (
     <div className="mb-4">
       <button
-        onClick={() => setOpen((x) => !x)}
+        onClick={() => setOpen((x) => { const next = !x; if (next) setHasOpened(true); return next })}
         className="w-full flex items-center justify-between mb-1 group"
       >
         <div className="text-left">
@@ -173,7 +179,7 @@ function CollapsibleSection({ title, subtitle, children, defaultOpen = false }) 
         transition: 'grid-template-rows 0.25s ease',
       }}>
         <div style={{ overflow: 'hidden' }}>
-          {children}
+          {(!lazy || hasOpened) ? children : null}
         </div>
       </div>
     </div>
@@ -353,13 +359,9 @@ export default function Settings() {
     setEditingLimit(false)
   }
 
+  // Our own token-log estimate (USD). Now only a labelled fallback shown when the
+  // billed figure can't be read — the AI Spend card's headline is the real bill.
   const cost = displayCost(usage)
-  const monthLabel = new Date().toLocaleString('default', { month: 'long', year: 'numeric' })
-  const pct = spendLimit > 0 ? Math.min(100, (cost / spendLimit) * 100) : 0
-  const resetDate = (() => {
-    const n = new Date()
-    return new Date(n.getFullYear(), n.getMonth() + 1, 1).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
-  })()
 
   const integrations = [
     {
@@ -440,72 +442,40 @@ export default function Settings() {
 
       {/* AI Spend */}
       <CollapsibleSection
+        lazy
         title="AI Spend"
-        subtitle={`${monthLabel} · ≈ $${cost.toFixed(2)} of $${spendLimit.toFixed(0)}`}
+        subtitle="Two meters — Claude subscription vs the Life OS API bill"
       >
-        <div className="bg-white border border-[#CAC4D0] rounded-2xl px-4 py-4 mt-2">
-          <div className="flex items-end justify-between mb-3">
-            <div>
-              <span className="text-3xl font-bold text-[#1C1B1F]">≈ ${cost.toFixed(2)}</span>
-              <span className="text-sm text-[#79747E] ml-1">/ ${spendLimit.toFixed(0)}</span>
+        {/* Two visibly distinct cards. The subscription card never shows a
+            number; the API card pulls billed figures server-side via the Admin
+            key. `cost` is our own token-log estimate, passed only as a labelled
+            fallback for when the billed figure can't be read. */}
+        <SpendCards spendLimitUsd={spendLimit} localEstimateUsd={cost} />
+
+        <div className="border-t border-[#F3EDF7] pt-3 mt-3">
+          <p className="text-xs text-[#79747E] mb-2">
+            Monthly budget (USD — Anthropic bills in dollars)
+          </p>
+          {editingLimit ? (
+            <div className="flex gap-2">
+              <input
+                autoFocus type="number" min="1" value={limitDraft}
+                onChange={(e) => setLimitDraft(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') saveSpendLimit(limitDraft); if (e.key === 'Escape') setEditingLimit(false) }}
+                className="flex-1 text-sm border border-[#CAC4D0] rounded-xl px-3 py-1.5 outline-none focus:border-[#6750A4]"
+                placeholder="e.g. 25"
+              />
+              <button onClick={() => saveSpendLimit(limitDraft)} className="text-sm font-medium text-[#6750A4] px-3">Save</button>
+              <button onClick={() => setEditingLimit(false)} className="text-sm text-[#79747E] px-2">Cancel</button>
             </div>
-            <span className="text-xs text-[#79747E]">{usage.calls ?? 0} {usage.calls === 1 ? 'call' : 'calls'}</span>
-          </div>
-
-          <div className="h-2 rounded-full bg-[#F3EDF7] overflow-hidden mb-1">
-            <div
-              className="h-full rounded-full transition-all duration-500"
-              style={{ width: `${pct}%`, backgroundColor: pct >= 90 ? '#B3261E' : pct >= 70 ? '#E8A000' : '#6750A4' }}
-            />
-          </div>
-          <div className="flex justify-between text-[11px] text-[#79747E] mb-4">
-            <span>{pct.toFixed(0)}% used</span>
-            <span>Resets {resetDate}</span>
-          </div>
-
-          <div className="flex gap-4 text-xs text-[#49454F] mb-4">
-            <span>{(usage.by_model?.sonnet?.input ?? 0).toLocaleString()} Sonnet in</span>
-            <span>{(usage.by_model?.haiku?.input ?? 0).toLocaleString()} Haiku in</span>
-          </div>
-
-          <div className="flex gap-2 mb-4">
-            <a
-              href="https://console.anthropic.com/settings/billing"
-              target="_blank" rel="noopener noreferrer"
-              className="flex-1 py-2 rounded-full text-sm font-semibold text-center bg-[#6750A4] text-white hover:bg-[#5B4397]"
-            >
-              Buy credits
-            </a>
-            <a
-              href="https://console.anthropic.com/settings/cost"
-              target="_blank" rel="noopener noreferrer"
-              className="flex-1 py-2 rounded-full text-sm font-semibold text-center bg-[#F3EDF7] text-[#6750A4] hover:bg-[#EADDFF]"
-            >
-              View usage
-            </a>
-          </div>
-
-          <div className="border-t border-[#F3EDF7] pt-3">
-            <p className="text-xs text-[#79747E] mb-2">Monthly spend limit</p>
-            {editingLimit ? (
-              <div className="flex gap-2">
-                <input
-                  autoFocus type="number" min="1" value={limitDraft}
-                  onChange={(e) => setLimitDraft(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') saveSpendLimit(limitDraft); if (e.key === 'Escape') setEditingLimit(false) }}
-                  className="flex-1 text-sm border border-[#CAC4D0] rounded-xl px-3 py-1.5 outline-none focus:border-[#6750A4]"
-                  placeholder="e.g. 20"
-                />
-                <button onClick={() => saveSpendLimit(limitDraft)} className="text-sm font-medium text-[#6750A4] px-3">Save</button>
-                <button onClick={() => setEditingLimit(false)} className="text-sm text-[#79747E] px-2">Cancel</button>
-              </div>
-            ) : (
-              <button onClick={() => { setLimitDraft(String(spendLimit)); setEditingLimit(true) }} className="text-sm font-medium text-[#6750A4]">
-                ${spendLimit.toFixed(0)} / month — tap to change
-              </button>
-            )}
-          </div>
-          <p className="text-[10px] text-[#79747E] mt-3 opacity-60">Estimate from server-side token counts (incl. cache), rounded up with headroom so it never reads below actual. Anthropic console is the source of truth for exact billing.</p>
+          ) : (
+            <button onClick={() => { setLimitDraft(String(spendLimit)); setEditingLimit(true) }} className="text-sm font-medium text-[#6750A4]">
+              ${spendLimit.toFixed(0)} / month {fmtGbpEstimate(spendLimit)} — tap to change
+            </button>
+          )}
+          <p className="text-[10px] text-[#938F99] mt-2">
+            £ figures are estimates only ({GBP_RATE_NOTE}); the dollar amounts are the billed values.
+          </p>
         </div>
       </CollapsibleSection>
 
