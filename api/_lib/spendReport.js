@@ -30,6 +30,26 @@ export function monthWindow(now = new Date()) {
   }
 }
 
+// Turn the per-request HTTP outcomes into a single honest reason for the card,
+// so an auth failure never masquerades as a schema problem. `outcomes` is a list
+// of { status } / { error } — one per report request.
+//   401 / 403 → the admin key was reached but rejected or unauthorised
+//   any other non-2xx → a plain http error carrying the status
+//   a thrown request (network/timeout) with no status → 'network'
+// Returns null when every request was a 2xx, i.e. nothing to explain.
+export function httpFailureReason(outcomes = []) {
+  let httpStatus = null
+  let networked = false
+  for (const o of outcomes) {
+    if (o?.status == null) { if (o?.error) networked = true; continue }
+    if (o.status === 401 || o.status === 403) return 'admin-key-rejected'
+    if (o.status < 200 || o.status >= 300) httpStatus = httpStatus ?? o.status
+  }
+  if (httpStatus != null) return `http-${httpStatus}`
+  if (networked) return 'network'
+  return null
+}
+
 // A finite number or null — the guard every extraction passes through. A string
 // decimal ("12.34", how the cost report renders money) is accepted; anything
 // non-finite (undefined, null, NaN, "", {}) becomes null and is skipped, never 0.
