@@ -64,10 +64,18 @@ async function safeGet(path, params, headers, debug, outcomes) {
 }
 
 async function costReport(req, res) {
-  const adminKey = process.env.ANTHROPIC_ADMIN_KEY
+  // Trim defensively: a trailing newline or space pasted into the Vercel env var
+  // makes the header value "invalid x-api-key" even when the key itself is right.
+  const rawKey = process.env.ANTHROPIC_ADMIN_KEY ?? ''
+  const adminKey = rawKey.trim()
   if (!adminKey) {
     return res.status(200).json({ available: false, reason: 'admin-key-missing' })
   }
+
+  // TEMP DIAGNOSTIC: prefix + lengths only — enough to confirm the key TYPE
+  // (sk-ant-admin… vs a standard sk-ant-api… key) and whether whitespace was
+  // trimmed, and NEVER the secret. Removed with the rest of the diagnostics.
+  console.log('[cost-debug] key-prefix', adminKey.slice(0, 14), 'trimmedLen', adminKey.length, 'rawLen', rawKey.length)
 
   const { startingAt } = monthWindow()
   const headers = {
