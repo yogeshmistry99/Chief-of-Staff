@@ -3,11 +3,40 @@ import houseTab from '../pages/__fixtures__/houseTab.json'
 import { getTracker } from './trackers'
 import { allRows } from './sheets'
 import {
-  filterOptions, applyFilters, activeFilterCount, toggleValue, setRange, rangeSteps,
+  filterOptions, applyFilters, applySearch, activeFilterCount, toggleValue, setRange, rangeSteps,
 } from './trackerFilters'
 
 const house = getTracker('house')
 const rows = allRows(house, [houseTab])
+
+describe('applySearch', () => {
+  it('returns every row for a blank query', () => {
+    expect(applySearch(house, rows, '')).toBe(rows)
+    expect(applySearch(house, rows, '   ')).toBe(rows)
+  })
+
+  it('matches case-insensitively across the configured columns', () => {
+    // Area group carries 'Langley' in the register; searching it narrows to a
+    // non-empty subset smaller than the whole.
+    const hits = applySearch(house, rows, 'langley')
+    expect(hits.length).toBeGreaterThan(0)
+    expect(hits.length).toBeLessThan(rows.length)
+    // Same result regardless of case — it is a substring match, lower-cased.
+    expect(applySearch(house, rows, 'LANGLEY').length).toBe(hits.length)
+  })
+
+  it('combines with an active filter by running on the already-filtered rows', () => {
+    const langley = applyFilters(house, rows, { 'Area group': ['Langley'] })
+    // A term absent from the Langley subset empties it — the search is ANDed.
+    expect(applySearch(house, langley, 'zzzznotathing')).toHaveLength(0)
+    // …and a term present in it leaves rows.
+    expect(applySearch(house, langley, 'langley').length).toBe(langley.length)
+  })
+
+  it('returns rows untouched when the tracker has no search config', () => {
+    expect(applySearch({ }, rows, 'anything')).toBe(rows)
+  })
+})
 
 describe('rangeSteps', () => {
   // The regression this file exists for: the option cap silently coarsened the

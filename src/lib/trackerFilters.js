@@ -99,6 +99,28 @@ export function applyFilters(tracker, rows, state) {
   }))
 }
 
+// Free-text narrowing across the tracker's configured search columns.
+//
+// Runs AFTER applyFilters and on the same row set, so a search combines with an
+// active filter (both narrow) rather than replacing it. A blank query, or a
+// tracker with no `search` config, returns the rows untouched — clearing the
+// field restores the full filtered list with no special case.
+//
+// Match is a case-insensitive substring against ANY of the columns (address,
+// area, id for the house register). Deliberately simple and predictable: it
+// filters as you type, so a surprising fuzzy match would be worse than a miss.
+export function applySearch(tracker, rows, query) {
+  const q = String(query ?? '').trim().toLowerCase()
+  if (!q) return rows
+  const cols = tracker?.search?.columns ?? []
+  if (!cols.length) return rows
+  return rows.filter((row) =>
+    cols.some((col) =>
+      String(textByHeader(row.headers, row, col) ?? '').toLowerCase().includes(q),
+    ),
+  )
+}
+
 // How many filters are actually narrowing the results — drives the "Filters (2)"
 // badge, so a collapsed panel can never hide that a view is filtered.
 export function activeFilterCount(tracker, state) {

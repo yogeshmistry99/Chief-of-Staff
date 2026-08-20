@@ -266,7 +266,7 @@ describe('TrackerView', () => {
       ]),
     )
 
-  it('does NOT rescale the axes when filtering — surviving points stay put', async () => {
+  it('reframes the chart to the filtered subset by default (fitted axes)', async () => {
     const { container } = renderTracker()
     await screen.findByText('House search')
     await waitFor(() => expect(container.querySelectorAll('circle').length).toBeGreaterThan(0))
@@ -281,11 +281,73 @@ describe('TrackerView', () => {
 
     const after = plotted(container)
     expect(Object.keys(after).length).toBeGreaterThan(0)
+    // Fitted default: the surviving subset reframes to fill the plot, so at least
+    // one survivor lands somewhere new — the filtering is what does the zooming.
+    const moved = Object.entries(after).some(([label, pos]) => pos !== before[label])
+    expect(moved).toBe(true)
+  })
+
+  it('pins the axes to the full extent when Full is chosen — survivors stay put', async () => {
+    const { container } = renderTracker()
+    await screen.findByText('House search')
+    await waitFor(() => expect(container.querySelectorAll('circle').length).toBeGreaterThan(0))
+
+    fireEvent.click(screen.getByRole('button', { name: /Pin axes to the full dataset extent/i }))
+    const before = plotted(container)
+
+    await openCategory('Area')
+    fireEvent.click(await screen.findByRole('button', { name: /^Langley/ }))
+    await waitFor(() =>
+      expect(container.querySelectorAll('circle').length).toBeLessThan(Object.keys(before).length),
+    )
+
+    const after = plotted(container)
+    expect(Object.keys(after).length).toBeGreaterThan(0)
     for (const [label, pos] of Object.entries(after)) {
-      // Same coordinates as before the filter: the frame is fixed to the whole
-      // dataset, so filtering removes points without moving the survivors.
+      // Pinned: the frame is fixed to the whole dataset, so filtering removes
+      // points without moving the survivors.
       expect(pos).toBe(before[label])
     }
+  })
+
+  it('search narrows the record list, reframes the chart, and clears back', async () => {
+    const { container } = renderTracker()
+    await screen.findByText('House search')
+    await waitFor(() => expect(container.querySelectorAll('circle').length).toBeGreaterThan(0))
+    const plottedBefore = container.querySelectorAll('circle').length
+
+    fireEvent.click(await screen.findByRole('button', { name: /All records/i }))
+    const rowsBefore = screen.getAllByRole('row').length
+
+    const box = screen.getByRole('searchbox')
+    fireEvent.change(box, { target: { value: 'langley' } })
+
+    // Both the table and the chart narrow to the matches.
+    await waitFor(() => expect(screen.getAllByRole('row').length).toBeLessThan(rowsBefore))
+    expect(container.querySelectorAll('circle').length).toBeLessThan(plottedBefore)
+
+    // Clearing restores the full list.
+    fireEvent.click(screen.getByRole('button', { name: /Clear search/i }))
+    await waitFor(() => expect(screen.getAllByRole('row').length).toBe(rowsBefore))
+  })
+
+  it('search combines with an active filter rather than replacing it', async () => {
+    renderTracker()
+    await openCategory('Area')
+    fireEvent.click(await screen.findByRole('button', { name: /^Langley/ }))
+
+    // A term absent from the Langley subset narrows it to nothing — proving the
+    // search runs on top of the filter, not instead of it.
+    const box = screen.getByRole('searchbox')
+    fireEvent.change(box, { target: { value: 'zzzznotathing' } })
+    expect(await screen.findByText(/No matches for .* with these filters/i)).toBeInTheDocument()
+  })
+
+  it('shows a plain no-matches state when a search hits nothing', async () => {
+    renderTracker()
+    const box = await screen.findByRole('searchbox')
+    fireEvent.change(box, { target: { value: 'zzzznotathing' } })
+    expect(await screen.findByText(/No matches for/i)).toBeInTheDocument()
   })
 
   const fills = (container) =>
