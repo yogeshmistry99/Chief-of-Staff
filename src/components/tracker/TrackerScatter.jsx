@@ -26,7 +26,7 @@ function short(n) {
   return String(Math.round(n))
 }
 
-export default function TrackerScatter({ points, domainPoints, pinned = false, config, selected, onSelect, colorFor }) {
+export default function TrackerScatter({ points, domainPoints, pinned = false, config, selected, onSelect, colorFor, onBackgroundClick }) {
   // TWO DOMAIN MODES, chosen by `pinned` — default fitted.
   //
   // FITTED (default): the axes derive from whatever is currently visible, so
@@ -76,6 +76,12 @@ export default function TrackerScatter({ points, domainPoints, pinned = false, c
   return (
     <svg viewBox={`0 0 ${VB_W} ${VB_H}`} width="100%" role="img"
       aria-label={`${config.yLabel ?? config.y} against ${config.xLabel ?? config.x}, ${points.length} of ${total} points shown`}
+      // Clicking anywhere that isn't a point toggles the axis mode — the same
+      // Fit/Full switch as the corner buttons, on the whole plot's whitespace.
+      // Point clicks stopPropagation below, so tapping a mark still opens its
+      // record rather than flipping the frame under it.
+      onClick={onBackgroundClick}
+      style={onBackgroundClick ? { cursor: 'pointer' } : undefined}
       className="block">
       {niceTicks(y0, y1).map((v, i) => (
         <g key={`y${i}`}>
@@ -107,7 +113,7 @@ export default function TrackerScatter({ points, domainPoints, pinned = false, c
             // properties via CSS; where it isn't supported the points simply jump,
             // which is the current behaviour, so nothing is lost.
             style={{ cursor: 'pointer', transition: 'cx .35s ease, cy .35s ease, r .2s ease' }}
-            onClick={() => onSelect(p.row)}
+            onClick={(e) => { e.stopPropagation(); onSelect(p.row) }}
           >
             <title>{p.label}</title>
           </circle>

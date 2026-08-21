@@ -277,6 +277,7 @@ export default function TrackerView() {
                   config={tracker.scatter}
                   selected={selected}
                   onSelect={(row) => { haptic.light(); setSelected(row) }}
+                  onBackgroundClick={() => { haptic.light(); setPinnedAxes((v) => !v) }}
                   colorFor={colorScale?.colorFor}
                 />
                 <TrackerLegend scale={colorScale} />

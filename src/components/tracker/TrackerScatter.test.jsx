@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import TrackerScatter from './TrackerScatter'
 
 // The empty-and-sparse states, tested directly. Reaching them through the page
@@ -70,6 +70,31 @@ describe('TrackerScatter', () => {
       <TrackerScatter points={all} config={cfg} selected={null} onSelect={vi.fn()} />,
     )
     expect(container.querySelectorAll('circle').length).toBe(3)
+  })
+
+  it('toggles axis mode when the plot whitespace is clicked', () => {
+    const onBackgroundClick = vi.fn()
+    const onSelect = vi.fn()
+    const { container } = render(
+      <TrackerScatter points={all} domainPoints={all} config={cfg} selected={null}
+        onSelect={onSelect} onBackgroundClick={onBackgroundClick} />,
+    )
+    fireEvent.click(container.querySelector('svg'))
+    expect(onBackgroundClick).toHaveBeenCalledTimes(1)
+    expect(onSelect).not.toHaveBeenCalled()
+  })
+
+  it('opens the record on a point click without toggling the axis mode', () => {
+    const onBackgroundClick = vi.fn()
+    const onSelect = vi.fn()
+    const { container } = render(
+      <TrackerScatter points={all} domainPoints={all} config={cfg} selected={null}
+        onSelect={onSelect} onBackgroundClick={onBackgroundClick} />,
+    )
+    fireEvent.click(container.querySelector('circle'))
+    expect(onSelect).toHaveBeenCalledTimes(1)
+    // The point-click stops propagation, so the whitespace toggle never fires.
+    expect(onBackgroundClick).not.toHaveBeenCalled()
   })
 
   it('shows the original empty message when there is genuinely nothing to plot', () => {
