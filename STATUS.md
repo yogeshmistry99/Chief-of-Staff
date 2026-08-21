@@ -3,10 +3,11 @@
 Single source of truth for system state. **Read this at the start of every session.
 Update it at the end of any session that changes anything.**
 
-Last updated: 2026-08-19 (**Morning brief shipped** — the last Phase 1 "Notifications" item. A daily push naming what's
-overdue or due today, deterministic urgency off the existing bucket-weighting framework (no LLM call), reusing all the
-journal-reminder push infra. Fitted into the 2/2 cron cap by folding the weekly backup into a new daily `?job=morning`
-cron that also runs the backup on Sundays. Plus: Health tab, three rings, six tabs; build audit; `api/*.js` at **11/12**)
+Last updated: 2026-08-21 (**House tracker Decision-status filter** — the register's shortlisting verdict
+(PRIORITY → VIEW → MONITOR → PASS → REJECT) is now a filter on the tracker page, labelled "Decision", with
+its values in that fixed precedence rather than commonest-first. New reusable `selectComparator(order)` for
+any ranked select filter. Self-populating from the sheet — the column is still almost all "Unreviewed", so
+the filter fills in as properties are triaged. Config + one pure helper; `api/*.js` still **11/12**.)
 
 ---
 
@@ -146,6 +147,29 @@ cron that also runs the backup on Sundays. Plus: Health tab, three rings, six ta
 ---
 
 ## Recent significant changes (newest first)
+
+- **2026-08-21 — House tracker gained a Decision-status filter (PRIORITY → REJECT), and select filters
+  can now carry a ranked value order.**
+  The House register's `Decision status` column is now a filter on the tracker page, labelled **"Decision"**
+  (kept distinct from the existing "Status" filter, which is `Listing status` — the market state Available /
+  Sold STC). Its values render in a **fixed precedence, not commonest-first: PRIORITY → VIEW → MONITOR →
+  PASS → REJECT** — the shortlisting vocabulary the sheet's own header row points at ("Use Decision status /
+  Decision notes for ongoing shortlisting"). This column was **deliberately excluded before** because every
+  row read "Unreviewed"; the note in `src/lib/trackers.js` is updated to reflect the reversal.
+  **The filter is self-populating from the live sheet, so it is only as useful as the column is triaged.**
+  Options are still drawn from the loaded rows (nothing hardcoded), and as of this change the column is
+  almost entirely blank/"Unreviewed" — verified against the live sheet: 149 blank, 54 "Unreviewed", a few
+  stray one-offs, **zero** PRIORITY/VIEW/MONITOR/PASS/REJECT yet. So the filter today mostly offers
+  "Unreviewed" and **fills itself in as properties are classified in the spreadsheet** — no code change
+  needed when the values appear. The user was told this: the feature is wired and correct; populating the
+  sheet's Decision-status column is what makes it bite.
+  **New reusable primitive:** `selectComparator(order)` in `src/lib/trackerFilters.js`. With no `order` it
+  is the long-standing default (commonest-first, alpha tiebreak — behaviour unchanged for every existing
+  filter); with an `order` array it pins the named values into that sequence (case-insensitive), and any
+  value the config has not heard of keeps the default order and sits **after** the known ones, so a
+  hand-entered status never vanishes. Any future select filter with a meaningful ranking (not a frequency)
+  can now set `order` and nothing else. Entirely config + one pure helper — no component change, no new
+  serverless function (still 11/12). 13 new test assertions (490 total), build clean.
 
 - **2026-08-20 — AI Spend became a two-meter cost dashboard.**
   The Settings "AI Spend" section now separates the two meters that were being confused: **Meter 1 — Claude

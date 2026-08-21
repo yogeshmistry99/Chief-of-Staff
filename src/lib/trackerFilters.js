@@ -33,16 +33,39 @@ export function filterOptions(tracker, rows) {
       }
     }
 
-    // Commonest first: on a 184-row register the useful areas should not be
-    // buried under one-off values in alphabetical order.
+    // Commonest first by default: on a 184-row register the useful areas should
+    // not be buried under one-off values in alphabetical order. A filter that
+    // carries an explicit `order` (a decision status runs PRIORITY → REJECT, a
+    // meaning, not a frequency) overrides that — see selectComparator.
     const counts = new Map()
     for (const t of filled) counts.set(t, (counts.get(t) ?? 0) + 1)
     const values = [...counts.entries()]
-      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
       .map(([value, count]) => ({ value, count }))
+      .sort(selectComparator(def.order))
 
     return { ...def, values, blanks: rows.length - filled.length }
   })
+}
+
+// Orders the values of a select filter. With no configured `order` this is the
+// long-standing default — commonest first, alphabetical to break a tie. With an
+// `order` (a fixed, ranked vocabulary such as PRIORITY → VIEW → MONITOR → PASS →
+// REJECT), the values it names sort into that sequence regardless of how often
+// each occurs, because the sequence is the meaning and frequency is noise here.
+//
+// Match is case-insensitive, so a status typed into the sheet in any case still
+// lands in its slot. Anything the list has NOT heard of keeps the default order
+// and sits AFTER the known values — the same principle the whole filter runs on:
+// a value hand-entered into the sheet must still appear, never vanish because
+// the config had not anticipated it.
+export function selectComparator(order) {
+  const rank = new Map((order ?? []).map((v, i) => [String(v).toLowerCase(), i]))
+  const rankOf = (v) => (rank.has(v.toLowerCase()) ? rank.get(v.toLowerCase()) : Infinity)
+  return (a, b) => {
+    const diff = rankOf(a.value) - rankOf(b.value)
+    if (diff) return diff
+    return b.count - a.count || a.value.localeCompare(b.value)
+  }
 }
 
 // Threshold options for a range control.

@@ -52,11 +52,29 @@ export const TRACKERS = [
     //
     // Chosen against the live register rather than guessed: every column here is
     // well populated and has values worth separating. Deliberately excluded —
-    // `Decision status` (all 184 rows read "Unreviewed", so it can only ever
-    // filter to everything or nothing), and `Tenure` / `Bathrooms` / `EPC`
-    // (under 40% filled, so a bound would hide most of the register).
+    // `Tenure` / `Bathrooms` / `EPC` (under 40% filled, so a bound would hide
+    // most of the register).
+    //
+    // `Decision status` is the shortlisting verdict the sheet's own header row
+    // points at ("Use Decision status / Decision notes for ongoing
+    // shortlisting"). It was previously left out because the whole column read
+    // "Unreviewed" — a filter to everything-or-nothing. It is IN now, carrying an
+    // explicit `order`: the register is being triaged into PRIORITY / VIEW /
+    // MONITOR / PASS / REJECT, a ranked vocabulary whose sequence is its meaning,
+    // so the chips read in that order rather than commonest-first. The options
+    // are still drawn live from the sheet (nothing hardcoded), so today, before
+    // much is triaged, it mostly offers "Unreviewed" and fills itself in as
+    // properties are classified — the same self-populating behaviour every select
+    // filter has. Labelled "Decision", not "Status", so it never blurs into
+    // `Listing status` (the market state: Available / Sold STC).
     filters: [
       { column: 'Area group', label: 'Area', type: 'select' },
+      {
+        column: 'Decision status',
+        label: 'Decision',
+        type: 'select',
+        order: ['PRIORITY', 'VIEW', 'MONITOR', 'PASS', 'REJECT'],
+      },
       { column: 'Listing status', label: 'Status', type: 'select' },
       { column: 'Property type', label: 'Property type', type: 'select' },
       { column: 'Quality grade', label: 'Data quality grade', type: 'select' },

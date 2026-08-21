@@ -4,6 +4,7 @@ import { getTracker } from './trackers'
 import { allRows } from './sheets'
 import {
   filterOptions, applyFilters, applySearch, activeFilterCount, toggleValue, setRange, rangeSteps,
+  selectComparator,
 } from './trackerFilters'
 
 const house = getTracker('house')
@@ -89,6 +90,56 @@ describe('filterOptions', () => {
 
   it('is empty for a tracker with no filters configured', () => {
     expect(filterOptions(getTracker('medical'), rows)).toEqual([])
+  })
+
+  it('orders the house Decision status by its configured precedence', () => {
+    // The register's shortlist verdict is a ranked vocabulary, not a frequency
+    // list: PRIORITY must lead even when REJECT is far commoner.
+    const graded = [
+      mkRow(['Decision status'], ['REJECT']),
+      mkRow(['Decision status'], ['REJECT']),
+      mkRow(['Decision status'], ['REJECT']),
+      mkRow(['Decision status'], ['VIEW']),
+      mkRow(['Decision status'], ['PRIORITY']),
+    ]
+    const opt = filterOptions(house, graded).find((o) => o.column === 'Decision status')
+    expect(opt.values.map((v) => v.value)).toEqual(['PRIORITY', 'VIEW', 'REJECT'])
+  })
+})
+
+// A minimal row for exercising the pure filter helpers without the full fixture.
+function mkRow(headers, texts) {
+  return { headers, cells: texts.map((text) => ({ text, url: null })) }
+}
+
+describe('selectComparator', () => {
+  const order = ['PRIORITY', 'VIEW', 'MONITOR', 'PASS', 'REJECT']
+  const sort = (defOrder, vals) => vals.slice().sort(selectComparator(defOrder)).map((v) => v.value)
+
+  it('with no order, falls back to commonest-first then alphabetical', () => {
+    const out = sort(undefined, [
+      { value: 'b', count: 1 }, { value: 'a', count: 1 }, { value: 'c', count: 5 },
+    ])
+    expect(out).toEqual(['c', 'a', 'b'])
+  })
+
+  it('pins known values into the configured sequence regardless of count', () => {
+    const out = sort(order, [
+      { value: 'REJECT', count: 40 }, { value: 'PRIORITY', count: 1 }, { value: 'MONITOR', count: 9 },
+    ])
+    expect(out).toEqual(['PRIORITY', 'MONITOR', 'REJECT'])
+  })
+
+  it('matches the order case-insensitively', () => {
+    const out = sort(order, [{ value: 'reject', count: 2 }, { value: 'Priority', count: 1 }])
+    expect(out).toEqual(['Priority', 'reject'])
+  })
+
+  it('keeps unrecognised values, after the known ones, commonest first', () => {
+    const out = sort(order, [
+      { value: 'Unreviewed', count: 50 }, { value: 'PASS', count: 3 }, { value: 'Maybe', count: 4 },
+    ])
+    expect(out).toEqual(['PASS', 'Unreviewed', 'Maybe'])
   })
 })
 
